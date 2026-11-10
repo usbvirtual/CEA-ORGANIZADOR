@@ -21,11 +21,94 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+import {get_strings as getStrings} from 'core/str';
+import Notification from 'core/notification';
+import * as api from 'tool_ceaorganizador/api';
+import {createModel} from 'tool_ceaorganizador/treemodel';
+import {render, format} from 'tool_ceaorganizador/treeview';
+
+const SEARCH_DELAY = 250;
+const MIN_COURSE_SEARCH = 3;
+
+// Literal shape, so that check-strings can verify every key.
+const REQUESTS = [
+    {key: 'coursecount', component: 'tool_ceaorganizador'},
+    {key: 'error_generic', component: 'tool_ceaorganizador'},
+    {key: 'hidden', component: 'tool_ceaorganizador'},
+    {key: 'loadmore', component: 'tool_ceaorganizador'},
+    {key: 'moved', component: 'tool_ceaorganizador'},
+    {key: 'needsort', component: 'tool_ceaorganizador'},
+    {key: 'needsortsummary', component: 'tool_ceaorganizador'},
+    {key: 'undo', component: 'tool_ceaorganizador'},
+];
+
 /**
  * Starts the organiser on its root element.
  *
  * @param {Object} options
  * @param {String} options.root Selector of the root element.
- * @returns {Element|null} The root element, if found.
+ * @returns {Promise|null} Resolves when the tree is drawn; null if there is no root.
  */
-export const init = ({root}) => document.querySelector(root);
+export const init = ({root}) => {
+    const rootel = document.querySelector(root);
+    if (!rootel) {
+        return null;
+    }
+    const treeel = rootel.querySelector('[data-region="tree"]');
+    const summary = rootel.querySelector('[data-region="summary"]');
+    const summarytext = rootel.querySelector('[data-region="summarytext"]');
+    const input = rootel.querySelector('[data-region="search"]');
+    const results = rootel.querySelector('[data-region="courseresults"]');
+
+    return Promise.all([getStrings(REQUESTS), api.getTree()]).then(([values, tree]) => {
+        const strings = {};
+        REQUESTS.forEach((request, index) => {
+            strings[request.key] = values[index];
+        });
+        const model = createModel(tree.categories);
+        const state = {api, strings, onError: Notification.exception};
+        const view = render(treeel, model, state);
+
+        if (summary) {
+            summary.hidden = tree.needsortcount <= 0;
+            summarytext.textContent = format(strings.needsortsummary, tree.needsortcount);
+        }
+
+        let timer = null;
+        let token = 0;
+        const search = () => {
+            const query = input.value;
+            state.visible = query.trim() === '' ? null : model.filter(query);
+            view.refresh();
+            const mine = ++token;
+            results.textContent = '';
+            if (query.trim().length < MIN_COURSE_SEARCH) {
+                return;
+            }
+            api.getCourses(0, query.trim(), 0).then((found) => {
+                if (mine !== token) {
+                    return;
+                }
+                found.courses.forEach((course) => {
+                    const li = document.createElement('li');
+                    const name = document.createElement('span');
+                    name.className = 'tool-ceaorganizador-nombre';
+                    name.textContent = course.fullname;
+                    const path = document.createElement('span');
+                    path.className = 'tool-ceaorganizador-ruta';
+                    path.textContent = course.path;
+                    li.append(name, path);
+                    results.appendChild(li);
+                });
+                return null;
+            }).catch(Notification.exception);
+        };
+        if (input) {
+            input.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(search, SEARCH_DELAY);
+            });
+        }
+        return null;
+    }).catch(Notification.exception);
+};

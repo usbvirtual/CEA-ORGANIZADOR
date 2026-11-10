@@ -77,6 +77,143 @@
     flex: none;
 }
 
+/* Barra superior: buscador y resumen de lo que se puede ordenar. */
+.tool-ceaorganizador-barra {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.tool-ceaorganizador-barra .form-control {
+    flex: 1 1 18rem;
+    max-width: 28rem;
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+.tool-ceaorganizador-resumen {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tool-ceaorganizador-resumen[hidden] {
+    display: none;
+}
+
+/* Árbol: sangría por nivel, sin viñetas. */
+.tool-ceaorganizador [role="tree"],
+.tool-ceaorganizador [role="group"] {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tool-ceaorganizador [role="group"] {
+    margin-left: 1.25rem;
+    border-left: 1px solid var(--cea-linea);
+}
+
+.tool-ceaorganizador [role="treeitem"] {
+    list-style: none;
+    outline: none;
+}
+
+.tool-ceaorganizador-fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.tool-ceaorganizador-fila:hover {
+    background: var(--cea-lavanda);
+}
+
+.tool-ceaorganizador [role="treeitem"]:focus-visible > .tool-ceaorganizador-fila {
+    outline: 2px solid var(--cea-turquesa-dia);
+    outline-offset: 2px;
+}
+
+.tool-ceaorganizador-chevron::before {
+    content: "\25B8";
+    display: inline-block;
+    width: 1em;
+    color: var(--cea-secundario);
+    transition: transform var(--cea-duracion) var(--cea-curva);
+}
+
+.tool-ceaorganizador [aria-expanded="true"] > .tool-ceaorganizador-fila .tool-ceaorganizador-chevron::before {
+    transform: rotate(90deg);
+}
+
+.tool-ceaorganizador-curso > .tool-ceaorganizador-fila {
+    cursor: default;
+    padding-left: 1.5rem;
+    color: var(--cea-secundario);
+}
+
+.tool-ceaorganizador-cuenta,
+.tool-ceaorganizador-ruta {
+    color: var(--cea-secundario);
+    font-size: 0.8125rem;
+}
+
+/* Insignia de recomendación: lavanda con filete violeta de día. */
+.tool-ceaorganizador-insignia {
+    background: var(--cea-lavanda);
+    border-left: 4px solid var(--cea-violeta-dia);
+    border-radius: 8px;
+    color: var(--cea-tinta);
+    font-size: 0.8125rem;
+    padding: 0.125rem 0.5rem;
+}
+
+.tool-ceaorganizador-oculta {
+    font-size: 0.75rem;
+}
+
+.tool-ceaorganizador-mas {
+    list-style: none;
+    padding: 0.25rem 0.5rem 0.25rem 1.5rem;
+}
+
+.tool-ceaorganizador-resultados {
+    list-style: none;
+    margin: 1rem 0;
+    padding: 0;
+}
+
+.tool-ceaorganizador-resultados li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--cea-linea);
+}
+
+/* Aviso transitorio con acción (deshacer). */
+.tool-ceaorganizador-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translateX(-50%);
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--cea-noche, #0d2227);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .tool-ceaorganizador *,
     .tool-ceaorganizador *::before,
