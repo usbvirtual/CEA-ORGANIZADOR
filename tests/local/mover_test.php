@@ -200,6 +200,30 @@ final class mover_test extends \advanced_testcase {
     }
 
     /**
+     * A category with more courses than get_max_courses_in_category() is not reordered.
+     */
+    public function test_apply_course_order_rejects_too_many_courses(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $cat = (int) $generator->create_category(['name' => 'K'])->id;
+        $c1 = (int) $generator->create_course(['category' => $cat])->id;
+        $c2 = (int) $generator->create_course(['category' => $cat])->id;
+        $c3 = (int) $generator->create_course(['category' => $cat])->id;
+        // Set after creating the courses, so the generator works with the default limit.
+        set_config('maxcoursesincategory', 2);
+
+        try {
+            mover::apply_course_order($cat, [$c1, $c2, $c3]);
+            $this->fail('Expected error_toomanycourses');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_toomanycourses', $e->errorcode);
+            $this->assertSame(2, $e->a);
+        }
+        $this->assertSame([$c3, $c2, $c1], tree::category_courses($cat));
+    }
+
+    /**
      * Renaming a course changes the short name only when one is given.
      */
     public function test_rename_course_shortname(): void {

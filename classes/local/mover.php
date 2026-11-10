@@ -45,10 +45,28 @@ class mover {
      * Throws one of the plugin errors.
      *
      * @param string $code Code without the 'error_' prefix.
+     * @param mixed $a Value for the string placeholder.
      * @throws \moodle_exception Always.
      */
-    private static function fail(string $code): void {
-        throw new \moodle_exception('error_' . $code, 'tool_ceaorganizador');
+    private static function fail(string $code, $a = null): void {
+        throw new \moodle_exception('error_' . $code, 'tool_ceaorganizador', '', $a);
+    }
+
+    /**
+     * Purges the course and category caches, then rolls back and rethrows.
+     *
+     * The core functions purge caches as they go; after a rollback those caches
+     * could hold data that never reached the database.
+     *
+     * @param \moodle_transaction $transaction
+     * @param \Throwable $e
+     * @throws \Throwable Always, the given one.
+     */
+    private static function rollback(\moodle_transaction $transaction, \Throwable $e): void {
+        \cache_helper::purge_by_event('changesincoursecat');
+        \cache_helper::purge_by_event('changesincourse');
+        \context_helper::reset_caches();
+        $transaction->rollback($e);
     }
 
     /**
@@ -116,7 +134,8 @@ class mover {
         $category = \core_course_category::get($id, MUST_EXIST, true);
         // Ensures the new parent exists; 0 returns the top pseudo-category.
         \core_course_category::get($newparent, MUST_EXIST, true);
-        $oldparent = (int) $category->parent;
+        // Read fresh: the category record may come from the cache.
+        $oldparent = (int) $DB->get_field('course_categories', 'parent', ['id' => $id], MUST_EXIST);
 
         // Checked now, not when the tree was loaded: another admin may have moved things since.
         $descendants = array_map('intval', $category->get_all_children_ids());
@@ -141,7 +160,7 @@ class mover {
             self::apply_category_order($newparent, self::insert_after($others, $id, $afterid));
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
 
         $to = ['parent' => $newparent, 'afterid' => self::previous(tree::sibling_categories($newparent), $id)];
@@ -187,7 +206,7 @@ class mover {
             }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
 
         $to = ['category' => $categoryid, 'afterid' => self::previous(tree::category_courses($categoryid), $id)];
@@ -236,7 +255,7 @@ class mover {
             }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
     }
 
@@ -258,6 +277,11 @@ class mover {
         if (!$ids) {
             return;
         }
+        // Beyond the limit, course sortorders would overflow into the next category.
+        $limit = (int) get_max_courses_in_category();
+        if (count($ids) > $limit) {
+            self::fail('toomanycourses', $limit);
+        }
 
         $transaction = $DB->start_delegated_transaction();
         try {
@@ -269,7 +293,7 @@ class mover {
             \core_course_category::resort_categories_cleanup(true);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
     }
 
@@ -287,7 +311,7 @@ class mover {
             $category->update(['name' => $name]);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
     }
 
@@ -312,7 +336,7 @@ class mover {
             update_course($data);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            $transaction->rollback($e);
+            self::rollback($transaction, $e);
         }
     }
 

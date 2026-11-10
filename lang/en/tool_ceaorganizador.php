@@ -29,7 +29,8 @@ $string['credit'] = 'Centro de Innovación Pedagógica y Educación Digital (CEA
 $string['error_aftermismatch'] = 'The target position is no longer valid; reload the tree.';
 $string['error_cannotmoveintodescendant'] = 'A category cannot be moved into itself or into one of its subcategories.';
 $string['error_ordermismatch'] = 'The order sent does not match the current contents; reload the tree.';
-$string['intro']= 'Organise categories and courses by dragging, sorting and renaming.';
+$string['error_toomanycourses'] = 'The category has more courses than Moodle can sort ({$a}); adjust maxcoursesincategory.';
+$string['intro'] = 'Organise categories and courses by dragging, sorting and renaming.';
 $string['nativemanagement'] = 'Native category management';
 $string['patterns_facultad'] = 'Faculty patterns';
 $string['patterns_facultad_desc'] = 'One pattern per line. Plain text: the name contains it. =text: exact name. /regex/: regular expression on the lowercase, accent-free name.';

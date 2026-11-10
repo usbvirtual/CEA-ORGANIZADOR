@@ -29,7 +29,8 @@ $string['credit'] = 'Centro de Innovación Pedagógica y Educación Digital (CEA
 $string['error_aftermismatch'] = 'La posición de destino ya no es válida; recarga el árbol.';
 $string['error_cannotmoveintodescendant'] = 'No se puede mover una categoría dentro de sí misma o de una de sus subcategorías.';
 $string['error_ordermismatch'] = 'El orden enviado no coincide con el contenido actual; recarga el árbol.';
-$string['intro']= 'Organiza categorías y cursos arrastrando, ordenando y renombrando.';
+$string['error_toomanycourses'] = 'La categoría tiene más cursos de los que Moodle permite ordenar ({$a}); ajusta maxcoursesincategory.';
+$string['intro'] = 'Organiza categorías y cursos arrastrando, ordenando y renombrando.';
 $string['nativemanagement'] = 'Gestión nativa de categorías';
 $string['patterns_facultad'] = 'Patrones de facultad';
 $string['patterns_facultad_desc'] = 'Un patrón por línea. Texto simple: el nombre lo contiene. =texto: nombre exacto. /expresión/: expresión regular sobre el nombre en minúsculas y sin tildes.';
