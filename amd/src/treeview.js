@@ -25,6 +25,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+import {decodeEntities} from 'tool_ceaorganizador/text';
+
 const STORAGE_KEY = 'tool_ceaorganizador_expanded';
 
 /**
@@ -98,6 +100,7 @@ export const render = (container, model, state) => {
     }
     const expanded = state.expanded;
     const cache = state.cache;
+    const pending = state.pending || (state.pending = new Map());
     const fail = (error) => {
         if (state.onError) {
             state.onError(error);
@@ -139,14 +142,19 @@ export const render = (container, model, state) => {
             const li = create('li', 'tool-ceaorganizador-curso');
             li.setAttribute('role', 'treeitem');
             li.setAttribute('aria-level', String(level));
-            li.setAttribute('aria-label', course.fullname);
             li.dataset.id = String(course.id);
             li.dataset.type = 'course';
             li.tabIndex = -1;
             const row = create('div', 'tool-ceaorganizador-fila');
-            row.appendChild(create('span', 'tool-ceaorganizador-nombre', course.fullname));
+            const name = create('span', 'tool-ceaorganizador-nombre', decodeEntities(course.fullname));
+            name.id = `tool-ceaorganizador-course-${course.id}-name`;
+            row.appendChild(name);
+            li.setAttribute('aria-labelledby', name.id);
             if (!course.visible) {
-                row.appendChild(hiddenLabel());
+                const label = hiddenLabel();
+                label.id = `tool-ceaorganizador-course-${course.id}-hidden`;
+                row.appendChild(label);
+                li.setAttribute('aria-describedby', label.id);
             }
             li.appendChild(row);
             group.appendChild(li);
@@ -170,12 +178,19 @@ export const render = (container, model, state) => {
         }
     };
 
+    // One request per category: expand, collapse and expand again share the pending promise.
     const loadCourses = async(group, id, level) => {
         let entry = cache.get(id);
         if (!entry) {
-            const result = await state.api.getCourses(id, '', 0);
-            entry = {id, items: result.courses, total: result.total, page: 1};
-            cache.set(id, entry);
+            if (!pending.has(id)) {
+                const request = Promise.resolve(state.api.getCourses(id, '', 0)).then((result) => {
+                    const loaded = {id, items: result.courses, total: result.total, page: 1};
+                    cache.set(id, loaded);
+                    return loaded;
+                }).finally(() => pending.delete(id));
+                pending.set(id, request);
+            }
+            entry = await pending.get(id);
         }
         appendCourses(group, entry, level);
     };
@@ -193,7 +208,6 @@ export const render = (container, model, state) => {
         li.setAttribute('role', 'treeitem');
         li.setAttribute('aria-level', String(level));
         li.setAttribute('aria-expanded', 'false');
-        li.setAttribute('aria-label', row.name);
         li.dataset.id = String(row.id);
         li.dataset.type = 'category';
         li.tabIndex = -1;
@@ -201,16 +215,30 @@ export const render = (container, model, state) => {
         const chevron = create('span', 'tool-ceaorganizador-chevron');
         chevron.setAttribute('aria-hidden', 'true');
         line.appendChild(chevron);
-        line.appendChild(create('span', 'tool-ceaorganizador-nombre', row.name));
-        line.appendChild(create('span', 'tool-ceaorganizador-cuenta', format(strings.coursecount, row.coursecount)));
+        const prefix = `tool-ceaorganizador-category-${row.id}`;
+        const described = [];
+        const name = create('span', 'tool-ceaorganizador-nombre', decodeEntities(row.name));
+        name.id = `${prefix}-name`;
+        line.appendChild(name);
+        li.setAttribute('aria-labelledby', name.id);
+        const count = create('span', 'tool-ceaorganizador-cuenta', format(strings.coursecount, row.coursecount));
+        count.id = `${prefix}-count`;
+        described.push(count.id);
+        line.appendChild(count);
         if (!row.visible) {
-            line.appendChild(hiddenLabel());
+            const label = hiddenLabel();
+            label.id = `${prefix}-hidden`;
+            described.push(label.id);
+            line.appendChild(label);
         }
         if (row.needsort) {
             const badge = create('span', 'tool-ceaorganizador-insignia', strings.needsort);
             badge.dataset.region = 'needsort';
+            badge.id = `${prefix}-needsort`;
+            described.push(badge.id);
             line.appendChild(badge);
         }
+        li.setAttribute('aria-describedby', described.join(' '));
         line.addEventListener('click', () => toggle(li));
         li.appendChild(line);
         if (expanded.has(row.id) || forcedOpen(row)) {

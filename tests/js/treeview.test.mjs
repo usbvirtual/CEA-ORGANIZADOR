@@ -4,6 +4,8 @@ import { JSDOM } from 'jsdom';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 import { render } from 'tool_ceaorganizador/treeview';
 
+globalThis.DOMParser = new JSDOM('').window.DOMParser;
+
 const row = (id, parent, name, sortorder, extra = {}) => ({
     id, parent, name, path: name, depth: 1, sortorder, visible: true, coursecount: 2, needsort: false, ...extra,
 });
@@ -135,4 +137,42 @@ test('el nombre de una categoría se pinta como texto', () => {
     const { model, container, state } = setup([row(1, 0, '<img src=x onerror=alert(1)>', 1)]);
     render(container, model, state);
     assert.equal(container.querySelector('img'), null);
+});
+
+test('decodifica las entidades de nombres formateados y las muestra como texto', async () => {
+    const { model, container, state } = setup([row(1, 0, 'A &amp; B', 1), row(2, 0, '&lt;b&gt;x&lt;/b&gt;', 2)]);
+    render(container, model, state);
+    assert.equal(container.querySelector('[data-id="1"] .tool-ceaorganizador-nombre').textContent, 'A & B');
+    assert.equal(container.querySelector('[data-id="2"] .tool-ceaorganizador-nombre').textContent, '<b>x</b>');
+    assert.equal(container.querySelector('b'), null);
+});
+
+test('expandir, colapsar y expandir con la petición pendiente envía una sola', async () => {
+    const { model, container, state } = setup([row(1, 0, 'A', 1)]);
+    let calls = 0;
+    let release;
+    state.api.getCourses = () => {
+        calls++;
+        return new Promise((resolve) => {
+            release = () => resolve({ courses: [], total: 0, perpage: 100 });
+        });
+    };
+    render(container, model, state);
+    rowOf(container, 1).click();
+    rowOf(container, 1).click();
+    rowOf(container, 1).click();
+    release();
+    await flush();
+    assert.equal(calls, 1);
+});
+
+test('aria-labelledby apunta al nombre y aria-describedby a cuenta, oculta e insignia', () => {
+    const { model, container, state } = setup([row(1, 0, 'A', 1, { needsort: true, visible: false })]);
+    render(container, model, state);
+    const li = container.querySelector('[data-id="1"]');
+    assert.equal(li.hasAttribute('aria-label'), false);
+    const doc = container.ownerDocument;
+    assert.equal(doc.getElementById(li.getAttribute('aria-labelledby')).textContent, 'A');
+    const described = li.getAttribute('aria-describedby').split(' ').map((id) => doc.getElementById(id).textContent);
+    assert.deepEqual(described, ['2 cursos', 'Oculta', 'Te recomiendo auto ordenar']);
 });

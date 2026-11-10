@@ -38,9 +38,10 @@ export const normalize = (text) => String(text === null || text === undefined ? 
  * Builds the model from the categories returned by get_tree.
  *
  * @param {Object[]} rows Categories (id, parent, name, sortorder, visible, coursecount, needsort...).
+ * @param {Function} [decode] Turns a formatted name into plain text, used only to compare in filter().
  * @returns {Object} The model.
  */
-export const createModel = (rows) => {
+export const createModel = (rows, decode = (text) => text) => {
     const byId = new Map();
     // Ordered ids of the children of each parent; 0 is the root.
     const kids = new Map();
@@ -103,7 +104,7 @@ export const createModel = (rows) => {
         byId.forEach((row, id) => {
             // The path includes the names of the ancestors, so matching it
             // also covers the name.
-            if (needle !== '' && !normalize(pathOf(id).join(SEPARATOR)).includes(needle)) {
+            if (needle !== '' && !normalize(decode(pathOf(id).join(SEPARATOR))).includes(needle)) {
                 return;
             }
             let current = row;

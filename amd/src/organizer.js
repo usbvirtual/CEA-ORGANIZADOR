@@ -25,6 +25,7 @@ import {get_strings as getStrings} from 'core/str';
 import Notification from 'core/notification';
 import * as api from 'tool_ceaorganizador/api';
 import {createModel} from 'tool_ceaorganizador/treemodel';
+import {decodeEntities} from 'tool_ceaorganizador/text';
 import {render, format} from 'tool_ceaorganizador/treeview';
 
 const SEARCH_DELAY = 250;
@@ -65,7 +66,7 @@ export const init = ({root}) => {
         REQUESTS.forEach((request, index) => {
             strings[request.key] = values[index];
         });
-        const model = createModel(tree.categories);
+        const model = createModel(tree.categories, decodeEntities);
         const state = {api, strings, onError: Notification.exception};
         const view = render(treeel, model, state);
 
@@ -93,10 +94,10 @@ export const init = ({root}) => {
                     const li = document.createElement('li');
                     const name = document.createElement('span');
                     name.className = 'tool-ceaorganizador-nombre';
-                    name.textContent = course.fullname;
+                    name.textContent = decodeEntities(course.fullname);
                     const path = document.createElement('span');
                     path.className = 'tool-ceaorganizador-ruta';
-                    path.textContent = course.path;
+                    path.textContent = decodeEntities(course.path);
                     li.append(name, path);
                     results.appendChild(li);
                 });
