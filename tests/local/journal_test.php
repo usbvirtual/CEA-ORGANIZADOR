@@ -372,6 +372,8 @@ final class journal_test extends \advanced_testcase {
     public function test_undo_failure_rolls_back_earlier_writes(): void {
         global $DB;
         $this->resetAfterTest();
+        // On PostgreSQL the test runs inside a transaction; opt out so undo's rollback is real.
+        $this->preventResetByRollback();
         $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $p = (int) $generator->create_category(['name' => 'P'])->id;
@@ -396,6 +398,7 @@ final class journal_test extends \advanced_testcase {
             $this->assertSame('error_toomanycourses', $e->errorcode);
         }
 
+        $this->assertFalse($DB->is_transaction_started());
         $this->assertSame([$c2, $c1], tree::sibling_categories($p));
         $this->assertSame([$k1, $k2, $k3], tree::category_courses($p));
         $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
