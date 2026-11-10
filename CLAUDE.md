@@ -21,7 +21,7 @@ No hay Moodle en este equipo: la compatibilidad real la confirma GitHub Actions.
 
 Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y lecciones de los plugins del CEA) y la skill `cea-branding`. Reglas propias de este plugin:
 
-- Requiere Moodle 4.2 o superior, porque los servicios web usan `re_external`.
+- Requiere Moodle 4.2 o superior (`core_external`), porque los servicios web lo usan.
 - Toda escritura (mover, reordenar, renombrar) pasa solo por `classes/local/mover.php` y `classes/local/journal.php`.
 - `sorter` y `renamer` son puros: no tocan la base de datos.
 

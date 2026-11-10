@@ -28,7 +28,7 @@ require_once($CFG->libdir . '/adminlib.php');
 admin_externalpage_setup('tool_ceaorganizador');
 require_capability('tool/ceaorganizador:manage', context_system::instance());
 
-$id = 'tool-ceaorganizador-' . uniqid();
+$id = html_writer::random_id('ceaorganizador');
 $PAGE->requires->js_call_amd('tool_ceaorganizador/organizer', 'init', [['root' => '#' . $id]]);
 
 echo $OUTPUT->header();
