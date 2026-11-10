@@ -24,8 +24,6 @@
 
 namespace tool_ceaorganizador\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Records every operation and undoes it through the mover, never partially.
  *

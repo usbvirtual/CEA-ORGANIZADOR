@@ -24,8 +24,6 @@
 
 namespace tool_ceaorganizador\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Natural ordering, roman numerals, academic periods and category grouping.
  */

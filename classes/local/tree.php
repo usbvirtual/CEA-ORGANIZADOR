@@ -24,8 +24,6 @@
 
 namespace tool_ceaorganizador\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Reads the category tree, with paths and sort recommendations, and the courses.
  */

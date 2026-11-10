@@ -24,8 +24,6 @@
 
 namespace tool_ceaorganizador\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Applies a list of operations to names and builds the preview rows.
  */

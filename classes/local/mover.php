@@ -24,8 +24,6 @@
 
 namespace tool_ceaorganizador\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * The single write gate of the plugin: every change goes through the core API.
  *
