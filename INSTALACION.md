@@ -30,9 +30,11 @@ Se instala igual, encima de la versión anterior. Moodle no permite instalar una
 
 *Administración del sitio › Cursos › Organizador de categorías (CEA)*. Los ajustes están en *Administración del sitio › Cursos › Ajustes del organizador de categorías*.
 
-### Qué permiso lo controla
+### Quién lo usa y qué permisos lo controlan
 
-La capacidad `tool/ceaorganizador:manage`, en el contexto del sistema. No se asigna a ningún rol por defecto: hay que dársela a quien deba usarlo (los administradores del sitio ya pueden). Además, en cada operación el servidor comprueba los permisos nativos de Moodle:
+La herramienta es solo para los **administradores del sitio**: la página se registra en el árbol de administración únicamente para quien puede configurar el sitio (`moodle/site:config`), así que nadie más llega a ella.
+
+La capacidad `tool/ceaorganizador:manage`, en el contexto del sistema, es un control adicional que los administradores ya tienen. No se asigna a ningún rol por defecto, y darla a quien no es administrador **no** le da acceso a la página. No la asigne a otros roles: los servicios web del organizador comprueban esta capacidad. Además, en cada operación el servidor comprueba los permisos nativos de Moodle:
 
 - `moodle/category:manage`, en la categoría de origen y en la de destino.
 - `moodle/course:changecategory`, para mover cursos.

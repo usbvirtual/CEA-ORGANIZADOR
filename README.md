@@ -6,7 +6,7 @@ Instalación: ver [INSTALACION.md](INSTALACION.md). Guía para desarrollo: [CLAU
 
 ## Para quién
 
-Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus M) que hoy mueven categorías y cursos uno por uno en la pantalla nativa «Gestionar cursos y categorías». El acceso lo controla la capacidad `tool/ceaorganizador:manage`.
+Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus M) que hoy mueven categorías y cursos uno por uno en la pantalla nativa «Gestionar cursos y categorías». La herramienta es solo para administradores del sitio: la página aparece únicamente a quien puede configurar el sitio. La capacidad `tool/ceaorganizador:manage` es un control adicional; darla a otros usuarios no les da acceso a la página.
 
 ## Qué hace
 
