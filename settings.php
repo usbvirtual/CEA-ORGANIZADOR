@@ -25,12 +25,18 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($hassiteconfig) {
-    $ADMIN->add('courses', new admin_externalpage(
-        'tool_ceaorganizador',
-        get_string('pluginname', 'tool_ceaorganizador'),
-        new moodle_url('/admin/tool/ceaorganizador/index.php'),
-        'tool/ceaorganizador:manage'
-    ));
+    // Right below "Manage courses and categories" (coursemgmt): insert before the page that
+    // follows it in core (addcategory, same order from 4.2 to 5.3). If it is missing, append.
+    $ADMIN->add(
+        'courses',
+        new admin_externalpage(
+            'tool_ceaorganizador',
+            get_string('pluginname', 'tool_ceaorganizador'),
+            new moodle_url('/admin/tool/ceaorganizador/index.php'),
+            'tool/ceaorganizador:manage'
+        ),
+        $ADMIN->locate('addcategory') ? 'addcategory' : null
+    );
 
     $settings = new admin_settingpage(
         'tool_ceaorganizador_settings',

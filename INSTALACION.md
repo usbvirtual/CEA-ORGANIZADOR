@@ -28,7 +28,7 @@ Se instala igual, encima de la versión anterior. Moodle no permite instalar una
 
 ### Dónde aparece
 
-*Administración del sitio › Cursos › Organizador de categorías (CEA)*. Los ajustes están en *Administración del sitio › Cursos › Ajustes del organizador de categorías*.
+*Administración del sitio › Cursos › Organizador de categorías (CEA)*, justo debajo de «Administrar cursos y categorías». Los ajustes están en *Administración del sitio › Cursos › Ajustes del organizador de categorías*.
 
 ### Quién lo usa y qué permisos lo controlan
 
