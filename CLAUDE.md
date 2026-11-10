@@ -27,4 +27,19 @@ Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y leccione
 
 ## Decisiones de diseño que conviene no deshacer
 
-- Pendiente: se llenará al avanzar las tareas.
+- El hash de la vista previa de «Auto ordenar» (`sortplan`) se calcula solo sobre ids, no sobre nombres: las diferencias de `format_string` no deben dar falsos «el orden cambió».
+- `rename_apply` es atómico: aplica todas las filas elegibles en una sola transacción delegada; si una falla, se revierte todo el lote. Las filas cuyo nombre cambió desde la vista previa se omiten, no son error.
+- `renamer` solo transforma nombres. El nombre corto nuevo se calcula en `rename_preview` con `renamer::apply($shortname, $ops)`; la tabla manual edita solo el nombre completo.
+- `renamer::clean` pone un guion como « - » solo si ya tiene espacio a algún lado: así no se rompen periodos como `2026-2` ni códigos como `Ing-Sist`.
+- Los nombres crudos de `rename_*` jamás se decodifican. Los nombres formateados (`format_string`: árbol, cursos, vista previa de orden, historial) se decodifican con `amd/src/text.js` (`decodeEntities`, vía `DOMParser`, nunca insertando HTML) y se pintan con `textContent`.
+- Mover a un padre oculto oculta el elemento (comportamiento del núcleo). `journal` guarda `visible` en `from`/`to`, y deshacer restaura la visibilidad solo si el movimiento la cambió; si la visibilidad actual no es la que dejó la operación, es un conflicto.
+- Deshacer es atómico y se rechaza si algo cambió después (conflictos listados). `guard::rollback` es el único helper de rollback; `mover` y `journal` lo usan.
+- En las pruebas de rollback hay que llamar `$this->preventResetByRollback()` justo después de `resetAfterTest()`: en PostgreSQL `advanced_testcase` envuelve cada prueba en una transacción delegada y el rollback anidado solo marca `force_rollback`.
+- Los servicios web usan `\core_external\external_api` y sus clases de parámetros, nunca los alias globales (no existen en 5.3); por eso el mínimo es Moodle 4.2.
+- Los módulos JS que necesitan `core/*` lo reciben inyectado (`api.setTransport`, proveedor de cadenas) para que `node:test` corra sin Moodle. Sin librerías externas: el arrastre usa eventos de puntero propios.
+- El candado (`guard::lock()`) vive en la capa `external`, no en `mover`. El renombrado se limita a 500 elementos por lote.
+- El orden de cursos de una categoría se rechaza si supera `maxcoursesincategory` (`error_toomanycourses`).
+
+---
+
+*Texto pendiente de revisión editorial.*

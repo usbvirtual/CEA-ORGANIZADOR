@@ -403,9 +403,12 @@
     background: var(--cea-lavanda);
 }
 
+/* El texto va en tinta (el naranja de día sobre papel no llega a 4,5:1); el naranja marca con un filete. */
 .tool-ceaorganizador-error {
-    color: var(--cea-naranja-dia);
+    border-left: 3px solid var(--cea-naranja-dia);
+    color: var(--cea-tinta);
     font-size: 0.8125rem;
+    padding-left: 0.5rem;
 }
 
 .tool-ceaorganizador-columnas {
