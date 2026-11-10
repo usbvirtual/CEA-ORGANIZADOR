@@ -37,7 +37,8 @@ use tool_ceaorganizador\local\renamer;
 /**
  * Applies explicit renames, only where the current name is still the one the preview showed.
  *
- * Rows whose current raw name (or short name, when oldshort is given) differs from 'old', or whose
+ * A row with newshort must carry oldshort. Rows whose current raw name differs from 'old' (or short
+ * name from 'oldshort'), or whose
  * item no longer exists, come back 'skipped'. Rows with an empty or too long new name come back
  * 'error' and are not applied. The other rows are applied all together in ONE transaction: when
  * any of them throws (for example a short name taken meanwhile), everything rolls back and the
@@ -59,7 +60,7 @@ class rename_apply extends external_api {
                 'id' => new external_value(PARAM_INT, 'Item id'),
                 'old' => new external_value(PARAM_RAW, 'Raw name shown by the preview'),
                 'new' => new external_value(PARAM_TEXT, 'New name'),
-                'oldshort' => new external_value(PARAM_RAW, 'Raw short name shown by the preview (courses)', VALUE_OPTIONAL),
+                'oldshort' => new external_value(PARAM_RAW, 'Preview raw short name; needed with newshort', VALUE_OPTIONAL),
                 'newshort' => new external_value(PARAM_TEXT, 'New short name (courses)', VALUE_OPTIONAL),
             ])),
         ]);
@@ -85,6 +86,10 @@ class rename_apply extends external_api {
             $key = $change['type'] . ':' . $change['id'];
             if (!in_array($change['type'], ['category', 'course'], true) || isset($seen[$key])) {
                 throw new \invalid_parameter_exception('Invalid or repeated item: ' . $key);
+            }
+            // The short name is compared like the name, so the preview's value is required.
+            if (isset($change['newshort']) && !isset($change['oldshort'])) {
+                throw new \invalid_parameter_exception('newshort requires oldshort: ' . $key);
             }
             $seen[$key] = true;
         }

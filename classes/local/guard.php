@@ -47,7 +47,11 @@ class guard {
     }
 
     /**
-     * Purges the course and category caches, then rolls back and rethrows, as the mover does.
+     * Purges the course and category caches, then rolls back and rethrows.
+     *
+     * The core functions purge caches as they go; after a rollback those caches
+     * could hold data that never reached the database. The single rollback of
+     * the plugin: mover, journal and the web services use it.
      *
      * @param \moodle_transaction $transaction
      * @param \Throwable $e

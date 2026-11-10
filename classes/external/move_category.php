@@ -73,9 +73,8 @@ class move_category extends external_api {
             // Read under the lock: the current parent is the source to check.
             $oldparent = (int) $DB->get_field('course_categories', 'parent', ['id' => $params['id']], MUST_EXIST);
             mover::check_category($params['id']);
-            if ($oldparent !== 0) {
-                mover::check_category($oldparent);
-            }
+            // A top-level source (0) is checked in the system context, as core does.
+            mover::check_category($oldparent);
             if ($params['newparent'] !== 0) {
                 $DB->get_record('course_categories', ['id' => $params['newparent']], 'id', MUST_EXIST);
             }

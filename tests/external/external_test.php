@@ -93,6 +93,52 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * A user with the plugin capability and the given capabilities, all in the system context.
+     *
+     * @param string[] $caps
+     * @return \stdClass
+     */
+    private function user_with(array $caps): \stdClass {
+        $generator = $this->getDataGenerator();
+        $user = $generator->create_user();
+        $roleid = $generator->create_role();
+        $system = \context_system::instance();
+        foreach (array_merge(['tool/ceaorganizador:manage'], $caps) as $cap) {
+            assign_capability($cap, CAP_ALLOW, $roleid, $system->id, true);
+        }
+        role_assign($roleid, $user->id, $system->id);
+        return $user;
+    }
+
+    /**
+     * Grants a capability to a user in one context only.
+     *
+     * @param int $userid
+     * @param string $cap
+     * @param \context $context
+     */
+    private function grant(int $userid, string $cap, \context $context): void {
+        $roleid = $this->getDataGenerator()->create_role();
+        assign_capability($cap, CAP_ALLOW, $roleid, \context_system::instance()->id, true);
+        role_assign($roleid, $userid, $context->id);
+    }
+
+    /**
+     * Asserts that a call is refused for a missing capability.
+     *
+     * @param callable $call
+     */
+    private function assert_refused(callable $call): void {
+        try {
+            $call();
+        } catch (\required_capability_exception $e) {
+            $this->addToAssertionCount(1);
+            return;
+        }
+        $this->fail('A required_capability_exception was expected');
+    }
+
+    /**
      * A user without the plugin capability is refused.
      */
     public function test_requires_capability(): void {
@@ -360,6 +406,111 @@ final class external_test extends \advanced_testcase {
         $this->assertTrue($result['rootneedsort']);
         $count = count(array_filter(array_column($result['categories'], 'needsort')));
         $this->assertSame($count + 1, $result['needsortcount']);
+    }
+
+    /**
+     * Moving a top-level category needs category:manage in the system context, as core requires.
+     */
+    public function test_move_category_checks_top_level_source(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $x = $this->category('X');
+        $y = $this->category('Y');
+        $user = $this->user_with([]);
+        $this->grant($user->id, 'moodle/category:manage', \context_coursecat::instance($x));
+        $this->grant($user->id, 'moodle/category:manage', \context_coursecat::instance($y));
+        $this->setUser($user);
+
+        $this->assert_refused(function () use ($x, $y): void {
+            move_category::execute($x, $y, 0);
+        });
+
+        $this->assertSame(0, (int) $DB->get_field('course_categories', 'parent', ['id' => $x]));
+        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * Moving a course needs course:changecategory on it.
+     */
+    public function test_move_course_requires_changecategory(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $x = $this->category('X');
+        $y = $this->category('Y');
+        $course = $this->course('Uno', 'U1', $x);
+        $this->setUser($this->user_with(['moodle/category:manage']));
+
+        $this->assert_refused(function () use ($course, $y): void {
+            move_course::execute($course, $y, 0);
+        });
+
+        $this->assertSame($x, (int) $DB->get_field('course', 'category', ['id' => $course]));
+        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * Renaming a course needs course:update on it.
+     */
+    public function test_rename_apply_requires_course_update(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->course('Uno', 'U1', $this->category('K'));
+        $this->setUser($this->user_with(['moodle/category:manage']));
+
+        $this->assert_refused(function () use ($course): void {
+            rename_apply::execute([['type' => 'course', 'id' => $course, 'old' => 'Uno', 'new' => 'Uno nuevo']]);
+        });
+
+        $this->assertSame('Uno', $DB->get_field('course', 'fullname', ['id' => $course]));
+        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * Sorting needs category:manage on every parent whose children change.
+     */
+    public function test_sort_apply_requires_category_manage(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->category('P');
+        $c = $this->category('C', $parent);
+        $a = $this->category('A', $parent);
+        $this->setUser($this->user_with([]));
+        $preview = sort_preview::execute($parent, 'categories', false);
+
+        $this->assert_refused(function () use ($parent, $preview): void {
+            sort_apply::execute($parent, 'categories', false, $preview['hash']);
+        });
+
+        $this->assertSame([$c, $a], tree::sibling_categories($parent));
+        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * A new short name needs the old one, and is skipped when the old one changed since the preview.
+     */
+    public function test_rename_apply_requires_and_compares_oldshort(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->course('Uno', 'U1', $this->category('K'));
+        $change = ['type' => 'course', 'id' => $course, 'old' => 'Uno', 'new' => 'Uno', 'newshort' => 'U2'];
+
+        try {
+            rename_apply::execute([$change]);
+            $this->fail('newshort without oldshort must be refused');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertStringContainsString('oldshort', $e->debuginfo);
+        }
+
+        $result = rename_apply::execute([$change + ['oldshort' => 'OTRO']]);
+
+        $this->assertSame('skipped', $result['results'][0]['status']);
+        $this->assertSame(0, $result['logid']);
+        $this->assertSame('U1', $DB->get_field('course', 'shortname', ['id' => $course]));
     }
 
     /**

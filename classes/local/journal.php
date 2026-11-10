@@ -97,7 +97,7 @@ class journal {
             $logid = self::record('move_category', $summary, $payload);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
         return ['logid' => $logid] + $result;
     }
@@ -126,7 +126,7 @@ class journal {
             $logid = self::record('move_course', $summary, $payload);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
         return ['logid' => $logid] + $result;
     }
@@ -171,7 +171,7 @@ class journal {
             ]);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
         return ['ok' => true, 'conflicts' => []];
     }
@@ -237,20 +237,6 @@ class journal {
             'timecreated < :cutoff',
             ['cutoff' => $now - self::RETENTION_DAYS * DAYSECS]
         );
-    }
-
-    /**
-     * Purges the course and category caches, then rolls back and rethrows, as the mover does.
-     *
-     * @param \moodle_transaction $transaction
-     * @param \Throwable $e
-     * @throws \Throwable Always, the given one.
-     */
-    private static function rollback(\moodle_transaction $transaction, \Throwable $e): void {
-        \cache_helper::purge_by_event('changesincoursecat');
-        \cache_helper::purge_by_event('changesincourse');
-        \context_helper::reset_caches();
-        $transaction->rollback($e);
     }
 
     /**

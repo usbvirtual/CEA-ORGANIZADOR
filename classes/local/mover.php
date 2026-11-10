@@ -53,23 +53,6 @@ class mover {
     }
 
     /**
-     * Purges the course and category caches, then rolls back and rethrows.
-     *
-     * The core functions purge caches as they go; after a rollback those caches
-     * could hold data that never reached the database.
-     *
-     * @param \moodle_transaction $transaction
-     * @param \Throwable $e
-     * @throws \Throwable Always, the given one.
-     */
-    private static function rollback(\moodle_transaction $transaction, \Throwable $e): void {
-        \cache_helper::purge_by_event('changesincoursecat');
-        \cache_helper::purge_by_event('changesincourse');
-        \context_helper::reset_caches();
-        $transaction->rollback($e);
-    }
-
-    /**
      * Id of the item right before another in a list, or 0 when it is first or missing.
      *
      * @param int[] $ids
@@ -160,7 +143,7 @@ class mover {
             self::apply_category_order($newparent, self::insert_after($others, $id, $afterid));
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
 
         $to = ['parent' => $newparent, 'afterid' => self::previous(tree::sibling_categories($newparent), $id)];
@@ -206,7 +189,7 @@ class mover {
             }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
 
         $to = ['category' => $categoryid, 'afterid' => self::previous(tree::category_courses($categoryid), $id)];
@@ -255,7 +238,7 @@ class mover {
             }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
     }
 
@@ -293,7 +276,7 @@ class mover {
             \core_course_category::resort_categories_cleanup(true);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
     }
 
@@ -311,7 +294,7 @@ class mover {
             $category->update(['name' => $name]);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
     }
 
@@ -336,7 +319,7 @@ class mover {
             update_course($data);
             $transaction->allow_commit();
         } catch (\Throwable $e) {
-            self::rollback($transaction, $e);
+            guard::rollback($transaction, $e);
         }
     }
 
