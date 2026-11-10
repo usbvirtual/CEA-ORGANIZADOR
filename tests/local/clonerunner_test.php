@@ -276,7 +276,104 @@ final class clonerunner_test extends \advanced_testcase {
             $this->assertSame('error_cannotundoclone', $e->errorcode);
         }
         $this->assertSame(0, (int) $DB->get_field(journal::TABLE, 'timeundone', ['id' => $result['batchid']]));
-        $this->assertTrue($DB->record_exists('course', ['shortname' => 'CALC1-2027-01']));
+        // Nothing was deleted: the provisional course (renamed only when the cron runs the copy) is still there.
+        $newid = (int) $this->payload((int) $result['batchid'])['items'][0]['newcourseid'];
+        $this->assertGreaterThan(0, $newid);
+        $this->assertTrue($DB->record_exists('course', ['id' => $newid]));
+    }
+
+    /**
+     * A copy that fails after it was created rolls back whole: no provisional course, controllers or task
+     * for that row, and the other rows are queued.
+     */
+    public function test_failed_row_leaves_no_course(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $pa = $gen->create_category(['name' => 'Programa A', 'parent' => $root->id]);
+        $pb = $gen->create_category(['name' => 'Programa B', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $a = $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $pa->id]);
+        $b = $gen->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $pb->id]);
+
+        // Fails right after create_copy() has written the provisional course, the controllers and the task.
+        $runner = new class extends clonerunner {
+            /** @var int Source course whose copy fails. */
+            public static $failsource = 0;
+
+            /**
+             * Queues the copy, then fails for one source.
+             *
+             * @param array $item
+             * @param int $startdate
+             * @param int $enddate
+             * @return array
+             */
+            protected static function queue(array $item, int $startdate, int $enddate): array {
+                $ids = parent::queue($item, $startdate, $enddate);
+                if ((int) $item['source'] === self::$failsource) {
+                    throw new \moodle_exception('error_generic', 'tool_ceaorganizador');
+                }
+                return $ids;
+            }
+        };
+        $runner::$failsource = (int) $b->id;
+        $courses = $DB->count_records('course');
+
+        $items = [['type' => 'category', 'id' => $root->id]];
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END);
+        $result = $runner::run($items, (int) $period->id, '2027-01', self::START, self::END, [], $plan['hash']);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['queued']);
+        $this->assertSame(1, $result['skipped']);
+        $bysource = array_column($this->payload((int) $result['batchid'])['items'], null, 'source');
+        $failed = $bysource[$b->id];
+        $this->assertSame('queuefailed', $failed['error']);
+        $this->assertSame(0, $failed['newcourseid']);
+        $this->assertSame('', $failed['restoreid']);
+        $this->assertGreaterThan(0, $failed['destcategoryid']);
+        $this->assertSame(0, $DB->count_records('course', ['category' => $failed['destcategoryid']]));
+        $this->assertNull($bysource[$a->id]['error']);
+        $this->assertTrue($DB->record_exists('course', ['id' => $bysource[$a->id]['newcourseid']]));
+        $this->assertSame($courses + 1, $DB->count_records('course'));
+        $this->assertSame(2, $DB->count_records('backup_controllers'));
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(self::TASK));
+        $this->assertSame(
+            get_string('summary_clone', 'tool_ceaorganizador', (object) ['label' => '2027-01', 'count' => 1]),
+            $DB->get_field(journal::TABLE, 'summary', ['id' => $result['batchid']])
+        );
+    }
+
+    /**
+     * Copies still waiting for the cron count as already cloned: a second run queues nothing.
+     */
+    public function test_inflight_copies_are_already_cloned(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $prog->id]);
+        $items = [['type' => 'course', 'id' => $calc->id]];
+
+        $first = $this->run_batch($items, (int) $period->id);
+        $this->assertSame(1, $first['queued']);
+        // The cron has not run: the new course is still the provisional one, without its short name.
+        $this->assertFalse($DB->record_exists('course', ['shortname' => 'CALC1-2027-01']));
+
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END);
+        $this->assertSame('alreadycloned', $plan['rows'][0]['error']);
+
+        $second = $this->run_batch($items, (int) $period->id);
+        $this->assertSame(['status' => 'ok', 'batchid' => 0, 'queued' => 0, 'skipped' => 1], $second);
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(self::TASK));
+        $this->assertSame(1, $DB->count_records(journal::TABLE));
     }
 
     /**

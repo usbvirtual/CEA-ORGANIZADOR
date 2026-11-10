@@ -29,7 +29,10 @@ namespace tool_ceaorganizador\local;
  */
 class cloneplan {
     /** @var int Most rows a batch can have. */
-    public const MAX_ROWS = 300;
+    public const MAX_ROWS = 100;
+
+    /** @var int Days a clone batch is looked at for copies still in flight. */
+    public const INFLIGHT_DAYS = 30;
 
     /** @var int Most values in one IN clause. */
     private const CHUNK = 1000;
@@ -99,7 +102,7 @@ class cloneplan {
 
         $signature = [];
         foreach ($rows as $row) {
-            $signature[] = [$row['courseid'], $row['destpath'], $row['newshortname']];
+            $signature[] = [$row['courseid'], $row['destpath'], $row['newshortname'], $row['error']];
         }
         $hash = sha1(json_encode([$periodid, $startdate, $enddate, $label, $signature]));
         return ['rows' => $rows, 'total' => count($rows), 'hash' => $hash];
@@ -228,7 +231,6 @@ class cloneplan {
      * @param array $rows Rows, changed in place.
      */
     private static function flag_errors(array &$rows): void {
-        global $DB;
         $names = [];
         $count = [];
         foreach ($rows as $row) {
@@ -237,14 +239,7 @@ class cloneplan {
             $count[$key] = ($count[$key] ?? 0) + 1;
         }
         // One IN query per chunk of names; the existing courses by lowercase short name.
-        $existing = [];
-        foreach (array_chunk(array_values($names), self::CHUNK) as $chunk) {
-            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
-            $records = $DB->get_records_sql("SELECT id, category, shortname FROM {course} WHERE shortname $insql", $params);
-            foreach ($records as $record) {
-                $existing[\core_text::strtolower($record->shortname)][] = (int) $record->category;
-            }
-        }
+        $existing = self::taken_shortnames(array_values($names));
         foreach ($rows as &$row) {
             if ($row['error'] !== null) {
                 continue;
@@ -258,6 +253,70 @@ class cloneplan {
             }
         }
         unset($row);
+    }
+
+    /**
+     * Short names already used, by lowercase name, with the categories of the courses that use them.
+     *
+     * Besides the courses that have the name, it counts the copies still in flight: until the cron runs
+     * the restore, the new course is called «Copying course» and the name is only in the clone journal.
+     *
+     * @param string[] $names Raw short names to look up.
+     * @return array Map lowercase short name => int[] category ids.
+     */
+    public static function taken_shortnames(array $names): array {
+        global $DB;
+        $existing = [];
+        foreach (array_chunk($names, self::CHUNK) as $chunk) {
+            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
+            $records = $DB->get_records_sql("SELECT id, category, shortname FROM {course} WHERE shortname $insql", $params);
+            foreach ($records as $record) {
+                $existing[\core_text::strtolower($record->shortname)][] = (int) $record->category;
+            }
+        }
+        foreach (self::inflight() as $key => $categories) {
+            foreach ($categories as $category) {
+                $existing[$key][] = $category;
+            }
+        }
+        return $existing;
+    }
+
+    /**
+     * Short names of the recent copies whose restore has not finished yet.
+     *
+     * @return array Map lowercase short name => int[] categories of the provisional courses.
+     */
+    private static function inflight(): array {
+        global $DB;
+        $logs = $DB->get_records_select(
+            journal::TABLE,
+            'action = :action AND timecreated >= :since',
+            ['action' => 'clone', 'since' => time() - self::INFLIGHT_DAYS * DAYSECS],
+            '',
+            'id, payload'
+        );
+        $planned = [];
+        foreach ($logs as $log) {
+            $payload = json_decode($log->payload, true);
+            foreach ((is_array($payload) ? $payload['items'] ?? [] : []) as $item) {
+                $courseid = (int) ($item['newcourseid'] ?? 0);
+                if ($courseid > 0 && isset($item['newshortname'])) {
+                    $planned[$courseid] = (string) $item['newshortname'];
+                }
+            }
+        }
+        $inflight = [];
+        foreach (array_chunk(array_keys($planned), self::CHUNK) as $chunk) {
+            foreach ($DB->get_records_list('course', 'id', $chunk, '', 'id, category, shortname') as $course) {
+                $name = $planned[(int) $course->id];
+                // Once restored the course carries the name and the plain lookup finds it.
+                if ($course->shortname !== $name) {
+                    $inflight[\core_text::strtolower($name)][] = (int) $course->category;
+                }
+            }
+        }
+        return $inflight;
     }
 
     /**

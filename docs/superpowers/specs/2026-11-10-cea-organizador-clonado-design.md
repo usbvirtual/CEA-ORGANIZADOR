@@ -99,7 +99,7 @@ Se suman a `tool/ceaorganizador:manage` y se verifican en el servidor para cada 
 
 - `clone_apply` toma el candado de escritura (`guard::lock()`) y vuelve a calcular la vista previa. Si la firma no coincide, devuelve `stale`.
 - Crea las categorías que faltan dentro de una transacción. Las copias se encolan después del commit, una por curso: `create_copy` crea el curso provisional y la tarea, y no es transaccional.
-- **Límite por lote:** 300 cursos, con el error `toomanyclones`.
+- **Límite por lote:** 100 cursos, con el error `toomanyclones`.
 - **Historial:** se registra una entrada `clone` con el periodo, las categorías creadas y la lista {semilla → curso nuevo}. Esa entrada **no se puede deshacer**: el botón Deshacer no aparece y `undo` la rechaza con `error_cannotundoclone`.
 
 ## 9. Interfaz
@@ -118,7 +118,7 @@ Se suman a `tool/ceaorganizador:manage` y se verifican en el servidor para cada 
 - **Semilla sin permiso:** esa fila se marca y no se clona; las demás siguen.
 - **Periodo destino dentro de la raíz de semillas:** se rechaza («El destino no puede estar dentro de las semillas»).
 - **Clonar dos veces el mismo lote:** las filas ya clonadas se omiten (sección 6).
-- **Lote grande:** el límite es 300. El panel avisa que las copias tardarán según la capacidad del cron.
+- **Lote grande:** el límite es 100. El panel avisa que las copias tardarán según la capacidad del cron.
 
 ## 11. Pruebas
 

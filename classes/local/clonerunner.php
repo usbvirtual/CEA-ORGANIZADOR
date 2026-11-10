@@ -28,8 +28,11 @@ namespace tool_ceaorganizador\local;
  * Applies a cloning preview that is still current.
  *
  * Categories and the journal row are written in one transaction. The copies are queued after
- * the commit, one by one, because \copy_helper::create_copy() creates the course at once and is
- * not transactional; a copy that cannot be queued is marked 'queuefailed' and the rest go on.
+ * that commit, one by one, each in its own transaction with the update of its journal entry:
+ * \copy_helper::create_copy() writes only to the database (backup_controllers, the provisional
+ * course, task_adhoc), so a copy that fails rolls back whole, is marked 'queuefailed' and the rest go on.
+ *
+ * Do not call it inside another transaction: a failed row would roll back the outer one too.
  */
 class clonerunner {
     /** @var int Most values in one IN clause. */
@@ -61,7 +64,7 @@ class clonerunner {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
         require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-        // Up to 300 copies are created and queued in one request.
+        // Up to cloneplan::MAX_ROWS copies are created and queued in one request.
         \core_php_time_limit::raise();
         raise_memory_limit(MEMORY_EXTRA);
 
@@ -81,6 +84,13 @@ class clonerunner {
                 return ['status' => 'ok', 'batchid' => 0, 'queued' => 0, 'skipped' => $skipped];
             }
             self::check_destinations($todo);
+            // The copy API must accept our fields (5.1 plugins can require more) before anything is created.
+            \copy_helper::process_formdata(self::formdata([
+                'source' => $todo[0]['courseid'],
+                'newfullname' => $todo[0]['newfullname'],
+                'newshortname' => $todo[0]['newshortname'],
+                'destcategoryid' => $todo[0]['anchor'],
+            ], $startdate, $enddate));
 
             $transaction = $DB->start_delegated_transaction();
             try {
@@ -99,46 +109,50 @@ class clonerunner {
                         'newfullname' => $row['newfullname'],
                         'newshortname' => $row['newshortname'],
                         'destcategoryid' => $row['destcategoryid'],
+                        'backupid' => '',
+                        'restoreid' => '',
+                        'newcourseid' => 0,
+                        'error' => null,
                     ];
                 }
-                $summary = get_string('summary_clone', 'tool_ceaorganizador', (object) [
-                    'label' => $label,
-                    'count' => count($todo),
-                ]);
-                $logid = journal::record('clone', $summary, $payload);
+                $logid = journal::record('clone', self::summary($label, count($todo)), $payload);
                 $transaction->allow_commit();
             } catch (\Throwable $e) {
                 guard::rollback($transaction, $e);
             }
 
-            // After the commit, still under the lock, so no one takes the short names in between.
+            // After the commit, still under the lock. Each copy and its journal entry commit together, so an
+            // interruption loses nothing that was queued, and a failed copy leaves no provisional course behind.
             $queued = 0;
-            foreach ($payload['items'] as &$item) {
-                $item += ['backupid' => '', 'restoreid' => '', 'newcourseid' => 0, 'error' => null];
+            foreach (array_keys($payload['items']) as $index) {
+                $item = $payload['items'][$index];
+                $transaction = $DB->start_delegated_transaction();
                 try {
-                    $ids = self::queue($item, $startdate, $enddate);
+                    $ids = static::queue($item, $startdate, $enddate);
                     $item['backupid'] = $ids['backupid'];
                     $item['restoreid'] = $ids['restoreid'];
                     // The restore controller row stores the new course id in itemid (restore_controller_dbops).
-                    // Read softly: the copy is already queued, so a miss must not turn it into 'queuefailed'.
                     $item['newcourseid'] = (int) $DB->get_field(
                         'backup_controllers',
                         'itemid',
-                        ['backupid' => $ids['restoreid']]
+                        ['backupid' => $ids['restoreid']],
+                        MUST_EXIST
                     );
+                    $payload['items'][$index] = $item;
+                    self::save_payload($logid, $payload);
+                    $transaction->allow_commit();
                     $queued++;
-                } catch (\Exception $e) {
-                    $item['error'] = 'queuefailed';
-                    debugging('Course copy could not be queued: ' . $e->getMessage(), DEBUG_DEVELOPER);
+                } catch (\Throwable $e) {
+                    try {
+                        guard::rollback($transaction, $e);
+                    } catch (\Throwable $rethrown) {
+                        // Expected: rollback always rethrows. The row is marked and the batch goes on.
+                        $payload['items'][$index]['error'] = 'queuefailed';
+                    }
+                    self::save_payload($logid, $payload);
                 }
             }
-            unset($item);
-            $DB->set_field(
-                journal::TABLE,
-                'payload',
-                json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
-                ['id' => $logid]
-            );
+            $DB->set_field(journal::TABLE, 'summary', self::summary($label, $queued), ['id' => $logid]);
         } finally {
             $lock->release();
         }
@@ -151,6 +165,34 @@ class clonerunner {
     }
 
     /**
+     * Summary of the batch for the history, cut as journal::record() does.
+     *
+     * @param string $label
+     * @param int $count Copies queued.
+     * @return string
+     */
+    private static function summary(string $label, int $count): string {
+        $summary = get_string('summary_clone', 'tool_ceaorganizador', (object) ['label' => $label, 'count' => $count]);
+        return \core_text::substr($summary, 0, 255);
+    }
+
+    /**
+     * Writes the payload of the batch, encoded as journal::record() does.
+     *
+     * @param int $logid
+     * @param array $payload
+     */
+    private static function save_payload(int $logid, array $payload): void {
+        global $DB;
+        $DB->set_field(
+            journal::TABLE,
+            'payload',
+            json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+            ['id' => $logid]
+        );
+    }
+
+    /**
      * Applies the edited names to the rows without error, then checks every name again.
      *
      * @param array $rows Plan rows.
@@ -159,7 +201,6 @@ class clonerunner {
      *      or 'shortnameduplicate'.
      */
     private static function apply_edits(array $rows, array $edits): array {
-        global $DB;
         foreach ($rows as &$row) {
             if ($row['error'] !== null || !isset($edits[$row['courseid']])) {
                 continue;
@@ -192,14 +233,8 @@ class clonerunner {
                 $count[$key] = ($count[$key] ?? 0) + 1;
             }
         }
-        $existing = [];
-        foreach (array_chunk(array_values($names), self::CHUNK) as $chunk) {
-            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
-            $records = $DB->get_records_sql("SELECT id, category, shortname FROM {course} WHERE shortname $insql", $params);
-            foreach ($records as $record) {
-                $existing[\core_text::strtolower($record->shortname)][] = (int) $record->category;
-            }
-        }
+        // Copies still in flight count as taken, as in the preview.
+        $existing = cloneplan::taken_shortnames(array_values($names));
         foreach ($rows as &$row) {
             if ($row['error'] !== null) {
                 continue;
@@ -305,16 +340,17 @@ class clonerunner {
     }
 
     /**
-     * Queues one course copy: content only, hidden, no users and no idnumber.
+     * The form data of one copy: content only, hidden, no users and no idnumber.
+     *
+     * Every field that copy_helper::process_formdata() requires; no role_* fields, so no roles are kept.
      *
      * @param array $item Payload item.
      * @param int $startdate
      * @param int $enddate
-     * @return array ['backupid' => string, 'restoreid' => string]
+     * @return \stdClass
      */
-    private static function queue(array $item, int $startdate, int $enddate): array {
-        // Every field that copy_helper::process_formdata() requires; no role_* fields, so no roles are kept.
-        $formdata = (object) [
+    private static function formdata(array $item, int $startdate, int $enddate): \stdClass {
+        return (object) [
             'courseid' => (int) $item['source'],
             'fullname' => $item['newfullname'],
             'shortname' => $item['newshortname'],
@@ -325,7 +361,18 @@ class clonerunner {
             'idnumber' => '',
             'userdata' => 0,
         ];
-        $copydata = \copy_helper::process_formdata($formdata);
+    }
+
+    /**
+     * Queues one course copy. Runs inside the transaction of its row; protected so the tests can make it fail.
+     *
+     * @param array $item Payload item.
+     * @param int $startdate
+     * @param int $enddate
+     * @return array ['backupid' => string, 'restoreid' => string]
+     */
+    protected static function queue(array $item, int $startdate, int $enddate): array {
+        $copydata = \copy_helper::process_formdata(self::formdata($item, $startdate, $enddate));
         return \copy_helper::create_copy($copydata);
     }
 }
