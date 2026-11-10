@@ -29,11 +29,11 @@ $string['credit'] = 'Centro de Innovación Pedagógica y Educación Digital (CEA
 $string['intro'] = 'Organiza categorías y cursos arrastrando, ordenando y renombrando.';
 $string['nativemanagement'] = 'Gestión nativa de categorías';
 $string['patterns_facultad'] = 'Patrones de facultad';
-$string['patterns_facultad_desc'] = 'Un patrón por línea.';
+$string['patterns_facultad_desc'] = 'Un patrón por línea. Texto simple: el nombre lo contiene. =texto: nombre exacto. /expresión/: expresión regular sobre el nombre en minúsculas y sin tildes.';
 $string['patterns_periodo'] = 'Patrones de periodo';
 $string['patterns_periodo_desc'] = 'Un patrón por línea.';
 $string['patterns_semilla'] = 'Patrones de semilla';
-$string['patterns_semilla_desc'] = 'Un patrón por línea.';
+$string['patterns_semilla_desc'] = 'Un patrón por línea. Texto simple: el nombre lo contiene. =texto: nombre exacto. /expresión/: expresión regular sobre el nombre en minúsculas y sin tildes.';
 $string['pluginname'] = 'Organizador de categorías (CEA)';
 $string['privacy:metadata'] = 'Este plugin no almacena datos personales.';
 $string['settings'] = 'Ajustes del organizador de categorías';

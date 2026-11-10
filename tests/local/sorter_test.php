@@ -87,4 +87,133 @@ final class sorter_test extends \advanced_testcase {
             ['CEA', null],
         ];
     }
+
+    /**
+     * Top level groups: periods, apart, seeds and faculties.
+     */
+    public function test_propose_toplevel_groups(): void {
+        $items = self::items([
+            'Facultad de Ingeniería', 'CEA', '2026-01', 'Semillas', 'Facultades', '2026-02',
+            'Centro de Idiomas', '2025-02',
+        ]);
+        $order = sorter::propose($items, true, sorter::DEFAULT_PATTERNS_PARSED());
+        $this->assertSame(
+            ['2026-02', '2026-01', '2025-02', 'CEA', 'Centro de Idiomas', 'Facultades', 'Semillas',
+                'Facultad de Ingeniería'],
+            self::names($items, $order)
+        );
+    }
+
+    /**
+     * "Facultades" is a seed only at the top level.
+     */
+    public function test_facultades_is_seed_only_at_top_level(): void {
+        $p = sorter::DEFAULT_PATTERNS_PARSED();
+        $this->assertSame('semilla', sorter::classify('Facultades', true, $p));
+        $this->assertSame('otro', sorter::classify('Facultades', false, $p));
+    }
+
+    /**
+     * Lower levels: periods first, then natural order.
+     */
+    public function test_propose_lower_level_periods_first_then_natural(): void {
+        $items = self::items(['Semestre II', '2026 -1 Cursos', 'Semestre I', '2026 -2 Cursos']);
+        $this->assertSame(
+            ['2026 -2 Cursos', '2026 -1 Cursos', 'Semestre I', 'Semestre II'],
+            self::names($items, sorter::propose($items, false, sorter::DEFAULT_PATTERNS_PARSED()))
+        );
+    }
+
+    /**
+     * Names in the same period are ordered naturally.
+     */
+    public function test_same_period_ties_are_natural(): void {
+        $items = self::items(['2026-02 Producción', '2026-02 Apoyo a la presencialidad']);
+        $this->assertSame(
+            ['2026-02 Apoyo a la presencialidad', '2026-02 Producción'],
+            self::names($items, sorter::propose($items, true, sorter::DEFAULT_PATTERNS_PARSED()))
+        );
+    }
+
+    /**
+     * Pattern syntax: contains, exact and regex.
+     */
+    public function test_parse_patterns(): void {
+        $this->assertSame(
+            [
+                ['type' => 'contains', 'value' => 'semilla'],
+                ['type' => 'exact', 'value' => 'facultades'],
+                ['type' => 'regex', 'value' => '/^programa/'],
+            ],
+            sorter::parse_patterns("Semilla\n=Facultades\n\n/^programa/")
+        );
+    }
+
+    /**
+     * An invalid regular expression is dropped.
+     */
+    public function test_invalid_regex_pattern_is_ignored(): void {
+        $this->assertSame([], sorter::parse_patterns('/[unclosed/'));
+    }
+
+    /**
+     * The default regular expressions match faculties and programs.
+     */
+    public function test_default_faculty_patterns(): void {
+        $p = sorter::DEFAULT_PATTERNS_PARSED();
+        $this->assertSame('facultad', sorter::classify('Facultad de Ingeniería', true, $p));
+        $this->assertSame('facultad', sorter::classify('Programa Derecho', true, $p));
+    }
+
+    /**
+     * Unset settings fall back to defaults; an empty one means no patterns.
+     */
+    public function test_patterns_from_config(): void {
+        $this->resetAfterTest();
+        $this->assertSame(sorter::DEFAULT_PATTERNS_PARSED(), sorter::patterns());
+        set_config('patterns_semilla', '', 'tool_ceaorganizador');
+        $this->assertSame([], sorter::patterns()['semilla']);
+    }
+
+    /**
+     * Courses go in natural order, ties by id.
+     */
+    public function test_propose_courses_and_differs(): void {
+        $items = [
+            ['id' => 3, 'name' => 'Curso 10'],
+            ['id' => 2, 'name' => 'Curso 2'],
+            ['id' => 1, 'name' => 'Curso 2'],
+        ];
+        $this->assertSame([1, 2, 3], sorter::propose_courses($items));
+        $this->assertTrue(sorter::differs([3, 2, 1], [1, 2, 3]));
+        $this->assertFalse(sorter::differs([1, 2, 3], [1, 2, 3]));
+    }
+
+    /**
+     * Builds items with consecutive ids.
+     *
+     * @param string[] $names
+     * @return array
+     */
+    private static function items(array $names): array {
+        $items = [];
+        foreach (array_values($names) as $i => $name) {
+            $items[] = ['id' => $i + 1, 'name' => $name];
+        }
+        return $items;
+    }
+
+    /**
+     * Names of the given ids.
+     *
+     * @param array $items
+     * @param int[] $ids
+     * @return string[]
+     */
+    private static function names(array $items, array $ids): array {
+        $byid = array_column($items, 'name', 'id');
+        return array_map(function (int $id) use ($byid): string {
+            return $byid[$id];
+        }, $ids);
+    }
 }

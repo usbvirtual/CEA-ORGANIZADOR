@@ -27,9 +27,19 @@ namespace tool_ceaorganizador\local;
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Natural ordering, roman numerals and academic periods.
+ * Natural ordering, roman numerals, academic periods and category grouping.
  */
 class sorter {
+    /** @var string[] Default pattern texts, one pattern per line. */
+    public const DEFAULT_PATTERNS = [
+        'periodo' => '',
+        'semilla' => "semilla\nplantilla\n=Facultades",
+        'facultad' => "/^facultad/\n/^programa/",
+    ];
+
+    /** @var int[] Group order at the top level. */
+    private const GROUP_ORDER = ['periodo' => 0, 'aparte' => 1, 'semilla' => 2, 'facultad' => 3];
+
     /**
      * Lowercases, removes accents and tags, and collapses spaces.
      *
@@ -101,6 +111,177 @@ class sorter {
             'V' => 5, 'VI' => 6, 'VII' => 7, 'VIII' => 8, 'IX' => 9,
         ];
         return $tens[$m[1]] + $units[$m[2]];
+    }
+
+    /**
+     * Parses a pattern text, one pattern per line.
+     *
+     * Plain text is "contains", "=text" is an exact name and "/regex/" is a
+     * regular expression. Contains and exact values are stored normalized;
+     * regular expressions are stored as given and are matched against the
+     * normalized name (lowercase, no accents), so write them that way.
+     * Invalid regular expressions and blank lines are dropped.
+     *
+     * @param string $text
+     * @return array List of ['type' => string, 'value' => string].
+     */
+    public static function parse_patterns(string $text): array {
+        $patterns = [];
+        foreach (preg_split('/\R/u', $text) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            if ($line[0] === '/') {
+                if (strlen($line) > 1 && @preg_match($line, '') !== false) {
+                    $patterns[] = ['type' => 'regex', 'value' => $line];
+                }
+            } else if ($line[0] === '=') {
+                $value = self::normalize(substr($line, 1));
+                if ($value !== '') {
+                    $patterns[] = ['type' => 'exact', 'value' => $value];
+                }
+            } else {
+                $patterns[] = ['type' => 'contains', 'value' => self::normalize($line)];
+            }
+        }
+        return $patterns;
+    }
+
+    /**
+     * Default patterns, already parsed.
+     *
+     * @return array ['semilla' => array, 'facultad' => array]
+     */
+    public static function DEFAULT_PATTERNS_PARSED(): array { // phpcs:ignore moodle.NamingConventions.ValidFunctionName
+        return [
+            'semilla' => self::parse_patterns(self::DEFAULT_PATTERNS['semilla']),
+            'facultad' => self::parse_patterns(self::DEFAULT_PATTERNS['facultad']),
+        ];
+    }
+
+    /**
+     * Configured patterns, with the defaults for settings that are not set.
+     *
+     * An empty string set by the admin means "no patterns".
+     *
+     * @return array ['semilla' => array, 'facultad' => array]
+     */
+    public static function patterns(): array {
+        $result = [];
+        foreach (['semilla', 'facultad'] as $group) {
+            $value = get_config('tool_ceaorganizador', 'patterns_' . $group);
+            if ($value === false || $value === null) {
+                $value = self::DEFAULT_PATTERNS[$group];
+            }
+            $result[$group] = self::parse_patterns((string) $value);
+        }
+        return $result;
+    }
+
+    /**
+     * Classifies a category name.
+     *
+     * At the top level: periodo > semilla > facultad > aparte. At lower levels
+     * only 'periodo' or 'otro'.
+     *
+     * @param string $name
+     * @param bool $toplevel
+     * @param array $patterns As returned by patterns().
+     * @return string
+     */
+    public static function classify(string $name, bool $toplevel, array $patterns): string {
+        if (self::parse_period($name) !== null) {
+            return 'periodo';
+        }
+        if (!$toplevel) {
+            return 'otro';
+        }
+        $normalized = self::normalize($name);
+        foreach (['semilla', 'facultad'] as $group) {
+            foreach ($patterns[$group] ?? [] as $pattern) {
+                if (self::matches($normalized, $pattern)) {
+                    return $group;
+                }
+            }
+        }
+        return 'aparte';
+    }
+
+    /**
+     * Proposed order of sibling categories.
+     *
+     * @param array $items List of ['id' => int, 'name' => string].
+     * @param bool $toplevel
+     * @param array $patterns As returned by patterns().
+     * @return int[] Ids in the proposed order.
+     */
+    public static function propose(array $items, bool $toplevel, array $patterns): array {
+        $rows = [];
+        foreach ($items as $item) {
+            $group = self::classify($item['name'], $toplevel, $patterns);
+            $rows[] = [
+                'id' => (int) $item['id'],
+                'name' => $item['name'],
+                'rank' => self::GROUP_ORDER[$group] ?? 4,
+                'period' => $group === 'periodo' ? self::parse_period($item['name']) : null,
+            ];
+        }
+        usort($rows, function (array $a, array $b): int {
+            if ($a['rank'] !== $b['rank']) {
+                return $a['rank'] <=> $b['rank'];
+            }
+            if ($a['period'] !== null && $b['period'] !== null) {
+                $result = ($b['period'][0] <=> $a['period'][0]) ?: ($b['period'][1] <=> $a['period'][1]);
+                if ($result !== 0) {
+                    return $result;
+                }
+            }
+            return self::compare($a['name'], $b['name']) ?: ($a['id'] <=> $b['id']);
+        });
+        return array_column($rows, 'id');
+    }
+
+    /**
+     * Natural order of courses by name, ties by id.
+     *
+     * @param array $items List of ['id' => int, 'name' => string].
+     * @return int[]
+     */
+    public static function propose_courses(array $items): array {
+        usort($items, function (array $a, array $b): int {
+            return self::compare($a['name'], $b['name']) ?: ((int) $a['id'] <=> (int) $b['id']);
+        });
+        return array_map('intval', array_column($items, 'id'));
+    }
+
+    /**
+     * Whether the proposed order differs from the current one.
+     *
+     * @param int[] $currentids
+     * @param int[] $proposedids
+     * @return bool
+     */
+    public static function differs(array $currentids, array $proposedids): bool {
+        return array_values($currentids) !== array_values($proposedids);
+    }
+
+    /**
+     * Whether a normalized name matches a parsed pattern.
+     *
+     * @param string $normalized
+     * @param array $pattern
+     * @return bool
+     */
+    private static function matches(string $normalized, array $pattern): bool {
+        switch ($pattern['type']) {
+            case 'exact':
+                return $normalized === $pattern['value'];
+            case 'regex':
+                return @preg_match($pattern['value'], $normalized) === 1;
+            default:
+                return strpos($normalized, $pattern['value']) !== false;
+        }
     }
 
     /**

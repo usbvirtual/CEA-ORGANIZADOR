@@ -41,7 +41,7 @@ if ($hassiteconfig) {
             'tool_ceaorganizador/patterns_' . $name,
             get_string('patterns_' . $name, 'tool_ceaorganizador'),
             get_string('patterns_' . $name . '_desc', 'tool_ceaorganizador'),
-            ''
+            \tool_ceaorganizador\local\sorter::DEFAULT_PATTERNS[$name]
         ));
     }
     $ADMIN->add('courses', $settings);

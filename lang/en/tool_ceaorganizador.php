@@ -29,11 +29,11 @@ $string['credit'] = 'Centro de Innovación Pedagógica y Educación Digital (CEA
 $string['intro'] = 'Organise categories and courses by dragging, sorting and renaming.';
 $string['nativemanagement'] = 'Native category management';
 $string['patterns_facultad'] = 'Faculty patterns';
-$string['patterns_facultad_desc'] = 'One pattern per line.';
+$string['patterns_facultad_desc'] = 'One pattern per line. Plain text: the name contains it. =text: exact name. /regex/: regular expression on the lowercase, accent-free name.';
 $string['patterns_periodo'] = 'Period patterns';
 $string['patterns_periodo_desc'] = 'One pattern per line.';
 $string['patterns_semilla'] = 'Seed patterns';
-$string['patterns_semilla_desc'] = 'One pattern per line.';
+$string['patterns_semilla_desc'] = 'One pattern per line. Plain text: the name contains it. =text: exact name. /regex/: regular expression on the lowercase, accent-free name.';
 $string['pluginname'] = 'Category organiser (CEA)';
 $string['privacy:metadata'] = 'This plugin does not store personal data.';
 $string['settings'] = 'Category organiser settings';
