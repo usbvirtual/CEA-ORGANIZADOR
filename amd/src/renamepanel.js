@@ -423,7 +423,7 @@ export const open = ({api, strings, toast, onError, undo, reload, items, trigger
     const undoAll = async(logids) => {
         for (const logid of [...logids].reverse()) {
             const result = await undo(logid);
-            if (result && result.ok === false) {
+            if (!result || !result.ok) {
                 return;
             }
         }

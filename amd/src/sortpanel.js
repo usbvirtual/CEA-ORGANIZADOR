@@ -179,6 +179,7 @@ export const open = ({
             result = await api.sortApply({...params(), hash});
         } catch (error) {
             busy = false;
+            confirm.disabled = false;
             onError(error);
             return;
         }

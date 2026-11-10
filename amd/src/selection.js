@@ -24,6 +24,40 @@
 const keyOf = (type, id) => `${type}:${id}`;
 
 /**
+ * Loads every course of a category and of the categories below it, page after page.
+ *
+ * @param {Object} api Object with getCourses(categoryid, search, page); pages are zero-based.
+ * @param {Object} model Model from treemodel.createModel().
+ * @param {Number} categoryid
+ * @returns {Promise<Object[]>} [{id, category}]
+ */
+export const loadSubtreeCourses = async(api, model, categoryid) => {
+    const ids = [];
+    const walk = (id) => {
+        ids.push(id);
+        model.children(id).forEach((child) => walk(child.id));
+    };
+    walk(categoryid);
+    const courses = [];
+    for (const id of ids) {
+        let page = 0;
+        let loaded = 0;
+        let total = 1;
+        while (loaded < total) {
+            const result = await api.getCourses(id, '', page);
+            total = result.total;
+            loaded += result.courses.length;
+            page += 1;
+            result.courses.forEach((course) => courses.push({id: course.id, category: id}));
+            if (result.courses.length === 0) {
+                break;
+            }
+        }
+    }
+    return courses;
+};
+
+/**
  * Creates an empty selection.
  *
  * @returns {Object} toggle, has, addCategoryContents, addSearchResults, items, count, clear and onChange.

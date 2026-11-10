@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createModel } from 'tool_ceaorganizador/treemodel';
-import { createSelection } from 'tool_ceaorganizador/selection';
+import { createSelection, loadSubtreeCourses } from 'tool_ceaorganizador/selection';
 
 const row = (id, parent, name, sortorder) => ({ id, parent, name, sortorder });
 const model = () => createModel([
@@ -45,4 +45,25 @@ test('addSearchResults agrega cursos y clear vacía; onChange avisa', () => {
     selection.clear();
     assert.equal(selection.count(), 0);
     assert.equal(calls, 2);
+});
+
+test('loadSubtreeCourses recorre todas las páginas y los descendientes (más de 100 cursos)', async () => {
+    const calls = [];
+    const api = {
+        getCourses: async (categoryid, search, page) => {
+            calls.push([categoryid, page]);
+            if (categoryid === 1) {
+                const start = page * 100;
+                const count = Math.min(100, 150 - start);
+                return { total: 150, courses: Array.from({ length: count }, (_, i) => ({ id: 1000 + start + i })) };
+            }
+            return { total: categoryid === 11 ? 1 : 0, courses: categoryid === 11 ? [{ id: 5 }] : [] };
+        },
+    };
+    const courses = await loadSubtreeCourses(api, model(), 1);
+    assert.equal(courses.length, 151);
+    assert.deepEqual(calls.filter(([id]) => id === 1), [[1, 0], [1, 1]]);
+    const selection = createSelection();
+    selection.addCategoryContents(model(), 1, courses);
+    assert.equal(selection.items().filter((item) => item.type === 'course').length, 151);
 });

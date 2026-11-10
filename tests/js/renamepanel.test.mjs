@@ -60,7 +60,10 @@ const setup = (rows, overrides = {}) => {
         onError: (error) => {
             throw error;
         },
-        undo: async (logid) => calls.undo.push(logid),
+        undo: async (logid) => {
+            calls.undo.push(logid);
+            return overrides.undoResult === undefined ? { ok: true, conflicts: [] } : overrides.undoResult;
+        },
         reload: async () => {
             calls.reload += 1;
         },
@@ -154,4 +157,20 @@ test('más de 500 filas se aplican en lotes secuenciales con aviso y un solo Des
     calls.toasts[0].options.onAction();
     await flush();
     assert.deepEqual(calls.undo, [42, 41]);
+});
+
+test('el Deshacer de varios lotes se detiene si un deshacer falla o no responde', async () => {
+    for (const undoResult of [{ ok: false, conflicts: ['x'] }, null]) {
+        const rows = Array.from({ length: 501 }, (_, i) => ({
+            type: 'category', id: i + 1, old: `a${i}`, new: `b${i}`, error: null,
+        }));
+        const { document, calls } = setup(rows, { items: rows.map((r) => ({ type: 'category', id: r.id })), undoResult });
+        click(document, 'preview');
+        await flush();
+        click(document, 'apply');
+        await flush();
+        calls.toasts[0].options.onAction();
+        await flush();
+        assert.deepEqual(calls.undo, [42]);
+    }
 });

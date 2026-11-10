@@ -191,6 +191,7 @@ export const render = (container, model, state) => {
         wrap.appendChild(trigger);
 
         let menu = null;
+        let byKey = false;
         const closeMenu = (restore) => {
             if (!menu) {
                 return;
@@ -201,7 +202,7 @@ export const render = (container, model, state) => {
             // eslint-disable-next-line no-use-before-define
             doc.removeEventListener('click', onOutside, true);
             if (restore) {
-                trigger.focus();
+                (byKey ? li : trigger).focus();
             }
         };
         function onOutside(event) {
@@ -275,11 +276,24 @@ export const render = (container, model, state) => {
             if (menu) {
                 closeMenu(true);
             } else {
+                byKey = false;
                 openMenu();
             }
         });
+        // ContextMenu and Shift+F10 on the treeitem open it; Esc gives the focus back to the treeitem.
+        li.ceaOpenMenu = () => {
+            if (!menu) {
+                byKey = true;
+                openMenu();
+            }
+        };
         row.appendChild(wrap);
     };
+
+    // Keys that work on a focused node, announced to assistive technology.
+    const shortcuts = () => ['Space']
+        .concat(state.onMoveTo ? ['M'] : [], state.selection ? ['S'] : [], state.onAction ? ['Shift+F10'] : [])
+        .join(' ');
 
     const hiddenLabel = () => create('span', 'tool-ceaorganizador-oculta badge badge-secondary bg-secondary', strings.hidden);
 
@@ -305,6 +319,7 @@ export const render = (container, model, state) => {
             const li = create('li', 'tool-ceaorganizador-curso');
             li.setAttribute('role', 'treeitem');
             li.setAttribute('aria-level', String(level));
+            li.setAttribute('aria-keyshortcuts', shortcuts());
             li.dataset.id = String(course.id);
             li.dataset.type = 'course';
             li.tabIndex = -1;
@@ -374,6 +389,7 @@ export const render = (container, model, state) => {
         li.setAttribute('role', 'treeitem');
         li.setAttribute('aria-level', String(level));
         li.setAttribute('aria-expanded', 'false');
+        li.setAttribute('aria-keyshortcuts', shortcuts());
         li.dataset.id = String(row.id);
         li.dataset.type = 'category';
         li.tabIndex = -1;
@@ -461,6 +477,11 @@ export const render = (container, model, state) => {
         }
     };
 
+    // A re-render replaces the nodes: when the focus was inside the tree it goes back to the same item.
+    const active = doc.activeElement;
+    const focused = active && container.contains(active) ? active.closest('[role="treeitem"]') : null;
+    const focusKey = focused ? {type: focused.dataset.type, id: focused.dataset.id} : null;
+
     container.textContent = '';
     container.setAttribute('role', 'tree');
     const list = [];
@@ -468,6 +489,13 @@ export const render = (container, model, state) => {
     list.forEach((li) => container.appendChild(li));
     if (list.length) {
         list[0].tabIndex = 0;
+    }
+    if (focusKey && (!doc.activeElement || doc.activeElement === doc.body)) {
+        const same = container.querySelector(`[role="treeitem"][data-type="${focusKey.type}"][data-id="${focusKey.id}"]`);
+        const target = same || list[0];
+        if (target) {
+            target.focus();
+        }
     }
 
     // The listeners are bound once; they call the toggle of the latest render (its model may be new).
@@ -525,6 +553,14 @@ export const render = (container, model, state) => {
                 case 'Enter':
                 case ' ':
                     holder.toggle(item);
+                    break;
+                case 'ContextMenu':
+                case 'F10':
+                    if ((event.key === 'F10' && !event.shiftKey) || !item.ceaOpenMenu) {
+                        handled = false;
+                        break;
+                    }
+                    item.ceaOpenMenu();
                     break;
                 case 's':
                     if (!state.selection) {

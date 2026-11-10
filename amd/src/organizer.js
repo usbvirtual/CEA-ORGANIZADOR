@@ -33,7 +33,7 @@ import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
 import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
 import {open as openPicker} from 'tool_ceaorganizador/movepicker';
-import {createSelection} from 'tool_ceaorganizador/selection';
+import {createSelection, loadSubtreeCourses} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
@@ -83,6 +83,7 @@ const REQUESTS = [
     {key: 'historyundone', component: 'tool_ceaorganizador'},
     {key: 'includeshortname', component: 'tool_ceaorganizador'},
     {key: 'invaliddrop', component: 'tool_ceaorganizador'},
+    {key: 'keyboardhint', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
@@ -198,10 +199,10 @@ export const init = ({root}) => {
             decode: decodeEntities,
             trigger,
         });
-        const loadedCourses = () => [...state.cache.values()].reduce((all, entry) => all.concat(entry.items), []);
-        const contentsOf = (id) => {
+        // Every course of the category and of its subcategories, not only the ones drawn.
+        const contentsOf = async(id) => {
             const own = createSelection();
-            own.addCategoryContents(ctx.model, id, loadedCourses());
+            own.addCategoryContents(ctx.model, id, await loadSubtreeCourses(api, ctx.model, id));
             return own.items();
         };
         state.onAction = (action, item, trigger) => {
@@ -215,10 +216,14 @@ export const init = ({root}) => {
                     path: ctx.model.pathOf(dragged.id).join(' / '),
                 });
             } else if (action === 'rename') {
-                const items = dragged.type === 'category' ? contentsOf(dragged.id) : [{type: 'course', id: dragged.id}];
-                openRename({...panelOptions(trigger), items});
+                const pending = dragged.type === 'category'
+                    ? contentsOf(dragged.id)
+                    : Promise.resolve([{type: 'course', id: dragged.id}]);
+                pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
             } else if (action === 'selectcontents') {
-                selection.addCategoryContents(ctx.model, dragged.id, loadedCourses());
+                loadSubtreeCourses(api, ctx.model, dragged.id)
+                    .then((courses) => selection.addCategoryContents(ctx.model, dragged.id, courses))
+                    .catch(Notification.exception);
             }
         };
         let current = render(treeel, ctx.model, state);
@@ -265,7 +270,11 @@ export const init = ({root}) => {
         clearButton.addEventListener('click', () => selection.clear());
         bar.append(barText, renameButton, clearButton);
         toolbar.append(historyButton, bar);
+        const hint = document.createElement('p');
+        hint.className = 'tool-ceaorganizador-ruta';
+        hint.textContent = strings.keyboardhint;
         treeel.parentNode.insertBefore(toolbar, treeel);
+        treeel.parentNode.insertBefore(hint, treeel);
         selection.onChange(() => {
             syncSelection(treeel, selection);
             results.querySelectorAll('input[data-id]').forEach((box) => {

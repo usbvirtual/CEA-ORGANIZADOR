@@ -28,6 +28,35 @@ const FOCUSABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([
 let counter = 0;
 
 /**
+ * Gives the focus back to the trigger; when a reload removed it, to the node that replaced it
+ * (same type and id), or else to the tree.
+ *
+ * @param {Document} doc
+ * @param {Element} [trigger]
+ */
+const refocus = (doc, trigger) => {
+    if (!trigger || typeof trigger.focus !== 'function') {
+        return;
+    }
+    if (trigger.isConnected) {
+        trigger.focus();
+        return;
+    }
+    const owner = trigger.closest ? trigger.closest('[role="treeitem"]') : null;
+    const same = owner
+        ? doc.querySelector(`[role="treeitem"][data-type="${owner.dataset.type}"][data-id="${owner.dataset.id}"]`)
+        : null;
+    const tree = doc.querySelector('[role="tree"]');
+    const target = same || (tree && (tree.querySelector('[role="treeitem"][tabindex="0"]') || tree));
+    if (target) {
+        if (target === tree) {
+            tree.tabIndex = -1;
+        }
+        target.focus();
+    }
+};
+
+/**
  * Opens an empty dialog with a title; the caller appends its content to `element`.
  *
  * @param {Object} options
@@ -68,9 +97,7 @@ export const openDialog = ({doc = document, title, trigger, className = '', onCl
         closed = true;
         doc.removeEventListener('keydown', onKey, true);
         overlay.remove();
-        if (trigger && typeof trigger.focus === 'function') {
-            trigger.focus();
-        }
+        refocus(doc, trigger);
         if (onClose) {
             onClose();
         }

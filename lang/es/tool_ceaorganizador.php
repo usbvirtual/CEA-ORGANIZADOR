@@ -83,6 +83,7 @@ $string['historyundone'] = 'Deshecha';
 $string['includeshortname'] = 'Incluir nombre corto';
 $string['intro'] = 'Organiza categorías y cursos arrastrando, ordenando y renombrando.';
 $string['invaliddrop'] = 'No se puede soltar aquí';
+$string['keyboardhint'] = 'Teclado: flechas para navegar · Espacio toma · M mover a · S seleccionar · Shift+F10 menú';
 $string['loadmore'] = 'Cargar más';
 $string['moved'] = 'Movido';
 $string['movetitle'] = 'Mover «{$a}» a…';
