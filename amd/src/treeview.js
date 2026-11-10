@@ -28,6 +28,8 @@
 import {decodeEntities} from 'tool_ceaorganizador/text';
 
 const STORAGE_KEY = 'tool_ceaorganizador_expanded';
+const SELECTED = 'tool-ceaorganizador-seleccionado';
+const CHECKBOX = ':scope > .tool-ceaorganizador-fila > .tool-ceaorganizador-casilla';
 
 /**
  * Replaces the {$a} placeholder of a Moodle string.
@@ -67,6 +69,23 @@ export const saveExpanded = (storage, expanded) => {
     }
 };
 
+/**
+ * Marks the nodes of the tree that are in the selection (class and checkbox).
+ *
+ * @param {Element} container Tree element.
+ * @param {Object} selection Object with has(type, id).
+ */
+export const syncSelection = (container, selection) => {
+    container.querySelectorAll('[role="treeitem"][data-id]').forEach((li) => {
+        const chosen = selection.has(li.dataset.type, Number(li.dataset.id));
+        li.classList.toggle(SELECTED, chosen);
+        const box = li.querySelector(CHECKBOX);
+        if (box) {
+            box.checked = chosen;
+        }
+    });
+};
+
 const defaultStorage = (container) => {
     try {
         return container.ownerDocument.defaultView.localStorage;
@@ -86,6 +105,10 @@ const defaultStorage = (container) => {
  * @param {Set<Number>} [state.visible] Ids to show (result of model.filter); all when absent.
  * @param {Object} [state.storage] Where the expanded ids are remembered.
  * @param {Function} [state.onError] Receives the errors of the web services.
+ * @param {Object} [state.selection] Selection from selection.createSelection(); adds a checkbox per row.
+ * @param {Function} [state.onAction] Called with (action, item, button) by the node menu: moveto, sort,
+ *                   rename or selectcontents. Adds the menu button.
+ * @param {String} [state.wwwroot] Site URL, for the "Open in Moodle" link of the menu.
  * @returns {{refresh: Function, toggle: Function}}
  */
 export const render = (container, model, state) => {
@@ -135,6 +158,129 @@ export const render = (container, model, state) => {
         row.appendChild(button);
     };
 
+    // Optional selection checkbox; its state lives in state.selection.
+    const addCheckbox = (li, row, type, id, name) => {
+        if (!state.selection) {
+            return;
+        }
+        const box = create('input', 'tool-ceaorganizador-casilla');
+        box.type = 'checkbox';
+        box.tabIndex = -1;
+        box.dataset.action = 'select';
+        box.setAttribute('aria-label', format(strings.selectitem, name));
+        box.checked = state.selection.has(type, id);
+        li.classList.toggle(SELECTED, box.checked);
+        box.addEventListener('click', (event) => event.stopPropagation());
+        box.addEventListener('change', () => state.selection.toggle(type, id));
+        row.appendChild(box);
+    };
+
+    // Optional node menu; state.onAction(action, item, button) runs the chosen action.
+    const addMenu = (li, row, type, id, name) => {
+        if (!state.onAction) {
+            return;
+        }
+        const wrap = create('span', 'tool-ceaorganizador-menu-contenedor');
+        const trigger = create('button', 'tool-ceaorganizador-menu-boton btn btn-secondary btn-sm', '⋯');
+        trigger.type = 'button';
+        trigger.tabIndex = -1;
+        trigger.dataset.action = 'menu';
+        trigger.setAttribute('aria-haspopup', 'menu');
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.setAttribute('aria-label', format(strings.nodemenu, name));
+        wrap.appendChild(trigger);
+
+        let menu = null;
+        const closeMenu = (restore) => {
+            if (!menu) {
+                return;
+            }
+            menu.remove();
+            menu = null;
+            trigger.setAttribute('aria-expanded', 'false');
+            // eslint-disable-next-line no-use-before-define
+            doc.removeEventListener('click', onOutside, true);
+            if (restore) {
+                trigger.focus();
+            }
+        };
+        function onOutside(event) {
+            if (menu && !wrap.contains(event.target)) {
+                closeMenu(false);
+            }
+        }
+        const entries = [['moveto', strings.moveto]];
+        if (type === 'category') {
+            entries.push(
+                ['sort', strings.autosort],
+                ['rename', strings.rename],
+                ['open', strings.opencategory],
+                ['selectcontents', strings.selectcontents]
+            );
+        } else {
+            entries.push(['rename', strings.rename]);
+        }
+        const openMenu = () => {
+            if (state.closeMenu) {
+                state.closeMenu(false);
+            }
+            menu = create('ul', 'tool-ceaorganizador-menu');
+            menu.setAttribute('role', 'menu');
+            entries.forEach(([action, label]) => {
+                if (action === 'open' && state.wwwroot === undefined) {
+                    return;
+                }
+                const item = create('li');
+                item.setAttribute('role', 'none');
+                let control;
+                if (action === 'open') {
+                    control = create('a', 'tool-ceaorganizador-menu-opcion', label);
+                    control.href = `${state.wwwroot}/course/management.php?categoryid=${id}`;
+                } else {
+                    control = create('button', 'tool-ceaorganizador-menu-opcion', label);
+                    control.type = 'button';
+                    control.addEventListener('click', () => {
+                        closeMenu(false);
+                        state.onAction(action, li, trigger);
+                    });
+                }
+                control.setAttribute('role', 'menuitem');
+                control.dataset.action = action;
+                item.appendChild(control);
+                menu.appendChild(item);
+            });
+            menu.addEventListener('click', (event) => event.stopPropagation());
+            menu.addEventListener('keydown', (event) => {
+                const options = [...menu.querySelectorAll('[role="menuitem"]')];
+                const at = options.indexOf(doc.activeElement);
+                if (event.key === 'Escape' || event.key === 'Tab') {
+                    event.preventDefault();
+                    closeMenu(true);
+                } else if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    options[(at + 1) % options.length].focus();
+                } else if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    options[(at - 1 + options.length) % options.length].focus();
+                }
+            });
+            wrap.appendChild(menu);
+            trigger.setAttribute('aria-expanded', 'true');
+            state.closeMenu = closeMenu;
+            doc.addEventListener('click', onOutside, true);
+            menu.querySelector('[role="menuitem"]').focus();
+        };
+        trigger.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (menu) {
+                closeMenu(true);
+            } else {
+                openMenu();
+            }
+        });
+        row.appendChild(wrap);
+    };
+
     const hiddenLabel = () => create('span', 'tool-ceaorganizador-oculta badge badge-secondary bg-secondary', strings.hidden);
 
     const isShown = (row) => !state.visible || state.visible.has(row.id);
@@ -163,6 +309,7 @@ export const render = (container, model, state) => {
             li.dataset.type = 'course';
             li.tabIndex = -1;
             const row = create('div', 'tool-ceaorganizador-fila');
+            addCheckbox(li, row, 'course', course.id, decodeEntities(course.fullname));
             const name = create('span', 'tool-ceaorganizador-nombre', decodeEntities(course.fullname));
             name.id = `tool-ceaorganizador-course-${course.id}-name`;
             row.appendChild(name);
@@ -174,6 +321,7 @@ export const render = (container, model, state) => {
                 li.setAttribute('aria-describedby', label.id);
             }
             addMoveButton(li, row, decodeEntities(course.fullname));
+            addMenu(li, row, 'course', course.id, decodeEntities(course.fullname));
             li.appendChild(row);
             group.appendChild(li);
         });
@@ -233,6 +381,7 @@ export const render = (container, model, state) => {
         const chevron = create('span', 'tool-ceaorganizador-chevron');
         chevron.setAttribute('aria-hidden', 'true');
         line.appendChild(chevron);
+        addCheckbox(li, line, 'category', row.id, decodeEntities(row.name));
         const prefix = `tool-ceaorganizador-category-${row.id}`;
         const described = [];
         const name = create('span', 'tool-ceaorganizador-nombre', decodeEntities(row.name));
@@ -258,6 +407,7 @@ export const render = (container, model, state) => {
         }
         li.setAttribute('aria-describedby', described.join(' '));
         addMoveButton(li, line, decodeEntities(row.name));
+        addMenu(li, line, 'category', row.id, decodeEntities(row.name));
         line.addEventListener('click', () => toggle(li));
         li.appendChild(line);
         if (expanded.has(row.id) || forcedOpen(row)) {
@@ -375,6 +525,13 @@ export const render = (container, model, state) => {
                 case 'Enter':
                 case ' ':
                     holder.toggle(item);
+                    break;
+                case 's':
+                    if (!state.selection) {
+                        handled = false;
+                        break;
+                    }
+                    state.selection.toggle(item.dataset.type, Number(item.dataset.id));
                     break;
                 default:
                     handled = false;

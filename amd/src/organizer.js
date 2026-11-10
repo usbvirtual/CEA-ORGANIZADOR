@@ -23,21 +23,52 @@
 
 import {get_strings as getStrings} from 'core/str';
 import Notification from 'core/notification';
+import Config from 'core/config';
 import * as api from 'tool_ceaorganizador/api';
 import {createModel} from 'tool_ceaorganizador/treemodel';
 import {decodeEntities} from 'tool_ceaorganizador/text';
-import {render, format} from 'tool_ceaorganizador/treeview';
+import {render, format, syncSelection} from 'tool_ceaorganizador/treeview';
 import * as toast from 'tool_ceaorganizador/toast';
 import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
 import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
 import {open as openPicker} from 'tool_ceaorganizador/movepicker';
+import {createSelection} from 'tool_ceaorganizador/selection';
+import {open as openSort} from 'tool_ceaorganizador/sortpanel';
+import {open as openRename} from 'tool_ceaorganizador/renamepanel';
+import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 
 const SEARCH_DELAY = 250;
 const MIN_COURSE_SEARCH = 3;
 
 // Literal shape, so that check-strings can verify every key.
 const REQUESTS = [
+    {key: 'affixadd', component: 'tool_ceaorganizador'},
+    {key: 'affixmode', component: 'tool_ceaorganizador'},
+    {key: 'affixposition', component: 'tool_ceaorganizador'},
+    {key: 'affixremove', component: 'tool_ceaorganizador'},
+    {key: 'affixtext', component: 'tool_ceaorganizador'},
+    {key: 'after', component: 'tool_ceaorganizador'},
+    {key: 'apply', component: 'tool_ceaorganizador'},
+    {key: 'autosort', component: 'tool_ceaorganizador'},
+    {key: 'autosortdone', component: 'tool_ceaorganizador'},
+    {key: 'autosortnothing', component: 'tool_ceaorganizador'},
+    {key: 'autosortpreview', component: 'tool_ceaorganizador'},
+    {key: 'autosortrecursive', component: 'tool_ceaorganizador'},
+    {key: 'autosortscope', component: 'tool_ceaorganizador'},
+    {key: 'autosortscope_both', component: 'tool_ceaorganizador'},
+    {key: 'autosortscope_categories', component: 'tool_ceaorganizador'},
+    {key: 'autosortscope_courses', component: 'tool_ceaorganizador'},
+    {key: 'batchsplit', component: 'tool_ceaorganizador'},
+    {key: 'before', component: 'tool_ceaorganizador'},
+    {key: 'case_none', component: 'tool_ceaorganizador'},
+    {key: 'case_sentence', component: 'tool_ceaorganizador'},
+    {key: 'case_title', component: 'tool_ceaorganizador'},
+    {key: 'case_upper', component: 'tool_ceaorganizador'},
+    {key: 'casesensitive', component: 'tool_ceaorganizador'},
+    {key: 'clearselection', component: 'tool_ceaorganizador'},
+    {key: 'close', component: 'tool_ceaorganizador'},
+    {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
     {key: 'dropafter', component: 'tool_ceaorganizador'},
     {key: 'dropbefore', component: 'tool_ceaorganizador'},
@@ -46,6 +77,11 @@ const REQUESTS = [
     {key: 'error_generic', component: 'tool_ceaorganizador'},
     {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
+    {key: 'history', component: 'tool_ceaorganizador'},
+    {key: 'history_empty', component: 'tool_ceaorganizador'},
+    {key: 'historypage', component: 'tool_ceaorganizador'},
+    {key: 'historyundone', component: 'tool_ceaorganizador'},
+    {key: 'includeshortname', component: 'tool_ceaorganizador'},
     {key: 'invaliddrop', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
@@ -54,7 +90,41 @@ const REQUESTS = [
     {key: 'movetoroot', component: 'tool_ceaorganizador'},
     {key: 'needsort', component: 'tool_ceaorganizador'},
     {key: 'needsortsummary', component: 'tool_ceaorganizador'},
+    {key: 'nextpage', component: 'tool_ceaorganizador'},
+    {key: 'nodemenu', component: 'tool_ceaorganizador'},
+    {key: 'opencategory', component: 'tool_ceaorganizador'},
+    {key: 'opmovedown', component: 'tool_ceaorganizador'},
+    {key: 'opmoveup', component: 'tool_ceaorganizador'},
+    {key: 'opremove', component: 'tool_ceaorganizador'},
+    {key: 'prefix', component: 'tool_ceaorganizador'},
+    {key: 'prevpage', component: 'tool_ceaorganizador'},
+    {key: 'rename', component: 'tool_ceaorganizador'},
+    {key: 'renameaddop', component: 'tool_ceaorganizador'},
+    {key: 'renamedone', component: 'tool_ceaorganizador'},
+    {key: 'renameerror_empty', component: 'tool_ceaorganizador'},
+    {key: 'renameerror_multilang', component: 'tool_ceaorganizador'},
+    {key: 'renameerror_shortnameduplicate', component: 'tool_ceaorganizador'},
+    {key: 'renameerror_shortnametaken', component: 'tool_ceaorganizador'},
+    {key: 'renameerror_toolong', component: 'tool_ceaorganizador'},
+    {key: 'renamenothing', component: 'tool_ceaorganizador'},
+    {key: 'renameop_affix', component: 'tool_ceaorganizador'},
+    {key: 'renameop_clean', component: 'tool_ceaorganizador'},
+    {key: 'renameop_replace', component: 'tool_ceaorganizador'},
+    {key: 'renameoptype', component: 'tool_ceaorganizador'},
+    {key: 'renamepreview', component: 'tool_ceaorganizador'},
+    {key: 'renameskipped', component: 'tool_ceaorganizador'},
+    {key: 'replacewith', component: 'tool_ceaorganizador'},
+    {key: 'searchfor', component: 'tool_ceaorganizador'},
+    {key: 'selectcontents', component: 'tool_ceaorganizador'},
+    {key: 'selected', component: 'tool_ceaorganizador'},
+    {key: 'selectitem', component: 'tool_ceaorganizador'},
+    {key: 'selectresults', component: 'tool_ceaorganizador'},
+    {key: 'shortname', component: 'tool_ceaorganizador'},
+    {key: 'stale', component: 'tool_ceaorganizador'},
+    {key: 'suffix', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
+    {key: 'undoconflicts', component: 'tool_ceaorganizador'},
+    {key: 'wholeword', component: 'tool_ceaorganizador'},
 ];
 
 /**
@@ -80,7 +150,8 @@ export const init = ({root}) => {
         REQUESTS.forEach((request, index) => {
             strings[request.key] = values[index];
         });
-        const state = {api, strings, onError: Notification.exception};
+        const selection = createSelection();
+        const state = {api, strings, selection, wwwroot: Config.wwwroot, onError: Notification.exception};
         // The context is read live: reload() replaces the model and the view.
         const ctx = {
             model: createModel(tree.categories, decodeEntities),
@@ -115,6 +186,41 @@ export const init = ({root}) => {
             });
         };
         state.onMoveTo = moveTo;
+
+        // Dependencies shared by the panels; the model is read live.
+        const panelOptions = (trigger) => ({
+            api,
+            strings,
+            toast,
+            onError: Notification.exception,
+            undo: mover.undo,
+            reload: ctx.reload,
+            decode: decodeEntities,
+            trigger,
+        });
+        const loadedCourses = () => [...state.cache.values()].reduce((all, entry) => all.concat(entry.items), []);
+        const contentsOf = (id) => {
+            const own = createSelection();
+            own.addCategoryContents(ctx.model, id, loadedCourses());
+            return own.items();
+        };
+        state.onAction = (action, item, trigger) => {
+            const dragged = describeItem(item);
+            if (action === 'moveto') {
+                moveTo(item, trigger);
+            } else if (action === 'sort') {
+                openSort({
+                    ...panelOptions(trigger),
+                    categoryid: dragged.id,
+                    path: ctx.model.pathOf(dragged.id).join(' / '),
+                });
+            } else if (action === 'rename') {
+                const items = dragged.type === 'category' ? contentsOf(dragged.id) : [{type: 'course', id: dragged.id}];
+                openRename({...panelOptions(trigger), items});
+            } else if (action === 'selectcontents') {
+                selection.addCategoryContents(ctx.model, dragged.id, loadedCourses());
+            }
+        };
         let current = render(treeel, ctx.model, state);
         attachDrag(treeel, ctx, {onDrop: (dragged, dest) => mover.move(dragged, dest)});
         attachKeyboard(treeel, ctx, {
@@ -129,6 +235,54 @@ export const init = ({root}) => {
             }
         };
         showSummary(tree.needsortcount);
+
+        // Toolbar: history and the selection bar.
+        const toolbar = document.createElement('div');
+        toolbar.className = 'tool-ceaorganizador-herramientas';
+        const historyButton = document.createElement('button');
+        historyButton.type = 'button';
+        historyButton.className = 'btn btn-secondary btn-sm';
+        historyButton.dataset.action = 'history';
+        historyButton.textContent = strings.history;
+        historyButton.addEventListener('click', () => openHistory(panelOptions(historyButton)));
+        const bar = document.createElement('div');
+        bar.className = 'tool-ceaorganizador-seleccion';
+        bar.dataset.region = 'selectionbar';
+        bar.hidden = true;
+        const barText = document.createElement('span');
+        barText.setAttribute('role', 'status');
+        const renameButton = document.createElement('button');
+        renameButton.type = 'button';
+        renameButton.className = 'btn btn-primary btn-sm';
+        renameButton.dataset.action = 'renameselection';
+        renameButton.textContent = strings.rename;
+        renameButton.addEventListener('click', () => openRename({...panelOptions(renameButton), items: selection.items()}));
+        const clearButton = document.createElement('button');
+        clearButton.type = 'button';
+        clearButton.className = 'btn btn-secondary btn-sm';
+        clearButton.dataset.action = 'clearselection';
+        clearButton.textContent = strings.clearselection;
+        clearButton.addEventListener('click', () => selection.clear());
+        bar.append(barText, renameButton, clearButton);
+        toolbar.append(historyButton, bar);
+        treeel.parentNode.insertBefore(toolbar, treeel);
+        selection.onChange(() => {
+            syncSelection(treeel, selection);
+            results.querySelectorAll('input[data-id]').forEach((box) => {
+                box.checked = selection.has('course', Number(box.dataset.id));
+            });
+            bar.hidden = selection.count() === 0;
+            barText.textContent = format(strings.selected, selection.count());
+        });
+
+        const reviewButton = rootel.querySelector('[data-action="reviewsort"]');
+        if (reviewButton) {
+            reviewButton.addEventListener('click', () => openSort({
+                ...panelOptions(reviewButton),
+                categoryid: 0,
+                recursive: true,
+            }));
+        }
 
         let timer = null;
         let token = 0;
@@ -145,8 +299,27 @@ export const init = ({root}) => {
                 if (mine !== token) {
                     return;
                 }
+                if (found.courses.length) {
+                    const all = document.createElement('li');
+                    const pick = document.createElement('button');
+                    pick.type = 'button';
+                    pick.className = 'btn btn-secondary btn-sm';
+                    pick.dataset.action = 'selectresults';
+                    pick.textContent = strings.selectresults;
+                    pick.addEventListener('click', () => selection.addSearchResults(found.courses));
+                    all.appendChild(pick);
+                    results.appendChild(all);
+                }
                 found.courses.forEach((course) => {
                     const li = document.createElement('li');
+                    const box = document.createElement('input');
+                    box.type = 'checkbox';
+                    box.className = 'tool-ceaorganizador-casilla';
+                    box.dataset.id = String(course.id);
+                    box.checked = selection.has('course', course.id);
+                    box.setAttribute('aria-label', format(strings.selectitem, decodeEntities(course.fullname)));
+                    box.addEventListener('change', () => selection.toggle('course', course.id));
+                    li.appendChild(box);
                     const name = document.createElement('span');
                     name.className = 'tool-ceaorganizador-nombre';
                     name.textContent = decodeEntities(course.fullname);

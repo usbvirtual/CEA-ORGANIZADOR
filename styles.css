@@ -343,6 +343,167 @@
     white-space: normal;
 }
 
+/* Paneles: diálogo ancho, operaciones, vista previa y historial. */
+.tool-ceaorganizador-dialogo-ancho {
+    width: min(52rem, calc(100vw - 2rem));
+    overflow-y: auto;
+}
+
+.tool-ceaorganizador-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.tool-ceaorganizador-operaciones {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tool-ceaorganizador-operacion {
+    border: 1px solid var(--cea-linea);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+}
+
+.tool-ceaorganizador-operacion-cabecera,
+.tool-ceaorganizador-agregar,
+.tool-ceaorganizador-acciones,
+.tool-ceaorganizador-controles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 1rem;
+}
+
+.tool-ceaorganizador-operacion-cabecera strong {
+    margin-right: auto;
+}
+
+.tool-ceaorganizador-operacion-campos {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem 1rem;
+    margin-top: 0.5rem;
+}
+
+.tool-ceaorganizador-tabla-contenedor {
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.tool-ceaorganizador-fila-error {
+    background: var(--cea-lavanda);
+}
+
+.tool-ceaorganizador-error {
+    color: var(--cea-naranja-dia);
+    font-size: 0.8125rem;
+}
+
+.tool-ceaorganizador-columnas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.tool-ceaorganizador-cambio {
+    border-bottom: 1px solid var(--cea-linea);
+    padding: 0.5rem 0;
+}
+
+.tool-ceaorganizador-cambio-titulo,
+.tool-ceaorganizador-columna-titulo,
+.tool-ceaorganizador-vista-titulo {
+    font-size: 0.9375rem;
+    margin: 0 0 0.25rem;
+}
+
+.tool-ceaorganizador-vista {
+    max-height: 45vh;
+    overflow-y: auto;
+}
+
+.tool-ceaorganizador-historial {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+}
+
+.tool-ceaorganizador-historial-fila {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--cea-linea);
+}
+
+.tool-ceaorganizador-historial-fila > div:first-child {
+    flex: 1 1 14rem;
+}
+
+/* Selección y menú del nodo. */
+.tool-ceaorganizador-herramientas,
+.tool-ceaorganizador-seleccion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.tool-ceaorganizador-seleccion[hidden] {
+    display: none;
+}
+
+.tool-ceaorganizador-seleccionado > .tool-ceaorganizador-fila {
+    background: var(--cea-menta);
+}
+
+.tool-ceaorganizador-menu-contenedor {
+    position: relative;
+}
+
+.tool-ceaorganizador-menu {
+    position: absolute;
+    right: 0;
+    z-index: 1100;
+    list-style: none;
+    margin: 0.25rem 0 0;
+    padding: 0.25rem;
+    min-width: 12rem;
+    background: var(--cea-papel);
+    border: 1px solid var(--cea-linea);
+    border-radius: 8px;
+    box-shadow: none;
+}
+
+.tool-ceaorganizador-menu-opcion {
+    display: block;
+    width: 100%;
+    padding: 0.375rem 0.75rem;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--cea-tinta);
+    text-align: left;
+    text-decoration: none;
+}
+
+.tool-ceaorganizador-menu-opcion:hover,
+.tool-ceaorganizador-menu-opcion:focus {
+    background: var(--cea-lavanda);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .tool-ceaorganizador *,
     .tool-ceaorganizador *::before,
