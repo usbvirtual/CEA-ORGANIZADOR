@@ -27,9 +27,9 @@ import {canDrop} from 'tool_ceaorganizador/dropzones';
 import {format} from 'tool_ceaorganizador/treeview';
 import {normalize} from 'tool_ceaorganizador/treemodel';
 import {isFirstAtRoot} from 'tool_ceaorganizador/mover';
+import {openDialog} from 'tool_ceaorganizador/dialog';
 
 const SEPARATOR = ' / ';
-const FOCUSABLE = 'input, button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 /**
  * Opens the dialog.
@@ -54,20 +54,16 @@ export const open = ({model, dragged, name, trigger, strings, onPick, decode = (
         return node;
     };
 
-    const overlay = create('div', 'tool-ceaorganizador tool-ceaorganizador-dialogo-fondo');
-    const dialog = create('div', 'tool-ceaorganizador-dialogo');
-    dialog.setAttribute('role', 'dialog');
-    dialog.setAttribute('aria-modal', 'true');
-    const title = create('h2', 'tool-ceaorganizador-dialogo-titulo');
-    title.id = `tool-ceaorganizador-dialog-${dragged.type}-${dragged.id}-title`;
-    title.textContent = format(strings.movetitle, name);
-    dialog.setAttribute('aria-labelledby', title.id);
+    const {close, element: dialog} = openDialog({
+        doc,
+        title: format(strings.movetitle, name),
+        trigger,
+    });
     const input = create('input', 'form-control');
     input.type = 'search';
     input.setAttribute('aria-label', strings.moveto);
     const list = create('ul', 'tool-ceaorganizador-dialogo-lista');
-    dialog.append(title, input, list);
-    overlay.appendChild(dialog);
+    dialog.append(input, list);
 
     // Tree order: each category followed by its subcategories.
     const ordered = [];
@@ -103,48 +99,8 @@ export const open = ({model, dragged, name, trigger, strings, onPick, decode = (
         choices.filter((id) => shown.has(id)).forEach((id) => addOption(decode(model.pathOf(id).join(SEPARATOR)), id));
     };
 
-    function close() {
-        doc.removeEventListener('keydown', onKey, true);
-        overlay.remove();
-        if (trigger && typeof trigger.focus === 'function') {
-            trigger.focus();
-        }
-    }
-
-    function onKey(event) {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-            return;
-        }
-        if (event.key !== 'Tab') {
-            return;
-        }
-        const nodes = [...dialog.querySelectorAll(FOCUSABLE)];
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (!dialog.contains(doc.activeElement)) {
-            event.preventDefault();
-            first.focus();
-        } else if (event.shiftKey && doc.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && doc.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    }
-
-    overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) {
-            close();
-        }
-    });
     input.addEventListener('input', draw);
-    doc.addEventListener('keydown', onKey, true);
     draw();
-    doc.body.appendChild(overlay);
     input.focus();
     return {close, element: dialog};
 };

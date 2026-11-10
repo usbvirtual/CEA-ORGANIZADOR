@@ -106,7 +106,7 @@ const moveCourseLocal = (ctx, id, category, afterid, known = null) => {
  * @param {Function} ctx.onError Receives the exceptions of the web services.
  * @param {Function} ctx.reload Reloads the tree from the server.
  * @param {Element} [ctx.container] Tree element, to animate and focus the moved node.
- * @returns {{move: Function, moveInside: Function}}
+ * @returns {{move: Function, moveInside: Function, moveToRoot: Function, undo: Function}}
  */
 export const createMover = (ctx) => {
     // One request at a time: a second move would be computed on a state the server has not confirmed.
@@ -137,20 +137,30 @@ export const createMover = (ctx) => {
         }, 0);
     };
 
-    const undoMove = async(logid) => {
+    /**
+     * Undoes a journal entry and reloads the tree.
+     *
+     * @param {Number} logid
+     * @param {Object} [options]
+     * @param {Boolean} [options.quiet] Do not show the conflicts in a notice (the caller shows them).
+     * @returns {Promise<Object|null>} {ok, conflicts}; null when busy or when the request failed.
+     */
+    const undoMove = async(logid, options = {}) => {
         if (refuseWhileBusy()) {
-            return;
+            return null;
         }
         busy = true;
         try {
             const result = await ctx.api.undo(logid);
             if (result.ok) {
                 await ctx.reload();
-            } else {
+            } else if (!options.quiet) {
                 ctx.toast.show(result.conflicts.length ? result.conflicts.join(' ') : ctx.strings.error_generic);
             }
+            return result;
         } catch (error) {
             ctx.onError(error);
+            return null;
         } finally {
             busy = false;
         }
@@ -234,5 +244,5 @@ export const createMover = (ctx) => {
         return move(dragged, {parent: 0, afterid: 0}, {focus: true});
     };
 
-    return {move, moveInside, moveToRoot};
+    return {move, moveInside, moveToRoot, undo: undoMove};
 };
