@@ -1,0 +1,335 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace tool_ceaorganizador\local;
+
+// Cobertura declarada dos veces: el atributo para PHPUnit 11 (Moodle 5.x) y la
+// anotación @covers para PHPUnit 9.6 (Moodle 4.x) y el verificador de código.
+#[\PHPUnit\Framework\Attributes\CoversClass(clonerunner::class)]
+/**
+ * Tests for running a cloning batch.
+ *
+ * @package    tool_ceaorganizador
+ * @copyright  2026 Universidad de San Buenaventura Cali
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers     \tool_ceaorganizador\local\clonerunner
+ */
+final class clonerunner_test extends \advanced_testcase {
+    /** @var int Start date used by the tests (2027-01-01). */
+    private const START = 1798761600;
+
+    /** @var int End date used by the tests. */
+    private const END = 1814486400;
+
+    /** @var string Adhoc task class of the course copies. */
+    private const TASK = '\core\task\asynchronous_copy_task';
+
+    /**
+     * Previews and runs a batch with the hash of that preview.
+     *
+     * @param array $items
+     * @param int $periodid
+     * @param array $edits
+     * @return array Result of clonerunner::run().
+     */
+    private function run_batch(array $items, int $periodid, array $edits = []): array {
+        $plan = cloneplan::build($items, $periodid, '2027-01', self::START, self::END);
+        return clonerunner::run($items, $periodid, '2027-01', self::START, self::END, $edits, $plan['hash']);
+    }
+
+    /**
+     * Payload of a journal row.
+     *
+     * @param int $logid
+     * @return array
+     */
+    private function payload(int $logid): array {
+        global $DB;
+        return json_decode($DB->get_field(journal::TABLE, 'payload', ['id' => $logid], MUST_EXIST), true);
+    }
+
+    /**
+     * Id of the child category with that name, or 0.
+     *
+     * @param int $parent
+     * @param string $name
+     * @return int
+     */
+    private function child(int $parent, string $name): int {
+        global $DB;
+        return (int) $DB->get_field('course_categories', 'id', ['parent' => $parent, 'name' => $name]);
+    }
+
+    /**
+     * Silences the backup loggers, as the core copy tests do.
+     */
+    private function quiet_backup(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
+        $CFG->backup_error_log_logger_level = \backup::LOG_NONE;
+        $CFG->backup_output_indented_logger_level = \backup::LOG_NONE;
+        $CFG->backup_file_logger_level = \backup::LOG_NONE;
+        $CFG->backup_database_logger_level = \backup::LOG_NONE;
+        $CFG->backup_file_logger_level_extra = \backup::LOG_NONE;
+    }
+
+    /**
+     * One copy is queued per course, the missing categories are created once and the batch is recorded.
+     */
+    public function test_run_queues_one_task_per_course(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $sis = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $dos = $gen->create_category(['name' => 'Programa Dos', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $sis->id]);
+        $fis = $gen->create_course(['fullname' => 'Física I', 'shortname' => 'FIS1', 'category' => $dos->id]);
+
+        $result = $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(2, $result['queued']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertGreaterThan(0, $result['batchid']);
+        $this->assertCount(2, \core\task\manager::get_adhoc_tasks(self::TASK));
+
+        // The period root is created once and both programs hang from it.
+        $newroot = $this->child((int) $period->id, 'Facultades');
+        $newsis = $this->child($newroot, 'Programa Sistemas');
+        $newdos = $this->child($newroot, 'Programa Dos');
+        $this->assertGreaterThan(0, $newroot);
+        $this->assertGreaterThan(0, $newsis);
+        $this->assertGreaterThan(0, $newdos);
+        $this->assertSame(1, $DB->count_records('course_categories', ['parent' => $period->id]));
+
+        $log = $DB->get_record(journal::TABLE, ['id' => $result['batchid']], '*', MUST_EXIST);
+        $this->assertSame('clone', $log->action);
+        $this->assertSame(
+            get_string('summary_clone', 'tool_ceaorganizador', (object) ['label' => '2027-01', 'count' => 2]),
+            $log->summary
+        );
+        $payload = $this->payload((int) $result['batchid']);
+        $this->assertSame((int) $period->id, $payload['periodid']);
+        $this->assertSame('2027-01', $payload['label']);
+        $this->assertSame(self::START, $payload['startdate']);
+        $this->assertSame(self::END, $payload['enddate']);
+        $created = $payload['categories'];
+        sort($created);
+        $expected = [$newroot, $newsis, $newdos];
+        sort($expected);
+        $this->assertSame($expected, $created);
+
+        $bysource = array_column($payload['items'], null, 'source');
+        $this->assertEqualsCanonicalizing([(int) $calc->id, (int) $fis->id], array_keys($bysource));
+        $this->assertSame($newsis, $bysource[$calc->id]['destcategoryid']);
+        $this->assertSame($newdos, $bysource[$fis->id]['destcategoryid']);
+        $this->assertSame('CALC1-2027-01', $bysource[$calc->id]['newshortname']);
+        foreach ($payload['items'] as $item) {
+            $this->assertNull($item['error']);
+            $this->assertNotEmpty($item['backupid']);
+            $this->assertNotEmpty($item['restoreid']);
+            // The provisional course already exists, hidden, in its destination.
+            $course = $DB->get_record('course', ['id' => $item['newcourseid']], 'id, category, visible', MUST_EXIST);
+            $this->assertSame($item['destcategoryid'], (int) $course->category);
+            $this->assertSame(0, (int) $course->visible);
+        }
+    }
+
+    /**
+     * Edited names are checked again; a row that fails now is skipped and the others go on.
+     */
+    public function test_edits_are_revalidated(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $other = $gen->create_category(['name' => 'Otros']);
+        $a = $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $root->id]);
+        $b = $gen->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $root->id]);
+        $gen->create_course(['fullname' => 'Ocupado', 'shortname' => 'TAKEN', 'category' => $other->id]);
+
+        $edits = [
+            $a->id => ['newfullname' => 'A 2027-01', 'newshortname' => 'TAKEN'],
+            $b->id => ['newfullname' => '  Nuevo B  ', 'newshortname' => 'B-NUEVO'],
+        ];
+        $result = $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id, $edits);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['queued']);
+        $this->assertSame(1, $result['skipped']);
+        $payload = $this->payload((int) $result['batchid']);
+        $this->assertCount(1, $payload['items']);
+        $this->assertSame((int) $b->id, $payload['items'][0]['source']);
+        $this->assertSame('Nuevo B', $payload['items'][0]['newfullname']);
+        $this->assertSame('B-NUEVO', $payload['items'][0]['newshortname']);
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(self::TASK));
+        $this->assertFalse($DB->record_exists('course', ['shortname' => 'A-2027-01']));
+    }
+
+    /**
+     * A hash that no longer matches writes nothing.
+     */
+    public function test_run_stale_hash(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $prog->id]);
+        $categories = $DB->count_records('course_categories');
+        $courses = $DB->count_records('course');
+
+        $items = [['type' => 'course', 'id' => $calc->id]];
+        $result = clonerunner::run($items, (int) $period->id, '2027-01', self::START, self::END, [], sha1('other'));
+
+        $this->assertSame(['status' => 'stale', 'batchid' => 0, 'queued' => 0, 'skipped' => 0], $result);
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame($courses, $DB->count_records('course'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+        $this->assertCount(0, \core\task\manager::get_adhoc_tasks(self::TASK));
+    }
+
+    /**
+     * The copy, once run, is hidden, renamed, dated, without users and with the activities of the seed.
+     */
+    public function test_end_to_end_copy(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->quiet_backup();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course([
+            'fullname' => 'Cálculo I 2026-02',
+            'shortname' => 'CALC1-2026-02',
+            'category' => $prog->id,
+            'startdate' => self::START - 200 * DAYSECS,
+        ]);
+        $page = $gen->create_module('page', ['course' => $calc->id, 'name' => 'Bienvenida']);
+        $student = $gen->create_user();
+        $gen->enrol_user($student->id, $calc->id, 'student');
+
+        $result = $this->run_batch([['type' => 'course', 'id' => $calc->id]], (int) $period->id);
+        $this->assertSame(1, $result['queued']);
+        $newid = (int) $this->payload((int) $result['batchid'])['items'][0]['newcourseid'];
+
+        $this->expectOutputRegex('/Course copy/');
+        $this->runAdhocTasks(self::TASK);
+
+        $course = $DB->get_record('course', ['id' => $newid], '*', MUST_EXIST);
+        $this->assertSame(0, (int) $course->visible);
+        $this->assertSame('Cálculo I 2027-01', $course->fullname);
+        $this->assertSame('CALC1-2027-01', $course->shortname);
+        $this->assertSame(self::START, (int) $course->startdate);
+        $this->assertSame(self::END, (int) $course->enddate);
+        $this->assertSame('', (string) $course->idnumber);
+        $destination = $this->child($this->child((int) $period->id, 'Facultades'), 'Programa Sistemas');
+        $this->assertSame($destination, (int) $course->category);
+
+        $pages = get_fast_modinfo($newid)->get_instances_of('page');
+        $this->assertCount(1, $pages);
+        $this->assertSame($page->name, reset($pages)->name);
+        $this->assertSame(0, count_enrolled_users(\context_course::instance($newid)));
+        // The seed keeps its student.
+        $this->assertSame(1, count_enrolled_users(\context_course::instance($calc->id)));
+    }
+
+    /**
+     * A clone batch cannot be undone.
+     */
+    public function test_undo_clone_rejected(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $root->id]);
+        $result = $this->run_batch([['type' => 'course', 'id' => $calc->id]], (int) $period->id);
+
+        try {
+            journal::undo((int) $result['batchid']);
+            $this->fail('Expected moodle_exception');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_cannotundoclone', $e->errorcode);
+        }
+        $this->assertSame(0, (int) $DB->get_field(journal::TABLE, 'timeundone', ['id' => $result['batchid']]));
+        $this->assertTrue($DB->record_exists('course', ['shortname' => 'CALC1-2027-01']));
+    }
+
+    /**
+     * A parent without moodle/category:manage stops the whole batch: no category, no copy, no journal row.
+     */
+    public function test_category_creation_rolls_back_on_error(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $pa = $gen->create_category(['name' => 'Programa A', 'parent' => $root->id]);
+        $pb = $gen->create_category(['name' => 'Programa B', 'parent' => $root->id]);
+        $sub = $gen->create_category(['name' => 'Sub', 'parent' => $pb->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $periodroot = $gen->create_category(['name' => 'Facultades', 'parent' => $period->id]);
+        $periodpb = $gen->create_category(['name' => 'Programa B', 'parent' => $periodroot->id]);
+        $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $pa->id]);
+        $gen->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $sub->id]);
+
+        // Allowed everywhere, except managing categories inside the period's «Programa B».
+        $user = $gen->create_user();
+        $roleid = $gen->create_role();
+        $system = \context_system::instance();
+        $caps = [
+            'tool/ceaorganizador:manage',
+            'moodle/backup:backupcourse',
+            'moodle/restore:restorecourse',
+            'moodle/course:create',
+            'moodle/category:manage',
+        ];
+        foreach ($caps as $cap) {
+            assign_capability($cap, CAP_ALLOW, $roleid, $system->id, true);
+        }
+        assign_capability('moodle/category:manage', CAP_PROHIBIT, $roleid, \context_coursecat::instance($periodpb->id)->id, true);
+        role_assign($roleid, $user->id, $system->id);
+        $this->setUser($user);
+
+        $categories = $DB->count_records('course_categories');
+        $courses = $DB->count_records('course');
+        try {
+            $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id);
+            $this->fail('Expected required_capability_exception');
+        } catch (\required_capability_exception $e) {
+            $this->assertSame(get_capability_string('moodle/category:manage'), $e->a);
+        }
+
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(0, $this->child((int) $periodroot->id, 'Programa A'));
+        $this->assertSame($courses, $DB->count_records('course'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+        $this->assertCount(0, \core\task\manager::get_adhoc_tasks(self::TASK));
+        // The lock was released: another run can take it.
+        guard::lock()->release();
+    }
+}

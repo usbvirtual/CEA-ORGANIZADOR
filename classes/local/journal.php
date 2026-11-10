@@ -32,6 +32,8 @@ namespace tool_ceaorganizador\local;
  * - move_course: {id, from: {category, afterid, visible}, to: {category, afterid, visible}}
  * - sort: {categories: [{parentid, before: [ids], after: [ids]}], courses: [{categoryid, before, after}]}
  * - rename: {items: [{type: category|course, id, before: {name} | {fullname, shortname}, after: {...}}]}
+ * - clone: {periodid, label, startdate, enddate, categories: [created ids], items: [{source, newfullname,
+ *   newshortname, destcategoryid, backupid, restoreid, newcourseid, error}]}; see clonerunner. It cannot be undone.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -42,7 +44,7 @@ class journal {
     public const TABLE = 'tool_ceaorganizador_log';
 
     /** @var string[] Accepted actions. */
-    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename'];
+    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone'];
 
     /** @var int Days the journal keeps a row. */
     public const RETENTION_DAYS = 90;
@@ -135,11 +137,15 @@ class journal {
      * @param int $logid
      * @return array ['ok' => bool, 'conflicts' => string[]]; nothing is written when there are conflicts.
      * @throws \dml_missing_record_exception When the row does not exist.
-     * @throws \moodle_exception error_alreadyundone when it was already undone.
+     * @throws \moodle_exception error_alreadyundone when it was already undone; error_cannotundoclone for a clone.
      */
     public static function undo(int $logid): array {
         global $DB, $USER;
         $log = $DB->get_record(self::TABLE, ['id' => $logid], '*', MUST_EXIST);
+        // Undoing a clone would delete courses: never automatic.
+        if ($log->action === 'clone') {
+            throw new \moodle_exception('error_cannotundoclone', 'tool_ceaorganizador');
+        }
         // Time, not user: the user may have been anonymised to 0.
         if ((int) $log->timeundone > 0) {
             throw new \moodle_exception('error_alreadyundone', 'tool_ceaorganizador');

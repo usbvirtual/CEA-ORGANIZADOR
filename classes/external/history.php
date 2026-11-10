@@ -87,7 +87,7 @@ class history extends external_api {
         return new external_single_structure([
             'rows' => new external_multiple_structure(new external_single_structure([
                 'id' => new external_value(PARAM_INT, 'Journal id'),
-                'action' => new external_value(PARAM_ALPHANUMEXT, 'move_category, move_course, sort or rename'),
+                'action' => new external_value(PARAM_ALPHANUMEXT, 'move_category, move_course, sort, rename or clone'),
                 'summary' => new external_value(PARAM_RAW, 'Formatted summary (HTML-safe)'),
                 'userfullname' => new external_value(PARAM_RAW, 'Escaped name of who did it; empty when anonymised'),
                 'timecreated' => new external_value(PARAM_INT, 'When it was done'),

@@ -66,6 +66,10 @@ class undo extends external_api {
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
+        // A clone is never undone; refuse it before taking the lock (journal::undo refuses it too).
+        if ($DB->get_field(journal::TABLE, 'action', ['id' => $params['logid']]) === 'clone') {
+            throw new \moodle_exception('error_cannotundoclone', 'tool_ceaorganizador');
+        }
 
         $lock = guard::lock();
         try {
