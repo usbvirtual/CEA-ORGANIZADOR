@@ -131,13 +131,18 @@ class cloner {
     /**
      * Removes the existing period (and the separator before it) and appends the new one.
      *
+     * Spaces, tabs, hyphens and underscores left at either end after the removal are trimmed,
+     * so a period at the start ("2026-02-CALC1") does not leave a dangling separator.
+     * A period in the middle leaves exactly one space (the one after it): "Curso 2026-02 Grupo A"
+     * becomes "Curso Grupo A 2027-01".
+     *
      * @param string $name
      * @param string $label
      * @param string $separator
      * @return string
      */
     private static function with_period(string $name, string $label, string $separator): string {
-        $base = trim(preg_replace(self::PERIOD_WITH_SEPARATOR, '', $name, 1));
+        $base = trim(preg_replace(self::PERIOD_WITH_SEPARATOR, '', $name, 1), " 	-_");
         return $base === '' ? $label : $base . $separator . $label;
     }
 }

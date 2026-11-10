@@ -49,6 +49,16 @@ final class cloner_test extends \advanced_testcase {
     }
 
     /**
+     * A period at the start or in the middle leaves no dangling separator.
+     */
+    public function test_names_period_at_start_or_middle(): void {
+        $this->assertSame('CALC1-2027-01', cloner::new_shortname('2026-02-CALC1', '2027-01'));
+        $this->assertSame('Semestre II 2027-01', cloner::new_fullname('Semestre II 2026-02', '2027-01'));
+        $this->assertSame('2027-01', cloner::new_fullname('2026 II', '2027-01'));
+        $this->assertSame('Curso Grupo A 2027-01', cloner::new_fullname('Curso 2026-02 Grupo A', '2027-01'));
+    }
+
+    /**
      * Names are never truncated, so the caller can flag the ones that are too long.
      */
     public function test_name_too_long_is_error(): void {
