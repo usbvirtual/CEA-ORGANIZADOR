@@ -59,6 +59,9 @@ class undo extends external_api {
      */
     public static function execute(int $logid): array {
         global $DB;
+        // Undoing a large sort or rename can take a while.
+        \core_php_time_limit::raise();
+        raise_memory_limit(MEMORY_EXTRA);
         $params = self::validate_parameters(self::execute_parameters(), ['logid' => $logid]);
         $context = \context_system::instance();
         self::validate_context($context);

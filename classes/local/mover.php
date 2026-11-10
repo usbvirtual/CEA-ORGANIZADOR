@@ -199,10 +199,16 @@ class mover {
      *
      * Replicates core_course_category::resort_subcategories() with a given order.
      *
+     * With $cleanup false, the site-wide fix_course_sortorder() is skipped, as in
+     * core_course_category::resort_subcategories($field, $cleanup): the caller must then call
+     * \core_course_category::resort_categories_cleanup(true) once, after its last list.
+     * Events are triggered either way.
+     *
      * @param int $parentid 0 for top level.
      * @param int[] $ids All current children, in the new order.
+     * @param bool $cleanup Whether to fix the sortorders and purge the caches now.
      */
-    public static function apply_category_order(int $parentid, array $ids): void {
+    public static function apply_category_order(int $parentid, array $ids, bool $cleanup = true): void {
         global $DB;
         $ids = array_map('intval', array_values($ids));
         $current = tree::sibling_categories($parentid);
@@ -223,7 +229,9 @@ class mover {
                 $DB->set_field('course_categories', 'sortorder', $i, ['id' => $id]);
                 $i += (int) $records[$id]->coursecount;
             }
-            \core_course_category::resort_categories_cleanup();
+            if ($cleanup) {
+                \core_course_category::resort_categories_cleanup();
+            }
 
             foreach ($ids as $index => $id) {
                 if ($current[$index] !== $id) {
@@ -245,10 +253,17 @@ class mover {
      *
      * Replicates core_course_category::resort_courses() with a given order.
      *
+     * With $cleanup false, the site-wide fix_course_sortorder() is skipped, as in
+     * core_course_category::resort_courses($field, $cleanup): the caller must then call
+     * \core_course_category::resort_categories_cleanup(true) once, after its last list.
+     * A batch must apply its course lists before its category lists: a category order written
+     * without cleanup leaves temporary category sortorders that a course order must not build on.
+     *
      * @param int $categoryid
      * @param int[] $ids All current courses of the category, in the new order.
+     * @param bool $cleanup Whether to fix the sortorders and purge the caches now.
      */
-    public static function apply_course_order(int $categoryid, array $ids): void {
+    public static function apply_course_order(int $categoryid, array $ids, bool $cleanup = true): void {
         global $DB;
         $ids = array_map('intval', array_values($ids));
         $categorysortorder = (int) $DB->get_field('course_categories', 'sortorder', ['id' => $categoryid], MUST_EXIST);
@@ -271,7 +286,9 @@ class mover {
                 $DB->set_field('course', 'sortorder', $categorysortorder + $i, ['id' => $id]);
                 $i++;
             }
-            \core_course_category::resort_categories_cleanup(true);
+            if ($cleanup) {
+                \core_course_category::resort_categories_cleanup(true);
+            }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
             guard::rollback($transaction, $e);

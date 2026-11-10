@@ -114,7 +114,7 @@ final class mover_test extends \advanced_testcase {
         $b = (int) $generator->create_category(['name' => 'B'])->id;
 
         // Another admin puts B inside A after the tree was loaded.
-        \core_course_category::get($b)->change_parent($a);
+        \core_course_category::get($b, MUST_EXIST, true)->change_parent($a);
 
         $this->assert_error('cannotmoveintodescendant', fn() => mover::move_category($a, $b, 0));
         $this->assert_error('cannotmoveintodescendant', fn() => mover::move_category($a, $a, 0));
@@ -221,6 +221,110 @@ final class mover_test extends \advanced_testcase {
             $this->assertSame(2, $e->a);
         }
         $this->assertSame([$c3, $c2, $c1], tree::category_courses($cat));
+    }
+
+    /**
+     * Sortorders of every category and course, keyed by id.
+     *
+     * @return array ['categories' => [id => sortorder], 'courses' => [id => sortorder]]
+     */
+    private function sortorders(): array {
+        global $DB;
+        $categories = array_map('intval', $DB->get_records_menu('course_categories', null, 'id', 'id, sortorder'));
+        $courses = array_map('intval', $DB->get_records_menu('course', null, 'id', 'id, sortorder'));
+        return ['categories' => $categories, 'courses' => $courses];
+    }
+
+    /**
+     * A multi-list sort with the cleanup deferred to one final call ends exactly as with a cleanup per list.
+     */
+    public function test_deferred_cleanup_gives_same_orders(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $p = (int) $generator->create_category(['name' => 'P'])->id;
+        $q = (int) $generator->create_category(['name' => 'Q'])->id;
+        $children = [];
+        $courses = [];
+        foreach (['C1', 'C2', 'C3'] as $name) {
+            $child = (int) $generator->create_category(['name' => $name, 'parent' => $p])->id;
+            $children[] = $child;
+            for ($i = 0; $i < 3; $i++) {
+                $generator->create_course(['category' => $child]);
+            }
+            $courses[$child] = tree::category_courses($child);
+        }
+        $generator->create_course(['category' => $p]);
+        $generator->create_course(['category' => $p]);
+        $courses[$p] = tree::category_courses($p);
+        $top = tree::sibling_categories(0);
+        $initial = $this->sortorders();
+
+        // The new orders: every list reversed, in a nested tree (top level, P, and P's children).
+        $categorylists = [0 => array_reverse($top), $p => array_reverse($children)];
+        $courselists = [];
+        foreach ($courses as $categoryid => $ids) {
+            $courselists[$categoryid] = array_reverse($ids);
+        }
+
+        // Reference: a cleanup after every list, categories first, as before the deferred cleanup existed.
+        foreach ($categorylists as $parentid => $ids) {
+            mover::apply_category_order($parentid, $ids);
+        }
+        foreach ($courselists as $categoryid => $ids) {
+            mover::apply_course_order($categoryid, $ids);
+        }
+        $reference = $this->sortorders();
+        $this->assertNotSame($initial, $reference);
+
+        // Back to the initial orders, with a cleanup per list.
+        foreach ($courses as $categoryid => $ids) {
+            mover::apply_course_order($categoryid, $ids);
+        }
+        mover::apply_category_order($p, $children);
+        mover::apply_category_order(0, $top);
+        $this->assertSame($courses[$p], tree::category_courses($p));
+        $this->assertSame($top, tree::sibling_categories(0));
+
+        // Deferred: course lists, then category lists, then one cleanup, as sort_apply and the undo do.
+        foreach ($courselists as $categoryid => $ids) {
+            mover::apply_course_order($categoryid, $ids, false);
+        }
+        foreach ($categorylists as $parentid => $ids) {
+            mover::apply_category_order($parentid, $ids, false);
+        }
+        \core_course_category::resort_categories_cleanup(true);
+
+        $this->assertSame($reference, $this->sortorders());
+        $this->assertSame(array_reverse($top), tree::sibling_categories(0));
+        $this->assertSame(array_reverse($children), tree::sibling_categories($p));
+        foreach ($courselists as $categoryid => $ids) {
+            $this->assertSame($ids, tree::category_courses($categoryid));
+        }
+        $this->assertContains($q, tree::sibling_categories(0));
+    }
+
+    /**
+     * A category order without cleanup still triggers its events.
+     */
+    public function test_apply_category_order_without_cleanup_triggers_events(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $a = (int) $generator->create_category(['name' => 'A'])->id;
+        $b = (int) $generator->create_category(['name' => 'B', 'parent' => $a])->id;
+        $c = (int) $generator->create_category(['name' => 'C', 'parent' => $a])->id;
+
+        $sink = $this->redirectEvents();
+        mover::apply_category_order($a, [$c, $b], false);
+        $events = array_filter(
+            $sink->get_events(),
+            fn($event) => $event instanceof \core\event\course_category_updated
+        );
+        $sink->close();
+
+        $this->assertCount(2, $events);
+        $this->assertSame([$c, $b], tree::sibling_categories($a));
     }
 
     /**

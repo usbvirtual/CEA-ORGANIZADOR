@@ -531,12 +531,14 @@ class journal {
                 }
                 return;
             case 'sort':
-                foreach ($payload['categories'] ?? [] as $entry) {
-                    mover::apply_category_order((int) $entry['parentid'], self::ids($entry['before']));
-                }
+                // Courses first, then categories, and one site-wide cleanup at the end (see mover).
                 foreach ($payload['courses'] ?? [] as $entry) {
-                    mover::apply_course_order((int) $entry['categoryid'], self::ids($entry['before']));
+                    mover::apply_course_order((int) $entry['categoryid'], self::ids($entry['before']), false);
                 }
+                foreach ($payload['categories'] ?? [] as $entry) {
+                    mover::apply_category_order((int) $entry['parentid'], self::ids($entry['before']), false);
+                }
+                \core_course_category::resort_categories_cleanup(true);
                 return;
             case 'rename':
                 // Reverse order, so a chain such as B to C, then A to B, frees each name before it is reused.

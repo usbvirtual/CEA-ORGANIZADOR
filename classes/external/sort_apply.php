@@ -59,6 +59,9 @@ class sort_apply extends external_api {
      */
     public static function execute(int $categoryid, string $scope, bool $recursive, string $hash): array {
         global $DB;
+        // A recursive sort of a large tree can take a while.
+        \core_php_time_limit::raise();
+        raise_memory_limit(MEMORY_EXTRA);
         $params = self::validate_parameters(self::execute_parameters(), [
             'categoryid' => $categoryid,
             'scope' => $scope,
@@ -85,19 +88,25 @@ class sort_apply extends external_api {
             }
 
             $payload = ['categories' => [], 'courses' => []];
+            foreach ($plan['changes'] as $change) {
+                $before = array_column($change['before'], 'id');
+                $after = array_column($change['after'], 'id');
+                if ($change['kind'] === 'categories') {
+                    $payload['categories'][] = ['parentid' => $change['parentid'], 'before' => $before, 'after' => $after];
+                } else {
+                    $payload['courses'][] = ['categoryid' => $change['parentid'], 'before' => $before, 'after' => $after];
+                }
+            }
             $transaction = $DB->start_delegated_transaction();
             try {
-                foreach ($plan['changes'] as $change) {
-                    $before = array_column($change['before'], 'id');
-                    $after = array_column($change['after'], 'id');
-                    if ($change['kind'] === 'categories') {
-                        mover::apply_category_order($change['parentid'], $after);
-                        $payload['categories'][] = ['parentid' => $change['parentid'], 'before' => $before, 'after' => $after];
-                    } else {
-                        mover::apply_course_order($change['parentid'], $after);
-                        $payload['courses'][] = ['categoryid' => $change['parentid'], 'before' => $before, 'after' => $after];
-                    }
+                // Courses first, then categories, and one site-wide cleanup at the end (see mover).
+                foreach ($payload['courses'] as $entry) {
+                    mover::apply_course_order($entry['categoryid'], $entry['after'], false);
                 }
+                foreach ($payload['categories'] as $entry) {
+                    mover::apply_category_order($entry['parentid'], $entry['after'], false);
+                }
+                \core_course_category::resort_categories_cleanup(true);
                 $logid = journal::record('sort', self::summary($categoryid), $payload);
                 $transaction->allow_commit();
             } catch (\Throwable $e) {

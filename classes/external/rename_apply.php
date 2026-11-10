@@ -73,6 +73,9 @@ class rename_apply extends external_api {
      * @return array ['results' => [['type', 'id', 'status', 'message']], 'logid' => int]; logid is 0 when nothing was applied.
      */
     public static function execute(array $changes): array {
+        // A batch of up to 500 renames can take a while.
+        \core_php_time_limit::raise();
+        raise_memory_limit(MEMORY_EXTRA);
         $params = self::validate_parameters(self::execute_parameters(), ['changes' => $changes]);
         $context = \context_system::instance();
         self::validate_context($context);

@@ -382,13 +382,20 @@ final class journal_test extends \advanced_testcase {
         $k1 = (int) $generator->create_course(['category' => $p])->id;
         $k2 = (int) $generator->create_course(['category' => $p])->id;
         $k3 = (int) $generator->create_course(['category' => $p])->id;
+        $q = (int) $generator->create_category(['name' => 'Q'])->id;
+        $q1 = (int) $generator->create_course(['category' => $q])->id;
+        $q2 = (int) $generator->create_course(['category' => $q])->id;
         mover::apply_category_order($p, [$c2, $c1]);
         mover::apply_course_order($p, [$k1, $k2, $k3]);
+        mover::apply_course_order($q, [$q1, $q2]);
         $logid = journal::record('sort', 'Ordenar P', [
             'categories' => [['parentid' => $p, 'before' => [$c1, $c2], 'after' => [$c2, $c1]]],
-            'courses' => [['categoryid' => $p, 'before' => [$k3, $k2, $k1], 'after' => [$k1, $k2, $k3]]],
+            'courses' => [
+                ['categoryid' => $q, 'before' => [$q2, $q1], 'after' => [$q1, $q2]],
+                ['categoryid' => $p, 'before' => [$k3, $k2, $k1], 'after' => [$k1, $k2, $k3]],
+            ],
         ]);
-        // The categories are restored first; then the courses fail.
+        // The course lists are restored first: Q is written, then P fails (3 courses, limit 2).
         set_config('maxcoursesincategory', 2);
 
         try {
@@ -401,6 +408,7 @@ final class journal_test extends \advanced_testcase {
         $this->assertFalse($DB->is_transaction_started());
         $this->assertSame([$c2, $c1], tree::sibling_categories($p));
         $this->assertSame([$k1, $k2, $k3], tree::category_courses($p));
+        $this->assertSame([$q1, $q2], tree::category_courses($q));
         $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
     }
 
