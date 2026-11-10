@@ -254,5 +254,62 @@ final class cloneplan_test extends \advanced_testcase {
                 $this->assertInstanceOf(\invalid_parameter_exception::class, $e);
             }
         }
+
+        // Category 0 would expand to the whole site; negative ids are just as wrong.
+        foreach ([['type' => 'category', 'id' => 0], ['type' => 'course', 'id' => -3]] as $item) {
+            try {
+                cloneplan::build([$item], $period->id, '2027-01', self::START, self::END);
+                $this->fail('Expected invalid_parameter_exception');
+            } catch (\invalid_parameter_exception $e) {
+                $this->assertInstanceOf(\invalid_parameter_exception::class, $e);
+            }
+        }
+    }
+
+    /**
+     * A name that becomes longer than 254 characters is an error on its row.
+     */
+    public function test_toolong_row(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $long = $gen->create_course(['fullname' => 'Largo', 'shortname' => str_repeat('x', 250), 'category' => $root->id]);
+
+        $plan = $this->plan([['type' => 'course', 'id' => $long->id]], $period->id);
+        $this->assertSame(258, \core_text::strlen($plan['rows'][0]['newshortname']));
+        $this->assertSame('toolong', $plan['rows'][0]['error']);
+    }
+
+    /**
+     * The seed root itself cannot be the period.
+     */
+    public function test_period_equal_seed_root_rejected(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $prog->id]);
+
+        $plan = $this->plan([['type' => 'course', 'id' => $calc->id]], $root->id);
+        $this->assertSame('destinsideseeds', $plan['rows'][0]['error']);
+    }
+
+    /**
+     * New names are raw: an ampersand is not turned into an entity.
+     */
+    public function test_ampersand_name_stays_raw(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $course = $gen->create_course(['fullname' => 'A & B', 'shortname' => 'AB', 'category' => $root->id]);
+
+        $plan = $this->plan([['type' => 'course', 'id' => $course->id]], $period->id);
+        $this->assertSame('A & B 2027-01', $plan['rows'][0]['newfullname']);
+        $this->assertNull($plan['rows'][0]['error']);
     }
 }

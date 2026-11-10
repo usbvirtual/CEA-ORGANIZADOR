@@ -38,7 +38,7 @@ class cloneplan {
      * Builds the preview of a cloning batch. It writes nothing.
      *
      * @param array $items List of ['type' => 'category'|'course', 'id' => int]; categories expand to their courses
-     *      and those of their descendants. Items that do not exist are ignored.
+     *      and those of their descendants. Items that do not exist are ignored; ids below 1 are rejected.
      * @param int $periodid Category of the period that receives the copies.
      * @param string $label Period text such as "2027-01".
      * @param int $startdate Start date of the copies.
@@ -56,6 +56,12 @@ class cloneplan {
         }
         if ($startdate <= 0 || $enddate <= $startdate) {
             throw new \invalid_parameter_exception('Invalid dates');
+        }
+        foreach ($items as $item) {
+            // Category 0 would expand to every course of the site.
+            if ((int) ($item['id'] ?? 0) <= 0) {
+                throw new \invalid_parameter_exception('Invalid item id');
+            }
         }
 
         $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name');
