@@ -118,6 +118,23 @@ export const render = (container, model, state) => {
         return node;
     };
 
+    // Optional "Move to..." button; state.onMoveTo(item, button) opens the dialog.
+    const addMoveButton = (li, row, name) => {
+        if (!state.onMoveTo) {
+            return;
+        }
+        const button = create('button', 'tool-ceaorganizador-mover btn btn-secondary btn-sm', strings.moveto);
+        button.type = 'button';
+        button.tabIndex = -1;
+        button.dataset.action = 'moveto';
+        button.setAttribute('aria-label', format(strings.movetitle, name));
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            state.onMoveTo(li, button);
+        });
+        row.appendChild(button);
+    };
+
     const hiddenLabel = () => create('span', 'tool-ceaorganizador-oculta badge badge-secondary bg-secondary', strings.hidden);
 
     const isShown = (row) => !state.visible || state.visible.has(row.id);
@@ -156,6 +173,7 @@ export const render = (container, model, state) => {
                 row.appendChild(label);
                 li.setAttribute('aria-describedby', label.id);
             }
+            addMoveButton(li, row, decodeEntities(course.fullname));
             li.appendChild(row);
             group.appendChild(li);
         });
@@ -239,6 +257,7 @@ export const render = (container, model, state) => {
             line.appendChild(badge);
         }
         li.setAttribute('aria-describedby', described.join(' '));
+        addMoveButton(li, line, decodeEntities(row.name));
         line.addEventListener('click', () => toggle(li));
         li.appendChild(line);
         if (expanded.has(row.id) || forcedOpen(row)) {
@@ -301,6 +320,10 @@ export const render = (container, model, state) => {
         list[0].tabIndex = 0;
     }
 
+    // The listeners are bound once; they call the toggle of the latest render (its model may be new).
+    const holder = container.ceaTree || (container.ceaTree = {});
+    holder.toggle = toggle;
+
     if (!container.dataset.treeviewBound) {
         container.dataset.treeviewBound = '1';
         container.addEventListener('focusin', (event) => {
@@ -337,21 +360,21 @@ export const render = (container, model, state) => {
                     break;
                 case 'ArrowRight':
                     if (isCategory && !isOpen) {
-                        toggle(item);
+                        holder.toggle(item);
                     } else if (isOpen) {
                         focusItem(item.querySelector(':scope > [role="group"] > [role="treeitem"]'));
                     }
                     break;
                 case 'ArrowLeft':
                     if (isOpen) {
-                        toggle(item);
+                        holder.toggle(item);
                     } else {
                         focusItem(item.parentElement.closest('[role="treeitem"]'));
                     }
                     break;
                 case 'Enter':
                 case ' ':
-                    toggle(item);
+                    holder.toggle(item);
                     break;
                 default:
                     handled = false;

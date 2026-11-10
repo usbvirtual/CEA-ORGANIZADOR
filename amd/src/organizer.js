@@ -27,6 +27,11 @@ import * as api from 'tool_ceaorganizador/api';
 import {createModel} from 'tool_ceaorganizador/treemodel';
 import {decodeEntities} from 'tool_ceaorganizador/text';
 import {render, format} from 'tool_ceaorganizador/treeview';
+import * as toast from 'tool_ceaorganizador/toast';
+import {createMover} from 'tool_ceaorganizador/mover';
+import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
+import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
+import {open as openPicker} from 'tool_ceaorganizador/movepicker';
 
 const SEARCH_DELAY = 250;
 const MIN_COURSE_SEARCH = 3;
@@ -34,10 +39,18 @@ const MIN_COURSE_SEARCH = 3;
 // Literal shape, so that check-strings can verify every key.
 const REQUESTS = [
     {key: 'coursecount', component: 'tool_ceaorganizador'},
+    {key: 'dropafter', component: 'tool_ceaorganizador'},
+    {key: 'dropbefore', component: 'tool_ceaorganizador'},
+    {key: 'dropcancelled', component: 'tool_ceaorganizador'},
+    {key: 'dropinside', component: 'tool_ceaorganizador'},
     {key: 'error_generic', component: 'tool_ceaorganizador'},
+    {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
+    {key: 'invaliddrop', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
+    {key: 'movetitle', component: 'tool_ceaorganizador'},
+    {key: 'moveto', component: 'tool_ceaorganizador'},
     {key: 'needsort', component: 'tool_ceaorganizador'},
     {key: 'needsortsummary', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
@@ -66,21 +79,62 @@ export const init = ({root}) => {
         REQUESTS.forEach((request, index) => {
             strings[request.key] = values[index];
         });
-        const model = createModel(tree.categories, decodeEntities);
         const state = {api, strings, onError: Notification.exception};
-        const view = render(treeel, model, state);
+        // The context is read live: reload() replaces the model and the view.
+        const ctx = {
+            model: createModel(tree.categories, decodeEntities),
+            api,
+            state,
+            strings,
+            toast,
+            onError: Notification.exception,
+            container: treeel,
+            siblingsOf: (id) => courseIds(treeel, id),
+            view: {refresh: () => current.refresh()},
+            reload: () => api.getTree().then((fresh) => {
+                ctx.model = createModel(fresh.categories, decodeEntities);
+                state.cache.clear();
+                current = render(treeel, ctx.model, state);
+                showSummary(fresh.needsortcount);
+                return null;
+            }),
+        };
+        const mover = createMover(ctx);
+        const moveTo = (item, trigger) => {
+            const dragged = describeItem(item);
+            const label = item.querySelector(':scope > .tool-ceaorganizador-fila > .tool-ceaorganizador-nombre');
+            openPicker({
+                model: ctx.model,
+                dragged,
+                name: label ? label.textContent : '',
+                trigger,
+                strings,
+                decode: decodeEntities,
+                onPick: (id) => mover.moveInside(dragged, id),
+            });
+        };
+        state.onMoveTo = moveTo;
+        let current = render(treeel, ctx.model, state);
+        attachDrag(treeel, ctx, {onDrop: (dragged, dest) => mover.move(dragged, dest)});
+        attachKeyboard(treeel, ctx, {
+            onDrop: (dragged, dest, options) => mover.move(dragged, dest, options),
+            onMoveTo: (item) => moveTo(item, item),
+        });
 
-        if (summary) {
-            summary.hidden = tree.needsortcount <= 0;
-            summarytext.textContent = format(strings.needsortsummary, tree.needsortcount);
-        }
+        const showSummary = (count) => {
+            if (summary) {
+                summary.hidden = count <= 0;
+                summarytext.textContent = format(strings.needsortsummary, count);
+            }
+        };
+        showSummary(tree.needsortcount);
 
         let timer = null;
         let token = 0;
         const search = () => {
             const query = input.value;
-            state.visible = query.trim() === '' ? null : model.filter(query);
-            view.refresh();
+            state.visible = query.trim() === '' ? null : ctx.model.filter(query);
+            current.refresh();
             const mine = ++token;
             results.textContent = '';
             if (query.trim().length < MIN_COURSE_SEARCH) {
