@@ -117,7 +117,8 @@ class sorter {
      * regular expression. Contains and exact values are stored normalized;
      * regular expressions are stored as given and are matched against the
      * normalized name (lowercase, no accents), so write them that way.
-     * Invalid regular expressions and blank lines are dropped.
+     * Invalid regular expressions, blank lines and values that normalize to
+     * nothing are dropped.
      *
      * @param string $text
      * @return array List of ['type' => string, 'value' => string].
@@ -139,7 +140,11 @@ class sorter {
                     $patterns[] = ['type' => 'exact', 'value' => $value];
                 }
             } else {
-                $patterns[] = ['type' => 'contains', 'value' => self::normalize($line)];
+                // A value that normalizes to nothing (such as a lone tag) would match every name.
+                $value = self::normalize($line);
+                if ($value !== '') {
+                    $patterns[] = ['type' => 'contains', 'value' => $value];
+                }
             }
         }
         return $patterns;
@@ -150,7 +155,7 @@ class sorter {
      *
      * @return array ['semilla' => array, 'facultad' => array]
      */
-    public static function DEFAULT_PATTERNS_PARSED(): array { // phpcs:ignore moodle.NamingConventions.ValidFunctionName
+    public static function default_patterns_parsed(): array {
         return [
             'semilla' => self::parse_patterns(self::DEFAULT_PATTERNS['semilla']),
             'facultad' => self::parse_patterns(self::DEFAULT_PATTERNS['facultad']),
@@ -277,7 +282,8 @@ class sorter {
             case 'regex':
                 return @preg_match($pattern['value'], $normalized) === 1;
             default:
-                return strpos($normalized, $pattern['value']) !== false;
+                // An empty value would match every name.
+                return $pattern['value'] !== '' && strpos($normalized, $pattern['value']) !== false;
         }
     }
 

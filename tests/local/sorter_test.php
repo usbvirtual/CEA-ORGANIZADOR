@@ -96,7 +96,7 @@ final class sorter_test extends \advanced_testcase {
             'Facultad de Ingeniería', 'CEA', '2026-01', 'Semillas', 'Facultades', '2026-02',
             'Centro de Idiomas', '2025-02',
         ]);
-        $order = sorter::propose($items, true, sorter::DEFAULT_PATTERNS_PARSED());
+        $order = sorter::propose($items, true, sorter::default_patterns_parsed());
         $this->assertSame(
             ['2026-02', '2026-01', '2025-02', 'CEA', 'Centro de Idiomas', 'Facultades', 'Semillas',
                 'Facultad de Ingeniería'],
@@ -108,7 +108,7 @@ final class sorter_test extends \advanced_testcase {
      * "Facultades" is a seed only at the top level.
      */
     public function test_facultades_is_seed_only_at_top_level(): void {
-        $p = sorter::DEFAULT_PATTERNS_PARSED();
+        $p = sorter::default_patterns_parsed();
         $this->assertSame('semilla', sorter::classify('Facultades', true, $p));
         $this->assertSame('otro', sorter::classify('Facultades', false, $p));
     }
@@ -120,7 +120,7 @@ final class sorter_test extends \advanced_testcase {
         $items = self::items(['Semestre II', '2026 -1 Cursos', 'Semestre I', '2026 -2 Cursos']);
         $this->assertSame(
             ['2026 -2 Cursos', '2026 -1 Cursos', 'Semestre I', 'Semestre II'],
-            self::names($items, sorter::propose($items, false, sorter::DEFAULT_PATTERNS_PARSED()))
+            self::names($items, sorter::propose($items, false, sorter::default_patterns_parsed()))
         );
     }
 
@@ -131,7 +131,7 @@ final class sorter_test extends \advanced_testcase {
         $items = self::items(['2026-02 Producción', '2026-02 Apoyo a la presencialidad']);
         $this->assertSame(
             ['2026-02 Apoyo a la presencialidad', '2026-02 Producción'],
-            self::names($items, sorter::propose($items, true, sorter::DEFAULT_PATTERNS_PARSED()))
+            self::names($items, sorter::propose($items, true, sorter::default_patterns_parsed()))
         );
     }
 
@@ -150,6 +150,20 @@ final class sorter_test extends \advanced_testcase {
     }
 
     /**
+     * A "contains" value that normalizes to nothing is dropped and never matches every name.
+     */
+    public function test_empty_contains_pattern_matches_nothing(): void {
+        $this->assertSame([], sorter::parse_patterns("<b></b>\n<span> </span>"));
+        $this->assertSame(
+            [['type' => 'contains', 'value' => 'semilla']],
+            sorter::parse_patterns("<i></i>\nSemilla")
+        );
+        // A stored empty value, from before this check, is ignored too.
+        $patterns = ['semilla' => [['type' => 'contains', 'value' => '']], 'facultad' => []];
+        $this->assertSame('aparte', sorter::classify('Centro de Idiomas', true, $patterns));
+    }
+
+    /**
      * An invalid regular expression is dropped.
      */
     public function test_invalid_regex_pattern_is_ignored(): void {
@@ -160,7 +174,7 @@ final class sorter_test extends \advanced_testcase {
      * The default regular expressions match faculties and programs.
      */
     public function test_default_faculty_patterns(): void {
-        $p = sorter::DEFAULT_PATTERNS_PARSED();
+        $p = sorter::default_patterns_parsed();
         $this->assertSame('facultad', sorter::classify('Facultad de Ingeniería', true, $p));
         $this->assertSame('facultad', sorter::classify('Programa Derecho', true, $p));
     }
@@ -170,7 +184,7 @@ final class sorter_test extends \advanced_testcase {
      */
     public function test_patterns_from_config(): void {
         $this->resetAfterTest();
-        $this->assertSame(sorter::DEFAULT_PATTERNS_PARSED(), sorter::patterns());
+        $this->assertSame(sorter::default_patterns_parsed(), sorter::patterns());
         set_config('patterns_semilla', '', 'tool_ceaorganizador');
         $this->assertSame([], sorter::patterns()['semilla']);
     }

@@ -192,7 +192,7 @@ final class external_test extends \advanced_testcase {
         $this->assertSame([$a, $b, $c], array_column($preview['changes'][0]['after'], 'id'));
 
         // Someone renames C: the proposed order becomes A, AA, B.
-        \core_course_category::get($c)->update(['name' => 'AA']);
+        \core_course_category::get($c, MUST_EXIST, true)->update(['name' => 'AA']);
 
         $result = sort_apply::execute($parent, 'categories', false, $preview['hash']);
         $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
@@ -312,7 +312,7 @@ final class external_test extends \advanced_testcase {
             ['type' => 'category', 'id' => $one, 'old' => 'Uno', 'new' => 'Uno nuevo'],
             ['type' => 'category', 'id' => $two, 'old' => 'Dos', 'new' => 'Dos nuevo'],
         ];
-        \core_course_category::get($two)->update(['name' => 'Dos cambiado']);
+        \core_course_category::get($two, MUST_EXIST, true)->update(['name' => 'Dos cambiado']);
 
         $result = rename_apply::execute($changes);
         $result = external_api::clean_returnvalue(rename_apply::execute_returns(), $result);

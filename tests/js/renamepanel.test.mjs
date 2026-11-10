@@ -142,6 +142,23 @@ test('un nombre con <b> crudo se muestra como texto y no crea elementos', async 
     assert.equal(tr.querySelector('input[data-field="new"]').value, '<i>Nuevo</i>');
 });
 
+test('un nombre manual con < queda marcado como multilang y no se envía', async () => {
+    const { document, calls } = setup([
+        { type: 'course', id: 5, old: 'A', new: 'B', error: null },
+        { type: 'course', id: 6, old: 'C', new: 'D', error: null },
+    ]);
+    click(document, 'preview');
+    await flush();
+    const tr = document.querySelector('[data-key="course:5"]');
+    const input = tr.querySelector('input[data-field="new"]');
+    input.value = 'B <b>negrita</b>';
+    input.dispatchEvent(new document.defaultView.Event('input'));
+    assert.equal(tr.querySelector('[data-region="error"]').textContent, 'renameerror_multilang');
+    click(document, 'apply');
+    await flush();
+    assert.deepEqual(calls.apply[0].changes, [{ type: 'course', id: 6, old: 'C', new: 'D' }]);
+});
+
 test('más de 500 filas se aplican en lotes secuenciales con aviso y un solo Deshacer que deshace todos', async () => {
     const rows = Array.from({ length: 501 }, (_, i) => ({
         type: 'category', id: i + 1, old: `a${i}`, new: `b${i}`, error: null,

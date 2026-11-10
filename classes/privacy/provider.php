@@ -56,7 +56,9 @@ class provider implements
             'userid' => 'privacy:metadata:log:userid',
             'action' => 'privacy:metadata:log:action',
             'payload' => 'privacy:metadata:log:payload',
+            'summary' => 'privacy:metadata:log:summary',
             'timecreated' => 'privacy:metadata:log:timecreated',
+            'timeundone' => 'privacy:metadata:log:timeundone',
             'undoneby' => 'privacy:metadata:log:undoneby',
         ], 'privacy:metadata:log');
         return $collection;

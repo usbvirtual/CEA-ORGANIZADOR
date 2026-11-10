@@ -16,8 +16,8 @@
 /**
  * History panel: the journal of operations, a page at a time, with an undo per entry.
  *
- * Summaries and user names are formatted strings (decode, then textContent). The
- * conflicts of an undo are written as they come, with textContent.
+ * Summaries, user names and the conflicts of an undo are formatted strings
+ * (decode, then textContent).
  *
  * @module     tool_ceaorganizador/historypanel
  * @copyright  2026 Universidad de San Buenaventura Cali
@@ -87,7 +87,7 @@ export const open = ({api, strings, onError, undo, reload, decode = (text) => te
         }
         conflicts.appendChild(create('strong', '', title));
         const ul = create('ul');
-        messages.forEach((message) => ul.appendChild(create('li', '', message)));
+        messages.forEach((message) => ul.appendChild(create('li', '', decode(message))));
         conflicts.appendChild(ul);
     };
 

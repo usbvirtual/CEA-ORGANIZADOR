@@ -106,6 +106,7 @@ const moveCourseLocal = (ctx, id, category, afterid, known = null) => {
  * @param {Function} ctx.onError Receives the exceptions of the web services.
  * @param {Function} ctx.reload Reloads the tree from the server.
  * @param {Element} [ctx.container] Tree element, to animate and focus the moved node.
+ * @param {Function} [ctx.decode] Turns a formatted string (the conflicts of an undo) into plain text.
  * @returns {{move: Function, moveInside: Function, moveToRoot: Function, undo: Function}}
  */
 export const createMover = (ctx) => {
@@ -155,7 +156,11 @@ export const createMover = (ctx) => {
             if (result.ok) {
                 await ctx.reload();
             } else if (!options.quiet) {
-                ctx.toast.show(result.conflicts.length ? result.conflicts.join(' ') : ctx.strings.error_generic);
+                // The conflicts carry formatted names: decode them before they become text.
+                const decode = ctx.decode || ((text) => text);
+                ctx.toast.show(result.conflicts.length
+                    ? result.conflicts.map((message) => decode(message)).join(' ')
+                    : ctx.strings.error_generic);
             }
             return result;
         } catch (error) {

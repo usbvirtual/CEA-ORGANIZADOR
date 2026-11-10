@@ -58,6 +58,14 @@ test('si undo devuelve conflictos los muestra y no recarga', async () => {
     assert.ok(!calls.some((c) => c[0] === 'reload'));
 });
 
+test('los conflictos de undo se decodifican antes de mostrarse (texto formateado)', async () => {
+    const { ctx, mover, toasts } = setup({ undo: async () => ({ ok: false, conflicts: ['«A &amp; B» cambió', 'otro'] }) });
+    ctx.decode = (text) => text.replace(/&amp;/g, '&');
+    await mover.move({ type: 'category', id: 3 }, { parent: 1, afterid: 0 });
+    await toasts[0].options.onAction();
+    assert.equal(toasts[1].message, '«A & B» cambió otro');
+});
+
 test('si la API falla revierte el modelo y entrega el error a onError', async () => {
     const boom = new Error('fallo');
     const { mover, model, toasts, errors } = setup({ moveCategory: async () => { throw boom; } });

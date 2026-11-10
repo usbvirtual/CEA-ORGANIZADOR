@@ -108,6 +108,11 @@ const errorOf = (row, value) => {
     if (name === '') {
         return 'empty';
     }
+    // rename_apply receives the name as PARAM_TEXT, which strips tags: a name with '<' would
+    // not be saved as shown, so it is never sent (the same refusal as multilanguage names).
+    if (name.includes('<')) {
+        return 'multilang';
+    }
     return name.length > MAX_NAME ? 'toolong' : null;
 };
 
