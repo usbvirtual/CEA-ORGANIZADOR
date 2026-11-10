@@ -210,3 +210,82 @@ public function test_mirror_without_seed_root(): void {
   - **Relanzar el mismo lote** no duplica.
 - [ ] **Step 2:** Agregar a `README.md` la función nueva y a `CLAUDE.md` las decisiones (`create_copy` después del commit, `clone` sin deshacer, estado por `backup_controllers`).
 - [ ] **Step 3:** Verificación completa: `npm test`, check-strings, `php -l`, moodle-cs 0/0 y `npm run package` (ZIP con `classes/local/clone*.php`). Commit «documentación del clonado».
+
+---
+
+## Ampliación aprobada el 2026-11-10: ordenar varias y ocultar/mostrar cursos
+
+### Task 7: Auto ordenar varias categorías seleccionadas
+
+**Files:**
+- Modify: `classes/local/sortplan.php`, `classes/external/sort_preview.php`, `classes/external/sort_apply.php`, `amd/src/api.js`, `amd/src/sortpanel.js`, `amd/src/organizer.js` (barra de selección), `lang/*`.
+- Test: `tests/local/sortplan_test.php` (o el archivo de pruebas de sortplan que ya exista) y `tests/js/sortpanel.test.mjs`.
+
+**Interfaces:**
+- **`sortplan::build_many(int[] $categoryids, string $scope, bool $recursive): array`**
+  - Devuelve la misma forma que `build`: `['changes' => [...], 'hash' => string]`.
+  - **Deduplicación:** ids repetidos se descartan. Con `recursive`, también se descarta todo id que sea descendiente de otro seleccionado.
+  - **Unión de planes:** sin cambios de padre duplicados. Si dos ids comparten padre, ese padre aparece una sola vez.
+  - **Firma:** se calcula sobre la unión, por ids.
+  - `build($id, ...)` sigue igual: es `build_many([$id], ...)`.
+- **`sort_preview` y `sort_apply`** aceptan un parámetro opcional `categoryids` (lista `PARAM_INT`, `VALUE_DEFAULT []`).
+  - Si viene con elementos, se usa en lugar de `categoryid`.
+  - Si se combina con un `categoryid` distinto de 0, se rechaza con `invalid_parameter_exception`.
+  - `sort_apply` sigue registrando **una sola** entrada `sort` en el historial y conserva la limpieza diferida (Regla 24: cursos antes que categorías y una sola `resort_categories_cleanup(true)`).
+- **JS:**
+  - `api.sortPreview` y `api.sortApply` pasan `categoryids` cuando están.
+  - `sortpanel.open({categoryids, paths})` muestra «N categorías seleccionadas».
+  - La barra de selección tiene el botón «Auto ordenar seleccionadas» (`autosortselected`), habilitado solo si hay al menos una categoría seleccionada.
+
+- [ ] **Step 1: Pruebas.**
+  - PHPUnit:
+    - `test_build_many_dedupes_descendants`
+    - `test_build_many_union_same_hash_as_single`: con un solo id, la firma es la misma que con `build`.
+    - `test_sort_apply_many_records_one_entry`
+    - `test_sort_apply_rejects_both_params`
+  - JS: el panel envía `categoryids`, y el botón queda deshabilitado sin categorías seleccionadas.
+- [ ] **Step 2:** Implementar.
+- [ ] **Step 3:** Verificar con `npm test`, check-strings, build, `php -l` y moodle-cs 0/0. Commit «auto ordenar varias categorías seleccionadas».
+
+### Task 8: Ocultar y mostrar cursos, con deshacer
+
+**Files:**
+- Modify: `classes/local/mover.php`, `classes/local/journal.php`, `db/services.php`, `version.php`, `amd/src/api.js`, `amd/src/treeview.js` (menú del curso), `amd/src/organizer.js` (barra de selección), `amd/src/historypanel.js`, `lang/*`.
+- Create: `classes/external/set_visibility.php`.
+- Test: `tests/local/mover_test.php`, `tests/local/journal_test.php`, `tests/external/external_test.php` y una prueba JS nueva o ampliada.
+
+**Interfaces:**
+- **`mover::set_course_visibility(int $id, bool $visible): void`**
+  - Usa `course_change_visibility($id, $visible)` de `course/lib.php`, el mismo en 4.2 y 5.1. Comprobarlo antes de usarlo.
+  - Rechaza `SITEID`.
+- **`journal`, acción nueva `visibility`:**
+  - payload `{items: [{id, before: 0|1, after: 0|1}]}`;
+  - **conflicto:** el `visible` actual es distinto de `after`; se informa `conflict_visibility` con el nombre;
+  - **restaurar:** volver a `before`.
+- **Servicio `tool_ceaorganizador_set_visibility(courseids[], visible)`, de escritura:**
+  - Abre con el candado `guard::lock()`, valida el contexto de sistema y comprueba `manage`.
+  - Para cada curso exige `mover::check_course($id, 'moodle/course:visibility')`.
+  - Admite como máximo 500 cursos (`error_toomany`).
+  - Omite los cursos que ya tienen esa visibilidad.
+  - Trabaja en **una** transacción y registra **una** entrada `visibility` en el historial, solo con los cursos que cambiaron.
+  - Devuelve `{changed: int, skipped: int, logid: int}`, con `logid` 0 si no cambió nada.
+- **Interfaz:**
+  - **Menú del curso:** «Ocultar» o «Mostrar», según su estado.
+  - **Barra de selección:** «Ocultar seleccionados» y «Mostrar seleccionados», habilitados si hay cursos seleccionados.
+  - **Después de aplicar:** aviso con Deshacer (se usa `mover.undo`) y actualización de la etiqueta «Oculta» de las filas.
+  - **Historial:** las entradas `visibility` se pueden deshacer.
+- **Cadenas** (orden alfabético):
+  - Interfaz: `hidecourse`, `showcourse`, `hideselected`, `showselected`, `visibilitychanged`.
+  - Historial: `summary_hide`, `summary_show`.
+
+- [ ] **Step 1: Pruebas.**
+  - PHPUnit:
+    - `test_set_visibility_hides_and_records`
+    - `test_set_visibility_skips_unchanged`
+    - `test_set_visibility_requires_course_visibility_cap`: usuario sin la capacidad, con `required_capability_exception` y sin cambios.
+    - `test_undo_visibility_restores`
+    - `test_undo_visibility_conflict`
+    - `clean_returnvalue` del servicio nuevo.
+  - JS: el menú muestra «Ocultar» o «Mostrar» según el curso; la barra envía los ids seleccionados; tras aplicar se actualiza la etiqueta «Oculta».
+- [ ] **Step 2:** Implementar. Subir `$plugin->version`, porque hay un servicio nuevo.
+- [ ] **Step 3:** Verificar con `npm test`, check-strings, build, `php -l`, moodle-cs 0/0 y `npm run package`. Actualizar `INSTALACION.md` y `README.md` con ambas funciones (sección corta). Commit «ocultar y mostrar cursos con deshacer».
