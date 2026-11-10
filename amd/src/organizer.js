@@ -51,6 +51,7 @@ const REQUESTS = [
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
     {key: 'moveto', component: 'tool_ceaorganizador'},
+    {key: 'movetoroot', component: 'tool_ceaorganizador'},
     {key: 'needsort', component: 'tool_ceaorganizador'},
     {key: 'needsortsummary', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
@@ -110,7 +111,7 @@ export const init = ({root}) => {
                 trigger,
                 strings,
                 decode: decodeEntities,
-                onPick: (id) => mover.moveInside(dragged, id),
+                onPick: (id) => (id === 0 ? mover.moveToRoot(dragged) : mover.moveInside(dragged, id)),
             });
         };
         state.onMoveTo = moveTo;

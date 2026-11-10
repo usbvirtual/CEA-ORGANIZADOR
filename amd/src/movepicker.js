@@ -25,6 +25,8 @@
 
 import {canDrop} from 'tool_ceaorganizador/dropzones';
 import {format} from 'tool_ceaorganizador/treeview';
+import {normalize} from 'tool_ceaorganizador/treemodel';
+import {isFirstAtRoot} from 'tool_ceaorganizador/mover';
 
 const SEPARATOR = ' / ';
 const FOCUSABLE = 'input, button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -37,8 +39,8 @@ const FOCUSABLE = 'input, button:not([disabled]), [href], [tabindex]:not([tabind
  * @param {Object} options.dragged {type, id[, category]} of the item to move.
  * @param {String} options.name Plain name of the item, for the title.
  * @param {Element} options.trigger Element that had the focus; it gets it back on close.
- * @param {Object} options.strings movetitle and moveto.
- * @param {Function} options.onPick Called with the id of the chosen category.
+ * @param {Object} options.strings movetitle, moveto and movetoroot.
+ * @param {Function} options.onPick Called with the id of the chosen category, 0 for the top level.
  * @param {Function} [options.decode] Turns a formatted name into plain text.
  * @param {Document} [options.doc] Document where the dialog is drawn.
  * @returns {{close: Function, element: Element}}
@@ -76,21 +78,29 @@ export const open = ({model, dragged, name, trigger, strings, onPick, decode = (
     walk(0);
     const choices = ordered.filter((id) => canDrop(model, dragged, {type: 'category', id}, 'inside'));
 
+    // The top level is offered to categories that are not already its first.
+    const offerRoot = dragged.type === 'category' && !isFirstAtRoot(model, dragged.id);
+
+    const addOption = (label, id) => {
+        const item = create('li');
+        const button = create('button', 'tool-ceaorganizador-dialogo-opcion btn btn-link');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', () => {
+            close();
+            onPick(id);
+        });
+        item.appendChild(button);
+        list.appendChild(item);
+    };
+
     const draw = () => {
         const shown = model.filter(input.value);
         list.textContent = '';
-        choices.filter((id) => shown.has(id)).forEach((id) => {
-            const item = create('li');
-            const button = create('button', 'tool-ceaorganizador-dialogo-opcion btn btn-link');
-            button.type = 'button';
-            button.textContent = decode(model.pathOf(id).join(SEPARATOR));
-            button.addEventListener('click', () => {
-                close();
-                onPick(id);
-            });
-            item.appendChild(button);
-            list.appendChild(item);
-        });
+        if (offerRoot && normalize(strings.movetoroot).includes(normalize(input.value).trim())) {
+            addOption(strings.movetoroot, 0);
+        }
+        choices.filter((id) => shown.has(id)).forEach((id) => addOption(decode(model.pathOf(id).join(SEPARATOR)), id));
     };
 
     function close() {

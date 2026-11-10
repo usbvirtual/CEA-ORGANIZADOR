@@ -160,7 +160,8 @@ export const attach = (container, ctx, {onDrop}) => {
         const ghost = row.cloneNode(true);
         ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
         ghost.setAttribute('aria-hidden', 'true');
-        ghost.classList.add('tool-ceaorganizador-fantasma');
+        // The ghost lives in the body, outside the root element that defines the --cea-* tokens.
+        ghost.classList.add('tool-ceaorganizador', 'tool-ceaorganizador-fantasma');
         ghost.style.width = `${box.width}px`;
         doc.body.appendChild(ghost);
         try {

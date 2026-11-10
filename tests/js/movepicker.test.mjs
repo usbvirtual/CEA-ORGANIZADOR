@@ -5,19 +5,19 @@ import { createModel } from 'tool_ceaorganizador/treemodel';
 import { open } from 'tool_ceaorganizador/movepicker';
 
 const row = (id, parent, name, sortorder) => ({ id, parent, name, sortorder });
-const setup = () => {
+const setup = (draggedid = 1) => {
     const dom = new JSDOM('<!doctype html><button id="t">Mover</button>');
     const { document, KeyboardEvent } = dom.window;
-    const model = createModel([row(1, 0, 'Pregrado', 1), row(2, 0, 'Posgrado', 2), row(11, 1, 'Medicina', 1)]);
+    const model = createModel([row(1, 0, 'Pregrado', 1), row(2, 0, 'Posgrado', 2), row(11, 1, 'Medicina', 1), row(12, 1, 'Salud', 2)]);
     const picks = [];
     const trigger = document.getElementById('t');
     trigger.focus();
     const dialog = open({
         model,
-        dragged: { type: 'category', id: 1 },
+        dragged: { type: 'category', id: draggedid },
         name: 'Pregrado',
         trigger,
-        strings: { movetitle: 'Mover «{$a}» a…', moveto: 'Mover a…' },
+        strings: { movetitle: 'Mover «{$a}» a…', moveto: 'Mover a…', movetoroot: 'Raíz (primer nivel)' },
         onPick: (id) => picks.push(id),
         doc: document,
     });
@@ -31,6 +31,18 @@ test('el diálogo es modal, excluye la categoría movida y sus descendientes', (
     assert.equal(dialog.element.getAttribute('aria-modal'), 'true');
     assert.equal(dialog.element.querySelector('h2').textContent, 'Mover «Pregrado» a…');
     assert.deepEqual(labels(document), ['Posgrado']);
+});
+
+test('la raíz no se ofrece a una categoría que ya es la primera de primer nivel', () => {
+    const { document } = setup(1);
+    assert.ok(!labels(document).includes('Raíz (primer nivel)'));
+});
+
+test('una subcategoría ve la opción de raíz primero y elegirla llama a onPick(0)', () => {
+    const { document, picks } = setup(12);
+    assert.equal(labels(document)[0], 'Raíz (primer nivel)');
+    document.querySelector('.tool-ceaorganizador-dialogo-opcion').click();
+    assert.deepEqual(picks, [0]);
 });
 
 test('el buscador filtra por ruta y elegir llama a onPick y cierra', () => {

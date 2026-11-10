@@ -29,6 +29,15 @@ import {canDrop, destinationFor} from 'tool_ceaorganizador/dropzones';
 const ASSEMBLE = 'tool-ceaorganizador-ensamblar';
 
 /**
+ * Whether a category is already the first of the top level.
+ *
+ * @param {Object} model
+ * @param {Number} id
+ * @returns {Boolean}
+ */
+export const isFirstAtRoot = (model, id) => model.get(id).parent === 0 && model.children(0)[0].id === id;
+
+/**
  * Moves a course in the loaded lists and the counters of the model (no request).
  *
  * @param {Object} ctx Context of createMover().
@@ -100,6 +109,16 @@ const moveCourseLocal = (ctx, id, category, afterid, known = null) => {
  * @returns {{move: Function, moveInside: Function}}
  */
 export const createMover = (ctx) => {
+    // One request at a time: a second move would be computed on a state the server has not confirmed.
+    let busy = false;
+
+    const refuseWhileBusy = () => {
+        if (busy) {
+            ctx.toast.show(ctx.strings.invaliddrop);
+        }
+        return busy;
+    };
+
     const settle = (dragged, focus) => {
         if (!ctx.container) {
             return;
@@ -119,6 +138,10 @@ export const createMover = (ctx) => {
     };
 
     const undoMove = async(logid) => {
+        if (refuseWhileBusy()) {
+            return;
+        }
+        busy = true;
         try {
             const result = await ctx.api.undo(logid);
             if (result.ok) {
@@ -128,6 +151,8 @@ export const createMover = (ctx) => {
             }
         } catch (error) {
             ctx.onError(error);
+        } finally {
+            busy = false;
         }
     };
 
@@ -141,6 +166,9 @@ export const createMover = (ctx) => {
      * @returns {Promise<Object|null>} The web service result; null if it failed or nothing moved.
      */
     const move = async(dragged, dest, options = {}) => {
+        if (refuseWhileBusy()) {
+            return null;
+        }
         let request;
         let revert;
         if (dragged.type === 'category') {
@@ -158,6 +186,7 @@ export const createMover = (ctx) => {
         }
         ctx.view.refresh();
         let result;
+        busy = true;
         try {
             result = await request();
         } catch (error) {
@@ -165,6 +194,8 @@ export const createMover = (ctx) => {
             ctx.view.refresh();
             ctx.onError(error);
             return null;
+        } finally {
+            busy = false;
         }
         settle(dragged, options.focus);
         ctx.toast.show(ctx.strings.moved, {
@@ -190,5 +221,18 @@ export const createMover = (ctx) => {
         return dest ? move(dragged, dest, {focus: true}) : null;
     };
 
-    return {move, moveInside};
+    /**
+     * Moves a category to the first position of the top level.
+     *
+     * @param {Object} dragged
+     * @returns {Promise<Object|null>} Null when it is not a category or it is already there.
+     */
+    const moveToRoot = async(dragged) => {
+        if (dragged.type !== 'category' || isFirstAtRoot(ctx.model, dragged.id)) {
+            return null;
+        }
+        return move(dragged, {parent: 0, afterid: 0}, {focus: true});
+    };
+
+    return {move, moveInside, moveToRoot};
 };

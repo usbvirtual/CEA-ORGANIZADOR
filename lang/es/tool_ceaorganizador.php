@@ -56,6 +56,7 @@ $string['loadmore'] = 'Cargar más';
 $string['moved'] = 'Movido';
 $string['movetitle'] = 'Mover «{$a}» a…';
 $string['moveto'] = 'Mover a…';
+$string['movetoroot'] = 'Raíz (primer nivel)';
 $string['nativemanagement'] = 'Gestión nativa de categorías';
 $string['needsort'] = 'Te recomiendo auto ordenar';
 $string['needsortsummary'] = '{$a} categorías se pueden ordenar';

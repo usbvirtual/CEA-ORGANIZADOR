@@ -23,7 +23,7 @@ const setup = (apiOverrides = {}) => {
         api,
         state,
         view: { refresh: () => { ctx.refreshed = (ctx.refreshed || 0) + 1; } },
-        strings: { moved: 'Movido', undo: 'Deshacer', error_generic: 'Error' },
+        strings: { moved: 'Movido', undo: 'Deshacer', error_generic: 'Error', invaliddrop: 'No' },
         toast: { show: (message, options) => toasts.push({ message, options }) },
         onError: (e) => errors.push(e),
         reload: async () => { calls.push(['reload']); },
@@ -90,4 +90,44 @@ test('moveInside mueve a la primera posición y no hace nada si es inválido o y
     assert.deepEqual(order(model, 2), [3]);
     await mover.moveInside({ type: 'category', id: 2 }, 3);
     assert.equal(calls.filter((c) => c[0] === 'moveCategory').length, 1);
+});
+
+test('mientras hay una petición en vuelo se ignora otro movimiento y luego se libera', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const { mover, model, toasts, calls } = setup({
+        moveCategory: async (...args) => { calls.push(['moveCategory', ...args]); await gate; return { logid: 1 }; },
+    });
+    const first = mover.move({ type: 'category', id: 3 }, { parent: 0, afterid: 0 });
+    const second = await mover.move({ type: 'category', id: 2 }, { parent: 0, afterid: 0 });
+    assert.equal(second, null);
+    assert.equal(toasts.length, 1);
+    assert.equal(toasts[0].message, 'No');
+    assert.deepEqual(order(model, 0), [3, 1, 2]);
+    release();
+    await first;
+    await mover.move({ type: 'category', id: 2 }, { parent: 0, afterid: 0 });
+    assert.deepEqual(order(model, 0), [2, 3, 1]);
+});
+
+test('el flag busy se libera también cuando la petición falla', async () => {
+    let fail = true;
+    const { mover, model } = setup({
+        moveCategory: async () => { if (fail) { throw new Error('x'); } return { logid: 2 }; },
+    });
+    await mover.move({ type: 'category', id: 3 }, { parent: 0, afterid: 0 });
+    fail = false;
+    await mover.move({ type: 'category', id: 3 }, { parent: 0, afterid: 0 });
+    assert.deepEqual(order(model, 0), [3, 1, 2]);
+});
+
+test('moveToRoot sube una subcategoría a la primera posición y no hace nada si ya está ahí', async () => {
+    const { mover, model, calls } = setup();
+    await mover.moveInside({ type: 'category', id: 3 }, 2);
+    await mover.moveToRoot({ type: 'category', id: 3 });
+    assert.deepEqual(order(model, 0), [3, 1, 2]);
+    assert.deepEqual(calls.filter((c) => c[0] === 'moveCategory').pop(), ['moveCategory', 3, 0, 0]);
+    const before = calls.length;
+    assert.equal(await mover.moveToRoot({ type: 'category', id: 3 }), null);
+    assert.equal(calls.length, before);
 });

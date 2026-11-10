@@ -56,6 +56,7 @@ $string['loadmore'] = 'Load more';
 $string['moved'] = 'Moved';
 $string['movetitle'] = 'Move "{$a}" to…';
 $string['moveto'] = 'Move to…';
+$string['movetoroot'] = 'Top level';
 $string['nativemanagement'] = 'Native category management';
 $string['needsort'] = 'Auto sort recommended';
 $string['needsortsummary'] = '{$a} categories can be sorted';
