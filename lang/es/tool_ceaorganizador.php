@@ -73,6 +73,7 @@ $string['error_generic'] = 'Algo salió mal. Recarga la página e inténtalo de 
 $string['error_ordermismatch'] = 'El orden enviado no coincide con el contenido actual; recarga el árbol.';
 $string['error_stale'] = 'El orden cambió desde la vista previa; vuelve a revisarlo.';
 $string['error_toomany'] = 'Máximo 500 elementos por lote.';
+$string['error_toomanyclones'] = 'Máximo {$a} cursos por lote de clonado.';
 $string['error_toomanycourses'] = 'La categoría tiene más cursos de los que Moodle permite ordenar ({$a}); ajusta maxcoursesincategory.';
 $string['grabbed'] = 'Tomado: {$a}. Usa las flechas para elegir el destino, Enter para soltar, Esc para cancelar.';
 $string['hidden'] = 'Oculta';
