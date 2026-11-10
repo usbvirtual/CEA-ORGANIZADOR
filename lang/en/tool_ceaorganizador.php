@@ -32,6 +32,7 @@ $string['conflict_moved'] = '«{$a}» moved after this operation.';
 $string['conflict_renamed'] = '«{$a}» was renamed after this operation.';
 $string['conflict_shortnametaken'] = 'The previous short name of «{$a}» is now used by another course.';
 $string['conflict_targetmissing'] = 'The original position of «{$a}» no longer exists.';
+$string['conflict_visibility'] = 'The visibility of «{$a}» changed after this operation.';
 $string['credit'] = 'Centro de Innovación Pedagógica y Educación Digital (CEA) · Universidad de San Buenaventura Cali';
 $string['error_aftermismatch'] = 'The target position is no longer valid; reload the tree.';
 $string['error_alreadyundone'] = 'This operation has already been undone.';

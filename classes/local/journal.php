@@ -35,8 +35,9 @@ defined('MOODLE_INTERNAL') || die();
  * - sort: {categories: [{parentid, before: [ids], after: [ids]}], courses: [{categoryid, before, after}]}
  * - rename: {items: [{type: category|course, id, before: {name} | {fullname, shortname}, after: {...}}]}
  *
- * Undo first compares the live state with the 'to'/'after' state of every item and
- * writes nothing when anything differs; only then it restores, in one transaction.
+ * Undo first compares the live state with the 'to'/'after' state of every item (position,
+ * order, names and visibility) and writes nothing when anything differs; only then it
+ * restores, in one transaction. Visibility is restored only when the move itself changed it.
  */
 class journal {
     /** @var string Table of the journal. */
@@ -158,6 +159,10 @@ class journal {
 
         $transaction = $DB->start_delegated_transaction();
         try {
+            // Another undo may have finished between the check and this transaction.
+            if ((int) $DB->get_field(self::TABLE, 'timeundone', ['id' => $logid], MUST_EXIST) > 0) {
+                throw new \moodle_exception('error_alreadyundone', 'tool_ceaorganizador');
+            }
             self::restore($log->action, $payload);
             $DB->update_record(self::TABLE, (object) [
                 'id' => $logid,
@@ -344,7 +349,7 @@ class journal {
         $id = (int) $payload['id'];
         $from = $payload['from'];
         $to = $payload['to'];
-        $category = $DB->get_record('course_categories', ['id' => $id], 'id, parent, name', IGNORE_MISSING);
+        $category = $DB->get_record('course_categories', ['id' => $id], 'id, parent, name, visible', IGNORE_MISSING);
         if (!$category) {
             return [self::conflict('missing', $id)];
         }
@@ -355,6 +360,10 @@ class journal {
         $previous = self::previous(tree::sibling_categories($parent), $id);
         if ($parent !== (int) $to['parent'] || $previous !== (int) $to['afterid']) {
             $conflicts[] = self::conflict('moved', $name);
+        }
+        // Someone hid or showed it on purpose after the move: undo must not override that.
+        if (isset($to['visible']) && (int) $category->visible !== (int) $to['visible']) {
+            $conflicts[] = self::conflict('visibility', $name);
         }
 
         $fromparent = (int) $from['parent'];
@@ -385,7 +394,7 @@ class journal {
         $id = (int) $payload['id'];
         $from = $payload['from'];
         $to = $payload['to'];
-        $course = $DB->get_record('course', ['id' => $id], 'id, category, fullname', IGNORE_MISSING);
+        $course = $DB->get_record('course', ['id' => $id], 'id, category, fullname, visible', IGNORE_MISSING);
         if (!$course || $id === (int) SITEID) {
             return [self::conflict('missing', $id)];
         }
@@ -396,6 +405,9 @@ class journal {
         $previous = self::previous(tree::category_courses($category), $id);
         if ($category !== (int) $to['category'] || $previous !== (int) $to['afterid']) {
             $conflicts[] = self::conflict('moved', $name);
+        }
+        if (isset($to['visible']) && (int) $course->visible !== (int) $to['visible']) {
+            $conflicts[] = self::conflict('visibility', $name);
         }
 
         $fromcategory = (int) $from['category'];
@@ -464,6 +476,13 @@ class journal {
     private static function conflicts_rename(array $payload): array {
         global $DB;
         $conflicts = [];
+        // Courses of the batch give their names back during the undo, so they do not block one another.
+        $batchcourses = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            if (($item['type'] ?? '') === 'course') {
+                $batchcourses[] = (int) $item['id'];
+            }
+        }
         foreach ($payload['items'] ?? [] as $item) {
             $id = (int) $item['id'];
             $after = $item['after'];
@@ -489,11 +508,9 @@ class journal {
                 }
                 // Another course may have taken the old short name since.
                 if (isset($before['shortname']) && (string) $before['shortname'] !== $course->shortname) {
-                    $taken = $DB->record_exists_select(
-                        'course',
-                        'shortname = :shortname AND id <> :id',
-                        ['shortname' => (string) $before['shortname'], 'id' => $id]
-                    );
+                    [$notin, $params] = $DB->get_in_or_equal($batchcourses, SQL_PARAMS_NAMED, 'batch', false);
+                    $params['shortname'] = (string) $before['shortname'];
+                    $taken = $DB->record_exists_select('course', "shortname = :shortname AND id $notin", $params);
                     if ($taken) {
                         $conflicts[] = self::conflict('shortnametaken', $name);
                     }
@@ -517,7 +534,7 @@ class journal {
                 $id = (int) $payload['id'];
                 $from = $payload['from'];
                 mover::move_category($id, (int) $from['parent'], (int) $from['afterid']);
-                if (isset($from['visible'])) {
+                if (self::visibility_changed($payload)) {
                     self::restore_category_visibility($id, (bool) $from['visible']);
                 }
                 return;
@@ -525,7 +542,7 @@ class journal {
                 $id = (int) $payload['id'];
                 $from = $payload['from'];
                 mover::move_course($id, (int) $from['category'], (int) $from['afterid']);
-                if (isset($from['visible'])) {
+                if (self::visibility_changed($payload)) {
                     self::restore_course_visibility($id, (bool) $from['visible']);
                 }
                 return;
@@ -538,7 +555,8 @@ class journal {
                 }
                 return;
             case 'rename':
-                foreach ($payload['items'] as $item) {
+                // Reverse order, so a chain such as B to C, then A to B, frees each name before it is reused.
+                foreach (array_reverse($payload['items']) as $item) {
                     $before = $item['before'];
                     if ($item['type'] === 'category') {
                         mover::rename_category((int) $item['id'], (string) $before['name']);
@@ -553,15 +571,32 @@ class journal {
     }
 
     /**
+     * Whether the move itself changed the visibility (moving into a hidden parent hides the item).
+     *
+     * @param array $payload
+     * @return bool
+     */
+    private static function visibility_changed(array $payload): bool {
+        return isset($payload['from']['visible'], $payload['to']['visible'])
+            && (int) $payload['from']['visible'] !== (int) $payload['to']['visible'];
+    }
+
+    /**
      * Shows or hides a category when its visibility differs, as moving into a hidden parent hides it.
+     *
+     * It is not shown again under a parent that is hidden now: that would expose hidden content.
      *
      * @param int $id
      * @param bool $visible
      */
     private static function restore_category_visibility(int $id, bool $visible): void {
         global $DB;
-        $current = (bool) $DB->get_field('course_categories', 'visible', ['id' => $id], MUST_EXIST);
-        if ($current === $visible) {
+        $record = $DB->get_record('course_categories', ['id' => $id], 'id, parent, visible', MUST_EXIST);
+        if ((bool) $record->visible === $visible) {
+            return;
+        }
+        $parent = (int) $record->parent;
+        if ($visible && $parent !== 0 && !$DB->get_field('course_categories', 'visible', ['id' => $parent])) {
             return;
         }
         // The cached record could hold the visibility before the move; show() and hide() trust it.
@@ -577,15 +612,21 @@ class journal {
     /**
      * Shows or hides a course when its visibility differs, as moving into a hidden category hides it.
      *
+     * It is not shown again in a category that is hidden now: that would expose hidden content.
+     *
      * @param int $id
      * @param bool $visible
      */
     private static function restore_course_visibility(int $id, bool $visible): void {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/course/lib.php');
-        $current = (bool) $DB->get_field('course', 'visible', ['id' => $id], MUST_EXIST);
-        if ($current !== $visible) {
-            course_change_visibility($id, $visible);
+        $course = $DB->get_record('course', ['id' => $id], 'id, category, visible', MUST_EXIST);
+        if ((bool) $course->visible === $visible) {
+            return;
         }
+        if ($visible && !$DB->get_field('course_categories', 'visible', ['id' => $course->category])) {
+            return;
+        }
+        course_change_visibility($id, $visible);
     }
 }

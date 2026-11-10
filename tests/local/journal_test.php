@@ -286,6 +286,122 @@ final class journal_test extends \advanced_testcase {
     }
 
     /**
+     * An item hidden on purpose after a move between visible parents is a conflict, not shown again.
+     */
+    public function test_undo_rejects_when_visibility_changed_after(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $p = (int) $generator->create_category(['name' => 'P'])->id;
+        $q = (int) $generator->create_category(['name' => 'Q'])->id;
+        $x = (int) $generator->create_category(['name' => 'Categoria Equis', 'parent' => $p])->id;
+        $result = journal::move_category($x, $q, 0);
+        // An admin hides it on purpose.
+        \core_course_category::get($x, MUST_EXIST, true)->hide();
+
+        $undo = journal::undo($result['logid']);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertStringContainsString('Categoria Equis', implode(' ', $undo['conflicts']));
+        $this->assertSame($q, (int) $DB->get_field('course_categories', 'parent', ['id' => $x]));
+        $this->assertSame(0, (int) $DB->get_field('course_categories', 'visible', ['id' => $x]));
+    }
+
+    /**
+     * When the old parent was hidden after the move, the undo leaves the item hidden inside it.
+     */
+    public function test_undo_into_parent_hidden_after_keeps_item_hidden(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $p = (int) $generator->create_category(['name' => 'P'])->id;
+        $q = (int) $generator->create_category(['name' => 'Q'])->id;
+        $x = (int) $generator->create_category(['name' => 'X', 'parent' => $p])->id;
+        $result = journal::move_category($x, $q, 0);
+        \core_course_category::get($p, MUST_EXIST, true)->hide();
+
+        $undo = journal::undo($result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame($p, (int) $DB->get_field('course_categories', 'parent', ['id' => $x]));
+        $this->assertSame(0, (int) $DB->get_field('course_categories', 'visible', ['id' => $x]));
+        $this->assertSame(0, (int) $DB->get_field('course_categories', 'visible', ['id' => $p]));
+    }
+
+    /**
+     * A chain of short names (Y from B to C, then X from A to B) undoes cleanly in reverse order.
+     */
+    public function test_undo_rename_chain_of_shortnames(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $x = (int) $generator->create_course(['fullname' => 'Curso X', 'shortname' => 'A'])->id;
+        $y = (int) $generator->create_course(['fullname' => 'Curso Y', 'shortname' => 'B'])->id;
+        mover::rename_course($y, 'Curso Y', 'C');
+        mover::rename_course($x, 'Curso X', 'B');
+        $logid = journal::record('rename', 'Renombrar', [
+            'items' => [
+                [
+                    'type' => 'course',
+                    'id' => $y,
+                    'before' => ['fullname' => 'Curso Y', 'shortname' => 'B'],
+                    'after' => ['fullname' => 'Curso Y', 'shortname' => 'C'],
+                ],
+                [
+                    'type' => 'course',
+                    'id' => $x,
+                    'before' => ['fullname' => 'Curso X', 'shortname' => 'A'],
+                    'after' => ['fullname' => 'Curso X', 'shortname' => 'B'],
+                ],
+            ],
+        ]);
+
+        $undo = journal::undo($logid);
+
+        $this->assertSame(['ok' => true, 'conflicts' => []], $undo);
+        $this->assertSame('A', $DB->get_field('course', 'shortname', ['id' => $x]));
+        $this->assertSame('B', $DB->get_field('course', 'shortname', ['id' => $y]));
+    }
+
+    /**
+     * An error in the middle of the restore rolls back the writes already made.
+     */
+    public function test_undo_failure_rolls_back_earlier_writes(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $p = (int) $generator->create_category(['name' => 'P'])->id;
+        $c1 = (int) $generator->create_category(['name' => 'C1', 'parent' => $p])->id;
+        $c2 = (int) $generator->create_category(['name' => 'C2', 'parent' => $p])->id;
+        $k1 = (int) $generator->create_course(['category' => $p])->id;
+        $k2 = (int) $generator->create_course(['category' => $p])->id;
+        $k3 = (int) $generator->create_course(['category' => $p])->id;
+        mover::apply_category_order($p, [$c2, $c1]);
+        mover::apply_course_order($p, [$k1, $k2, $k3]);
+        $logid = journal::record('sort', 'Ordenar P', [
+            'categories' => [['parentid' => $p, 'before' => [$c1, $c2], 'after' => [$c2, $c1]]],
+            'courses' => [['categoryid' => $p, 'before' => [$k3, $k2, $k1], 'after' => [$k1, $k2, $k3]]],
+        ]);
+        // The categories are restored first; then the courses fail.
+        set_config('maxcoursesincategory', 2);
+
+        try {
+            journal::undo($logid);
+            $this->fail('Expected error_toomanycourses');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_toomanycourses', $e->errorcode);
+        }
+
+        $this->assertSame([$c2, $c1], tree::sibling_categories($p));
+        $this->assertSame([$k1, $k2, $k3], tree::category_courses($p));
+        $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
+    }
+
+    /**
      * The history lists newest first, with the user name and the undone flag.
      */
     public function test_history_lists_newest_first(): void {
