@@ -100,8 +100,6 @@ $string['opmoveup'] = 'Move the operation up';
 $string['opremove'] = 'Remove the operation';
 $string['patterns_facultad'] = 'Faculty patterns';
 $string['patterns_facultad_desc'] = 'One pattern per line. Plain text: the name contains it. =text: exact name. /regex/: regular expression on the lowercase, accent-free name.';
-$string['patterns_periodo'] = 'Period patterns';
-$string['patterns_periodo_desc'] = 'One pattern per line.';
 $string['patterns_semilla'] = 'Seed patterns';
 $string['patterns_semilla_desc'] = 'One pattern per line. Plain text: the name contains it. =text: exact name. /regex/: regular expression on the lowercase, accent-free name.';
 $string['pluginname'] = 'Category organiser (CEA)';

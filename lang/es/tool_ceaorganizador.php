@@ -100,8 +100,6 @@ $string['opmoveup'] = 'Subir la operación';
 $string['opremove'] = 'Quitar la operación';
 $string['patterns_facultad'] = 'Patrones de facultad';
 $string['patterns_facultad_desc'] = 'Un patrón por línea. Texto simple: el nombre lo contiene. =texto: nombre exacto. /expresión/: expresión regular sobre el nombre en minúsculas y sin tildes.';
-$string['patterns_periodo'] = 'Patrones de periodo';
-$string['patterns_periodo_desc'] = 'Un patrón por línea.';
 $string['patterns_semilla'] = 'Patrones de semilla';
 $string['patterns_semilla_desc'] = 'Un patrón por línea. Texto simple: el nombre lo contiene. =texto: nombre exacto. /expresión/: expresión regular sobre el nombre en minúsculas y sin tildes.';
 $string['pluginname'] = 'Organizador de categorías (CEA)';

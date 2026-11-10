@@ -30,7 +30,6 @@ namespace tool_ceaorganizador\local;
 class sorter {
     /** @var string[] Default pattern texts, one pattern per line. */
     public const DEFAULT_PATTERNS = [
-        'periodo' => '',
         'semilla' => "semilla\nplantilla\n=Facultades",
         'facultad' => "/^facultad/\n/^programa/",
     ];

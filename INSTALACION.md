@@ -42,7 +42,7 @@ Si falta alguno, la operación se rechaza y no cambia nada.
 
 ### Ajustes de patrones
 
-Sirven para que «Auto ordenar» reconozca qué es un periodo, una categoría semilla y una facultad. Un patrón por línea. Se comparan contra el nombre de la categoría en minúsculas y sin tildes.
+Sirven para que «Auto ordenar» reconozca qué es una categoría semilla y una facultad. Los periodos no se configuran: se detectan solos por el nombre («2026-02», «2026 -1», «2026-2», «2026 II») y se ordenan del más reciente al más antiguo. Un patrón por línea. Se comparan contra el nombre de la categoría en minúsculas y sin tildes.
 
 | Sintaxis | Qué hace | Ejemplo |
 | --- | --- | --- |
@@ -54,7 +54,6 @@ Valores por defecto:
 
 - **Patrones de semilla:** `semilla`, `plantilla` y `=Facultades`.
 - **Patrones de facultad:** `/^facultad/` y `/^programa/`.
-- **Patrones de periodo:** vacío. Si se deja así, se usa el criterio interno.
 
 ### Atajos de teclado
 

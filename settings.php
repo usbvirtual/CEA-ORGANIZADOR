@@ -36,7 +36,7 @@ if ($hassiteconfig) {
         'tool_ceaorganizador_settings',
         get_string('settings', 'tool_ceaorganizador')
     );
-    foreach (['periodo', 'semilla', 'facultad'] as $name) {
+    foreach (['semilla', 'facultad'] as $name) {
         $settings->add(new admin_setting_configtextarea(
             'tool_ceaorganizador/patterns_' . $name,
             get_string('patterns_' . $name, 'tool_ceaorganizador'),
