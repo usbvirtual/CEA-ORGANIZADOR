@@ -1,0 +1,36 @@
+{
+  "name": "tool_ceaorganizador-dev",
+  "private": true,
+  "type": "module",
+  "description": "Herramientas de desarrollo del plugin (no se distribuyen)",
+  "scripts": {
+    "build": "node scripts/build-amd.mjs",
+    "test": "node --import ./tests/js/register.mjs --test",
+    "check-strings": "node scripts/check-strings.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "cea": {
+    "zipName": "CEA-ORGANIZADOR.zip",
+    "include": [
+      "version.php",
+      "settings.php",
+      "index.php",
+      "styles.css",
+      "README.md",
+      "INSTALACION.md",
+      "db",
+      "lang",
+      "classes",
+      "templates",
+      "amd/build",
+      "amd/src"
+    ]
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/preset-env": "^7.26.0",
+    "@babel/plugin-transform-modules-amd": "^7.25.0",
+    "terser": "^5.36.0",
+    "jsdom": "^25.0.1"
+  }
+}

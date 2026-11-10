@@ -1,0 +1,87 @@
+/* CEA-ORGANIZADOR: estilos del plugin.
+ *
+ * @package    tool_ceaorganizador
+ * @copyright  2026 Universidad de San Buenaventura Cali
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ *
+ * Identidad del Centro de Innovación Pedagógica y Educación Digital (CEA),
+ * USB Cali (skill cea-branding, MARCA.md). Sin fuentes externas: se hereda la
+ * del tema. Todo cuelga de la clase raíz para no tocar el resto de Moodle.
+ */
+
+.tool-ceaorganizador {
+    --cea-tinta: #183a43;
+    --cea-papel: #fafbf7;
+    --cea-noche: #0d2227;
+    --cea-secundario: #52656a;
+    --cea-linea: #cad6d0;
+    --cea-lavanda: #eeebf8;
+    --cea-menta: #e8f2e9;
+    /* Tonos de día: color que lleva información sobre superficies claras. */
+    --cea-naranja-dia: #d95f06;
+    --cea-azul-dia: #06538c;
+    --cea-turquesa-dia: #0b7d90;
+    --cea-violeta-dia: #7444e6;
+    --cea-radio-tarjeta: 14px;
+    --cea-curva: cubic-bezier(0.16, 1, 0.3, 1);
+    --cea-duracion: 250ms;
+    color: var(--cea-tinta);
+}
+
+/* Tarjeta: esquinas de 14 px, filete en lugar de sombra. */
+.tool-ceaorganizador-tarjeta {
+    background: var(--cea-papel);
+    border: 1px solid var(--cea-linea);
+    border-radius: var(--cea-radio-tarjeta);
+    box-shadow: none;
+}
+
+/* Botones en cápsula. Se añaden a las clases btn de Bootstrap del tema. */
+.tool-ceaorganizador .btn {
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+.tool-ceaorganizador .btn-primary {
+    background-color: var(--cea-turquesa-dia);
+    border-color: var(--cea-turquesa-dia);
+    color: #fff;
+}
+
+/* Aviso: filete naranja de día sobre lavanda. */
+.tool-ceaorganizador-aviso {
+    background: var(--cea-lavanda);
+    border-left: 4px solid var(--cea-naranja-dia);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+/* Foco visible para teclado. */
+.tool-ceaorganizador :focus-visible {
+    outline: 2px solid var(--cea-turquesa-dia);
+    outline-offset: 2px;
+}
+
+/* Crédito al pie con el símbolo del CEA. */
+.tool-ceaorganizador-credito {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--cea-secundario);
+    font-size: 0.8125rem;
+}
+
+.tool-ceaorganizador-credito svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tool-ceaorganizador *,
+    .tool-ceaorganizador *::before,
+    .tool-ceaorganizador *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
