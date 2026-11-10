@@ -76,7 +76,7 @@ final class tree_test extends \advanced_testcase {
 
         $this->assertTrue($this->row(tree::categories(), $a)['needsort']);
 
-        \core_course_category::get($a)->resort_subcategories('name');
+        \core_course_category::get($a, MUST_EXIST, true)->resort_subcategories('name');
         $this->assertFalse($this->row(tree::categories(), $a)['needsort']);
     }
 
@@ -129,6 +129,35 @@ final class tree_test extends \advanced_testcase {
         $found = tree::courses(0, 'calc');
         $this->assertSame(1, $found['total']);
         $this->assertSame('Cálculo I', $found['courses'][0]['fullname']);
+    }
+
+    /**
+     * Course paths are the full formatted category path, also in a site-wide search.
+     */
+    public function test_courses_paths_are_full_category_paths(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $a = (int) $generator->create_category(['name' => 'Facultad'])->id;
+        $b = (int) $generator->create_category(['name' => 'Programa & Co', 'parent' => $a])->id;
+        $c = (int) $generator->create_category(['name' => 'Semestre I', 'parent' => $b])->id;
+        $generator->create_course(['category' => $c, 'shortname' => 'PATHC', 'fullname' => 'Ruta C']);
+        $generator->create_course(['category' => $a, 'shortname' => 'PATHA', 'fullname' => 'Ruta A']);
+
+        $expected = [];
+        foreach (tree::categories() as $row) {
+            $expected[$row['id']] = $row['path'];
+        }
+
+        $inc = tree::courses($c);
+        $this->assertSame($expected[$c], $inc['courses'][0]['path']);
+        $this->assertSame('Facultad / Programa &amp; Co / Semestre I', $inc['courses'][0]['path']);
+
+        $found = tree::courses(0, 'PATH');
+        $this->assertSame(2, $found['total']);
+        foreach ($found['courses'] as $course) {
+            $this->assertSame($expected[$course['category']], $course['path']);
+        }
+        $this->assertSame('Facultad', $expected[$a]);
     }
 
     /**

@@ -33,7 +33,7 @@ import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
 import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
 import {open as openPicker} from 'tool_ceaorganizador/movepicker';
-import {createSelection, loadSubtreeCourses} from 'tool_ceaorganizador/selection';
+import {createSelection, loadSubtreeCourses, loadAllPages, exclusive} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
@@ -84,6 +84,7 @@ const REQUESTS = [
     {key: 'includeshortname', component: 'tool_ceaorganizador'},
     {key: 'invaliddrop', component: 'tool_ceaorganizador'},
     {key: 'keyboardhint', component: 'tool_ceaorganizador'},
+    {key: 'loadingcourses', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
@@ -115,6 +116,7 @@ const REQUESTS = [
     {key: 'renamepreview', component: 'tool_ceaorganizador'},
     {key: 'renameskipped', component: 'tool_ceaorganizador'},
     {key: 'replacewith', component: 'tool_ceaorganizador'},
+    {key: 'resultscount', component: 'tool_ceaorganizador'},
     {key: 'searchfor', component: 'tool_ceaorganizador'},
     {key: 'selectcontents', component: 'tool_ceaorganizador'},
     {key: 'selected', component: 'tool_ceaorganizador'},
@@ -162,6 +164,7 @@ export const init = ({root}) => {
             toast,
             onError: Notification.exception,
             container: treeel,
+            decode: decodeEntities,
             siblingsOf: (id) => courseIds(treeel, id),
             view: {refresh: () => current.refresh()},
             reload: () => api.getTree().then((fresh) => {
@@ -205,6 +208,30 @@ export const init = ({root}) => {
             own.addCategoryContents(ctx.model, id, await loadSubtreeCourses(api, ctx.model, id));
             return own.items();
         };
+        // Loading many pages takes a while: one load at a time, with a visible busy state.
+        const busyText = document.createElement('span');
+        busyText.className = 'tool-ceaorganizador-ruta';
+        busyText.setAttribute('role', 'status');
+        busyText.hidden = true;
+        const withLoading = exclusive(async(trigger, work) => {
+            const button = trigger && trigger.tagName === 'BUTTON' ? trigger : null;
+            busyText.textContent = strings.loadingcourses;
+            busyText.hidden = false;
+            treeel.setAttribute('aria-busy', 'true');
+            if (button) {
+                button.disabled = true;
+            }
+            try {
+                return await work();
+            } finally {
+                busyText.hidden = true;
+                busyText.textContent = '';
+                treeel.removeAttribute('aria-busy');
+                if (button) {
+                    button.disabled = false;
+                }
+            }
+        });
         state.onAction = (action, item, trigger) => {
             const dragged = describeItem(item);
             if (action === 'moveto') {
@@ -216,14 +243,22 @@ export const init = ({root}) => {
                     path: ctx.model.pathOf(dragged.id).join(' / '),
                 });
             } else if (action === 'rename') {
-                const pending = dragged.type === 'category'
-                    ? contentsOf(dragged.id)
-                    : Promise.resolve([{type: 'course', id: dragged.id}]);
-                pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
+                if (dragged.type !== 'category') {
+                    openRename({...panelOptions(trigger), items: [{type: 'course', id: dragged.id}]});
+                    return;
+                }
+                // Null when another load is running: the second click is ignored.
+                const pending = withLoading(trigger, () => contentsOf(dragged.id));
+                if (pending) {
+                    pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
+                }
             } else if (action === 'selectcontents') {
-                loadSubtreeCourses(api, ctx.model, dragged.id)
-                    .then((courses) => selection.addCategoryContents(ctx.model, dragged.id, courses))
-                    .catch(Notification.exception);
+                const pending = withLoading(trigger, () => loadSubtreeCourses(api, ctx.model, dragged.id));
+                if (pending) {
+                    pending
+                        .then((courses) => selection.addCategoryContents(ctx.model, dragged.id, courses))
+                        .catch(Notification.exception);
+                }
             }
         };
         let current = render(treeel, ctx.model, state);
@@ -269,7 +304,7 @@ export const init = ({root}) => {
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
         bar.append(barText, renameButton, clearButton);
-        toolbar.append(historyButton, bar);
+        toolbar.append(historyButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
         hint.textContent = strings.keyboardhint;
@@ -293,6 +328,19 @@ export const init = ({root}) => {
             }));
         }
 
+        const resultsCount = (shown, total) => String(strings.resultscount)
+            .replace('{$a->shown}', shown)
+            .replace('{$a->total}', total);
+        // Loads the pages after the first one (already in hand) and selects every match.
+        const selectAllResults = async(query, first) => {
+            let rows = first.courses;
+            if (first.courses.length < first.total) {
+                rows = (await loadAllPages(api, 0, query)).courses;
+            }
+            selection.addSearchResults(rows);
+            return rows.length;
+        };
+
         let timer = null;
         let token = 0;
         const search = () => {
@@ -315,8 +363,17 @@ export const init = ({root}) => {
                     pick.className = 'btn btn-secondary btn-sm';
                     pick.dataset.action = 'selectresults';
                     pick.textContent = strings.selectresults;
-                    pick.addEventListener('click', () => selection.addSearchResults(found.courses));
-                    all.appendChild(pick);
+                    // Every match, not only the page drawn: the other pages are loaded on click.
+                    pick.addEventListener('click', () => {
+                        const pending = withLoading(pick, () => selectAllResults(query.trim(), found));
+                        if (pending) {
+                            pending.catch(Notification.exception);
+                        }
+                    });
+                    const count = document.createElement('span');
+                    count.className = 'tool-ceaorganizador-ruta';
+                    count.textContent = resultsCount(found.courses.length, found.total);
+                    all.append(pick, count);
                     results.appendChild(all);
                 }
                 found.courses.forEach((course) => {

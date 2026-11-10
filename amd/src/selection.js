@@ -24,7 +24,38 @@
 const keyOf = (type, id) => `${type}:${id}`;
 
 /**
+ * Loads every page of get_courses for one category (0 for the whole site) and one search.
+ *
+ * @param {Object} api Object with getCourses(categoryid, search, page); pages are zero-based.
+ * @param {Number} categoryid
+ * @param {String} [search]
+ * @param {Function} [onPage] Called after each page with (loaded, total).
+ * @returns {Promise<{courses: Object[], total: Number}>} The rows as get_courses returns them.
+ */
+export const loadAllPages = async(api, categoryid, search = '', onPage = null) => {
+    const courses = [];
+    let page = 0;
+    let total = 1;
+    while (courses.length < total) {
+        const result = await api.getCourses(categoryid, search, page);
+        total = Number(result.total) || 0;
+        page += 1;
+        result.courses.forEach((course) => courses.push(course));
+        if (onPage) {
+            onPage(courses.length, total);
+        }
+        if (result.courses.length === 0) {
+            break;
+        }
+    }
+    return {courses, total};
+};
+
+/**
  * Loads every course of a category and of the categories below it, page after page.
+ *
+ * Categories whose model says they hold no course are not requested; a category
+ * without a course count in the model is requested anyway.
  *
  * @param {Object} api Object with getCourses(categoryid, search, page); pages are zero-based.
  * @param {Object} model Model from treemodel.createModel().
@@ -40,21 +71,39 @@ export const loadSubtreeCourses = async(api, model, categoryid) => {
     walk(categoryid);
     const courses = [];
     for (const id of ids) {
-        let page = 0;
-        let loaded = 0;
-        let total = 1;
-        while (loaded < total) {
-            const result = await api.getCourses(id, '', page);
-            total = result.total;
-            loaded += result.courses.length;
-            page += 1;
-            result.courses.forEach((course) => courses.push({id: course.id, category: id}));
-            if (result.courses.length === 0) {
-                break;
-            }
+        const row = model.get(id);
+        const known = row && row.coursecount !== undefined && row.coursecount !== null && row.coursecount !== '';
+        if (known && Number(row.coursecount) === 0) {
+            continue;
         }
+        const result = await loadAllPages(api, id, '');
+        result.courses.forEach((course) => courses.push({id: course.id, category: id}));
     }
     return courses;
+};
+
+/**
+ * Wraps an async task so that only one run happens at a time; a call while it runs is ignored.
+ *
+ * @param {Function} task Returns a promise (or a value).
+ * @returns {Function} Same arguments as the task; returns its promise, or null when ignored.
+ *                     The wrapper has running() to ask whether a run is in progress.
+ */
+export const exclusive = (task) => {
+    let current = null;
+    const run = (...args) => {
+        if (current) {
+            return null;
+        }
+        current = Promise.resolve()
+            .then(() => task(...args))
+            .finally(() => {
+                current = null;
+            });
+        return current;
+    };
+    run.running = () => current !== null;
+    return run;
 };
 
 /**

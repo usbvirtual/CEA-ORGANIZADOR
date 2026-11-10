@@ -169,14 +169,56 @@ class tree {
     /**
      * Maps category ids to their formatted paths.
      *
-     * @return string[]
+     * Reads only the category names and parents (no courses, no sort recommendations),
+     * and formats only the categories on the way to the requested ids.
+     *
+     * @param int[] $ids Category ids whose paths are needed.
+     * @return string[] Paths by category id.
      */
-    private static function paths(): array {
+    private static function paths(array $ids): array {
+        global $DB;
+        if (!$ids) {
+            return [];
+        }
+        $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name');
         $paths = [];
-        foreach (self::categories() as $row) {
-            $paths[$row['id']] = $row['path'];
+        foreach ($ids as $id) {
+            self::path_of((int) $id, $records, $paths);
         }
         return $paths;
+    }
+
+    /**
+     * Builds the formatted path of one category, memoising its ancestors.
+     *
+     * @param int $id
+     * @param \stdClass[] $records Category records by id.
+     * @param string[] $paths Memo of paths by id, filled in place.
+     * @return string The path, or '' when the category does not exist.
+     */
+    private static function path_of(int $id, array $records, array &$paths): string {
+        if (isset($paths[$id])) {
+            return $paths[$id];
+        }
+        if (!isset($records[$id])) {
+            return '';
+        }
+        // Iterate up to the root to avoid deep recursion; stop on a cycle or a missing parent.
+        $chain = [];
+        $seen = [];
+        $current = $id;
+        while ($current > 0 && isset($records[$current]) && !isset($paths[$current]) && !isset($seen[$current])) {
+            $seen[$current] = true;
+            $chain[] = $current;
+            $current = (int) $records[$current]->parent;
+        }
+        $prefix = $paths[$current] ?? '';
+        foreach (array_reverse($chain) as $categoryid) {
+            $name = self::format($records[$categoryid]->name);
+            $prefix = $prefix === '' ? $name : $prefix . ' / ' . $name;
+            $paths[$categoryid] = $prefix;
+        }
+        return $paths[$id];
     }
 
     /**
@@ -218,7 +260,11 @@ class tree {
             $perpage
         );
 
-        $paths = self::paths();
+        $categoryids = [];
+        foreach ($records as $record) {
+            $categoryids[(int) $record->category] = (int) $record->category;
+        }
+        $paths = self::paths(array_values($categoryids));
         $courses = [];
         foreach ($records as $record) {
             $courses[] = [
