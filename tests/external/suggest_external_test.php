@@ -118,7 +118,8 @@ final class suggest_external_test extends \advanced_testcase {
         $this->assertSame('Programa  A', $byid['category:' . $a]['old']);
         $this->assertSame(['formato'], $byid['category:' . $a]['reasons']);
         $this->assertSame('Facultad', $byid['category:' . $a]['group']);
-        $this->assertSame('Facultad / Programa A', $byid['course:' . $coursea]['group']);
+        // The group shows the current name, as format_string leaves it.
+        $this->assertSame('Facultad / Programa  A', $byid['course:' . $coursea]['group']);
         $this->assertArrayNotHasKey('category:' . $faculty, $byid);
     }
 

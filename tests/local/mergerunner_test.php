@@ -272,7 +272,7 @@ final class mergerunner_test extends \advanced_testcase {
             mergerunner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
             $this->fail('moodle/course:changecategory must be required');
         } catch (\required_capability_exception $e) {
-            $this->assertStringContainsString('changecategory', $e->getMessage() . ' ' . $e->debuginfo);
+            $this->assertSame(get_capability_string('moodle/course:changecategory'), $e->a);
         }
 
         // Can move courses and manage the source, but not the target.
@@ -286,7 +286,7 @@ final class mergerunner_test extends \advanced_testcase {
             mergerunner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
             $this->fail('moodle/category:manage on the target must be required');
         } catch (\required_capability_exception $e) {
-            $this->assertStringContainsString('category:manage', $e->getMessage() . ' ' . $e->debuginfo);
+            $this->assertSame(get_capability_string('moodle/category:manage'), $e->a);
         }
 
         $this->assertSame((int) $ing->id, $this->category_of($a));

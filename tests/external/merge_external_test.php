@@ -125,7 +125,7 @@ final class merge_external_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $result['logid']);
         $this->assertSame(1, $DB->count_records(journal::TABLE, ['action' => 'merge']));
         $this->assertSame(
-            [(int) $source->id, (int) $DB->get_field('course_categories', 'id', ['name' => 'Programa A'])],
+            [(int) $source->id, (int) $DB->get_field('course_categories', 'id', ['name' => 'Programa A', 'parent' => $source->id])],
             array_reverse(array_column($result['emptied'], 'id'))
         );
         $this->assertSame('Facultades / Programa A', $result['emptied'][0]['path']);
