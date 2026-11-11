@@ -81,18 +81,18 @@ Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial
 
 Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno.
 
-**Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea programada `\core\task\asynchronous_copy_task`. Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
+**Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
-**Requisito: copias de seguridad.** Clonar usa las copias de seguridad de Moodle. Moodle 4.2 con versiones recientes de PHP tiene un error del núcleo que impide toda copia de seguridad (corregido en Moodle 4.5); para clonar se recomienda Moodle 4.5 o superior.
+**Requisito: copias de seguridad.** Clonar usa las copias de seguridad de Moodle. Moodle 4.2 con versiones recientes de PHP tiene un error del núcleo que impide toda copia de seguridad (corregido en Moodle 4.3); para clonar se recomienda Moodle 4.3 o superior. Si el plugin detecta ese error, la vista previa y el clonado se rechazan con el mensaje «Las copias de seguridad de este Moodle no funcionan con la versión de PHP del servidor…» y no se crea nada.
 
 **Dónde está.** En el menú del nodo de una categoría y en la barra de selección, la opción «Clonar a periodo…».
 
 **Cómo se usa.**
 
-1. Elegir las semillas (un curso, una categoría o una selección).
-2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-PP, por ejemplo `2027-01`) y las fechas de inicio y de fin.
+1. Elegir las semillas: una categoría (menú de su nodo) o una selección. Para clonar un solo curso, seleccionarlo y usar «Clonar a periodo…» en la barra de selección.
+2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`) y las fechas de inicio y de fin.
 3. Pulsar «Vista previa»: muestra, por cada curso, la semilla, el destino, el nombre de la copia y el estado («Nueva», o el motivo por el que se omite).
-4. Pulsar «Clonar N cursos». Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido».
+4. Pulsar «Clonar cursos (N)». Solo se clonan las filas que el panel envía: una fila con un nombre vacío o con un motivo de omisión no se envía y no se clona. Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido». Si una consulta falla, se reintenta a los 15, 30 y 60 segundos antes de mostrar el error. Para volver a ver el avance más tarde, abrir el historial y pulsar «Ver avance» en la entrada del clonado.
 
 **Qué se copia.** Solo el contenido: actividades, recursos, secciones, bancos de preguntas y ajustes del curso. **No** se copian usuarios, matrículas, calificaciones ni entregas. Los cursos nuevos se crean **ocultos**; hay que mostrarlos cuando estén listos.
 
@@ -109,7 +109,7 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 **Límite y relanzar.** Máximo **100 cursos por lote**; si hay más, el servidor lo rechaza. Relanzar el mismo lote es seguro: las copias en cola o en curso de los últimos 30 días se omiten, y las ya terminadas se omiten porque su nombre corto ya existe en esa categoría y aparecen como «Ya está clonado en este periodo.».
 
-**No se puede deshacer.** El historial muestra el lote («Clonado a 2027-01 · N cursos»), pero «Deshacer» no aplica a los clonados. Para quitar copias que sobren, borrarlas desde la gestión de cursos de Moodle (*Administración del sitio › Cursos › Gestionar cursos y categorías*). Las categorías que se crearon quedan; se pueden borrar igual.
+**No se puede deshacer.** El historial muestra el lote («Clonado a 2027-01 · cursos: N»), pero «Deshacer» no aplica a los clonados. Para quitar copias que sobren, borrarlas desde la gestión de cursos de Moodle (*Administración del sitio › Cursos › Gestionar cursos y categorías*). Las categorías que se crearon quedan; se pueden borrar igual.
 
 **Permisos.** Además de `tool/ceaorganizador:manage`, se comprueban:
 

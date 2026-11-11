@@ -110,7 +110,7 @@ Se suman a `tool/ceaorganizador:manage` y se verifican en el servidor para cada 
 - **Vista previa:** una tabla con semilla, destino (con la etiqueta «Nueva» en las categorías que se crearán), nombre completo y nombre corto editables, y estado. Las filas con error se deshabilitan.
 - **Al confirmar:** aparece el panel **«Copias en curso»**, que consulta `clone_status` cada 15 s mientras quede algo pendiente. Muestra contadores y una lista con el enlace a cada curso nuevo.
 - **Aviso de cron:** si nada avanzó en 10 minutos, se muestra «Las copias dependen del cron de Moodle; verifica que esté activo».
-- El historial muestra el lote como «Clonado a 2027-01 · N cursos», sin botón Deshacer.
+- El historial muestra el lote como «Clonado a 2027-01 · cursos: N», sin botón Deshacer, con un botón «Ver avance» que vuelve a abrir el panel de progreso.
 
 ## 10. Errores y casos límite
 
