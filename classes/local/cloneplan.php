@@ -47,10 +47,15 @@ class cloneplan {
      * @param int $startdate Start date of the copies.
      * @param int $enddate End date of the copies.
      * @return array ['rows' => array[], 'total' => int, 'hash' => string]
+     * @throws \moodle_exception error_backupbroken when the course backups of this Moodle cannot run.
      */
     public static function build(array $items, int $periodid, string $label, int $startdate, int $enddate): array {
         global $DB;
 
+        // Preview and apply both pass here, so a Moodle whose backups cannot run refuses before any write.
+        if (backupcheck::broken()) {
+            throw new \moodle_exception('error_backupbroken', 'tool_ceaorganizador');
+        }
         if (!$DB->record_exists('course_categories', ['id' => $periodid])) {
             throw new \invalid_parameter_exception('Period category not found');
         }

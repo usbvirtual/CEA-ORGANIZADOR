@@ -17,6 +17,7 @@
 namespace tool_ceaorganizador\external;
 
 use core_external\external_api;
+use tool_ceaorganizador\local\backupcheck;
 use tool_ceaorganizador\local\journal;
 
 // Cobertura declarada dos veces: el atributo para PHPUnit 11 (Moodle 5.x) y la
@@ -45,9 +46,9 @@ final class clone_external_test extends \advanced_testcase {
      * Skips the test when the Moodle backup cannot run (Moodle 4.2 xml_writer regex vs. modern PCRE).
      */
     private function skip_if_backup_broken(): void {
-        if (@preg_match('/[\x-\x8]/', '') === false) {
+        if (backupcheck::broken()) {
             $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version '
-                . '(xml_writer \x regex, fixed in Moodle 4.5).');
+                . '(xml_writer \x regex, fixed in Moodle 4.3).');
         }
     }
 
@@ -97,6 +98,8 @@ final class clone_external_test extends \advanced_testcase {
      * @return array
      */
     private function preview(\core_course_category $root, \core_course_category $period): array {
+        // A Moodle with broken backups refuses every preview (see backupcheck_test).
+        $this->skip_if_backup_broken();
         $result = clone_preview::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
@@ -113,10 +116,27 @@ final class clone_external_test extends \advanced_testcase {
      * @param \core_course_category $root
      * @param \core_course_category $period
      * @param array $preview
-     * @param array $rows Edited rows.
+     * @param array|null $rows Rows sent; null sends every row of the preview with its names unchanged.
      * @return array
      */
-    private function apply(\core_course_category $root, \core_course_category $period, array $preview, array $rows = []): array {
+    private function apply(
+        \core_course_category $root,
+        \core_course_category $period,
+        array $preview,
+        ?array $rows = null
+    ): array {
+        // A Moodle with broken backups refuses every batch (see backupcheck_test).
+        $this->skip_if_backup_broken();
+        if ($rows === null) {
+            $rows = [];
+            foreach ($preview['rows'] ?? [] as $row) {
+                $rows[] = [
+                    'courseid' => $row['courseid'],
+                    'newfullname' => $row['newfullname'],
+                    'newshortname' => $row['newshortname'],
+                ];
+            }
+        }
         $result = clone_apply::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
@@ -182,7 +202,10 @@ final class clone_external_test extends \advanced_testcase {
         [$root, $period, $a, $b] = $this->seeds();
         $preview = $this->preview($root, $period);
 
-        $rows = [['courseid' => (int) $a->id, 'newfullname' => 'Cálculo Uno', 'newshortname' => 'CALC-UNO']];
+        $rows = [
+            ['courseid' => (int) $a->id, 'newfullname' => 'Cálculo Uno', 'newshortname' => 'CALC-UNO'],
+            ['courseid' => (int) $b->id, 'newfullname' => 'Física I 2027-01', 'newshortname' => 'FIS1-2027-01'],
+        ];
         $result = $this->apply($root, $period, $preview, $rows);
 
         $this->assertSame('ok', $result['status']);
@@ -202,6 +225,27 @@ final class clone_external_test extends \advanced_testcase {
             (new \moodle_url('/course/view.php', ['id' => $bysource[$a->id]['newcourseid']]))->out(false),
             $bysource[$a->id]['url']
         );
+    }
+
+    /**
+     * Only the rows sent are queued: the panel leaves out a row with a blank name, and the server must not clone it.
+     */
+    public function test_apply_row_not_sent_is_not_queued(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        [$root, $period, $a, $b] = $this->seeds();
+        $preview = $this->preview($root, $period);
+
+        $rows = [['courseid' => (int) $a->id, 'newfullname' => 'Cálculo I 2027-01', 'newshortname' => 'CALC1-2027-01']];
+        $result = $this->apply($root, $period, $preview, $rows);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['queued']);
+        $this->assertSame(1, $result['skipped']);
+        $status = $this->batch_status($result['batchid']);
+        $this->assertSame([(int) $a->id], array_column($status['rows'], 'source'));
+        $this->assertNotContains((int) $b->id, array_column($status['rows'], 'source'));
+        $this->assertArrayNotHasKey('reason', $status['rows'][0]);
     }
 
     /**

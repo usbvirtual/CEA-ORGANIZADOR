@@ -46,7 +46,8 @@ class clonerunner {
      * @param string $label
      * @param int $startdate
      * @param int $enddate
-     * @param array $edits Map courseid => ['newfullname' => string, 'newshortname' => string], raw names.
+     * @param array $edits Map courseid => ['newfullname' => string, 'newshortname' => string], raw names. The rows
+     *      are authoritative: a plan row whose course is not here is not cloned ('notselected').
      * @param string $hash Hash of the preview the user saw.
      * @return array ['status' => 'ok'|'stale', 'batchid' => int, 'queued' => int, 'skipped' => int]; batchid is the
      *      journal id, 0 when nothing was recorded.
@@ -150,10 +151,13 @@ class clonerunner {
                         guard::rollback($transaction, $e);
                     } catch (\Throwable $rethrown) {
                         // Expected: rollback always rethrows. The row is marked and the batch goes on.
+                        $reason = \core_text::substr(get_class($e) . ': ' . $e->getMessage(), 0, 255);
                         $payload['items'][$index]['backupid'] = '';
                         $payload['items'][$index]['restoreid'] = '';
                         $payload['items'][$index]['newcourseid'] = 0;
                         $payload['items'][$index]['error'] = 'queuefailed';
+                        $payload['items'][$index]['reason'] = $reason;
+                        debugging('Course copy of ' . $item['source'] . ' not queued: ' . $reason, DEBUG_DEVELOPER);
                     }
                     self::save_payload($logid, $payload);
                 }
@@ -201,14 +205,22 @@ class clonerunner {
     /**
      * Applies the edited names to the rows without error, then checks every name again.
      *
+     * The rows sent are authoritative: a row without error that the user did not send is not cloned.
+     *
      * @param array $rows Plan rows.
      * @param array $edits
-     * @return array Rows; those that fail now carry 'empty', 'toolong', 'shortnametaken', 'alreadycloned'
-     *      or 'shortnameduplicate'.
+     * @return array Rows; those that fail now carry 'notselected', 'empty', 'toolong', 'shortnametaken',
+     *      'alreadycloned' or 'shortnameduplicate'.
      */
     private static function apply_edits(array $rows, array $edits): array {
         foreach ($rows as &$row) {
-            if ($row['error'] !== null || !isset($edits[$row['courseid']])) {
+            if ($row['error'] !== null) {
+                continue;
+            }
+            if (!isset($edits[$row['courseid']])) {
+                // Left out by the user (for example a row with a blank name): not cloned, and its short name
+                // does not count as a duplicate of the rows that are.
+                $row['error'] = 'notselected';
                 continue;
             }
             $edit = $edits[$row['courseid']];

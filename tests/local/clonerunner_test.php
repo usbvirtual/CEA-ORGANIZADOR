@@ -42,12 +42,27 @@ final class clonerunner_test extends \advanced_testcase {
      *
      * @param array $items
      * @param int $periodid
-     * @param array $edits
+     * @param array|null $edits Rows sent, as clone_apply passes them; null sends every row of the preview unchanged.
      * @return array Result of clonerunner::run().
      */
-    private function run_batch(array $items, int $periodid, array $edits = []): array {
+    private function run_batch(array $items, int $periodid, ?array $edits = null): array {
         $plan = cloneplan::build($items, $periodid, '2027-01', self::START, self::END);
+        $edits = $edits ?? $this->all_rows($plan);
         return clonerunner::run($items, $periodid, '2027-01', self::START, self::END, $edits, $plan['hash']);
+    }
+
+    /**
+     * Every row of a preview, with its names unchanged, as the panel sends them.
+     *
+     * @param array $plan Result of cloneplan::build().
+     * @return array Map courseid => names.
+     */
+    private function all_rows(array $plan): array {
+        $edits = [];
+        foreach ($plan['rows'] as $row) {
+            $edits[$row['courseid']] = ['newfullname' => $row['newfullname'], 'newshortname' => $row['newshortname']];
+        }
+        return $edits;
     }
 
     /**
@@ -74,12 +89,14 @@ final class clonerunner_test extends \advanced_testcase {
     }
 
     /**
-     * Skips the test when the Moodle backup cannot run (Moodle 4.2 xml_writer regex vs. modern PCRE).
+     * Every test runs a batch, which a Moodle whose backup cannot run (Moodle 4.2 xml_writer regex vs. modern
+     * PCRE) refuses before any write (see backupcheck_test).
      */
-    private function skip_if_backup_broken(): void {
-        if (@preg_match('/[\x-\x8]/', '') === false) {
+    protected function setUp(): void {
+        parent::setUp();
+        if (backupcheck::broken()) {
             $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version '
-                . '(xml_writer \x regex, fixed in Moodle 4.5).');
+                . '(xml_writer \x regex, fixed in Moodle 4.3): cloning is refused.');
         }
     }
 
@@ -210,6 +227,92 @@ final class clonerunner_test extends \advanced_testcase {
     }
 
     /**
+     * The rows sent are authoritative: a preview row that was not sent is not queued, and its short name
+     * does not make a sent row a duplicate.
+     */
+    public function test_row_not_sent_is_not_queued(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $a = $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $root->id]);
+        $gen->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $root->id]);
+
+        // Only A is sent, with the short name the preview proposed for B.
+        $edits = [$a->id => ['newfullname' => 'A 2027-01', 'newshortname' => 'B-2027-01']];
+        $result = $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id, $edits);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['queued']);
+        $this->assertSame(1, $result['skipped']);
+        $payload = $this->payload((int) $result['batchid']);
+        $this->assertSame([(int) $a->id], array_column($payload['items'], 'source'));
+        $this->assertSame('B-2027-01', $payload['items'][0]['newshortname']);
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(self::TASK));
+        $this->assertSame(
+            get_string('summary_clone', 'tool_ceaorganizador', (object) ['label' => '2027-01', 'count' => 1]),
+            $DB->get_field(journal::TABLE, 'summary', ['id' => $result['batchid']])
+        );
+    }
+
+    /**
+     * No row sent: nothing is queued and nothing is recorded.
+     */
+    public function test_no_row_sent_queues_nothing(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $prog->id]);
+        $categories = $DB->count_records('course_categories');
+
+        $result = $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id, []);
+
+        $this->assertSame(['status' => 'ok', 'batchid' => 0, 'queued' => 0, 'skipped' => 1], $result);
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+        $this->assertCount(0, \core\task\manager::get_adhoc_tasks(self::TASK));
+    }
+
+    /**
+     * Rows sent with the names of the preview, unchanged, are all queued with those names.
+     */
+    public function test_sent_rows_with_unchanged_names_are_queued(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $a = $gen->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $root->id]);
+        $b = $gen->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $root->id]);
+        $items = [['type' => 'category', 'id' => $root->id]];
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END);
+
+        $result = clonerunner::run(
+            $items,
+            (int) $period->id,
+            '2027-01',
+            self::START,
+            self::END,
+            $this->all_rows($plan),
+            $plan['hash']
+        );
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(2, $result['queued']);
+        $this->assertSame(0, $result['skipped']);
+        $bysource = array_column($this->payload((int) $result['batchid'])['items'], null, 'source');
+        $this->assertSame('A-2027-01', $bysource[$a->id]['newshortname']);
+        $this->assertSame('B 2027-01', $bysource[$b->id]['newfullname']);
+        $this->assertCount(2, \core\task\manager::get_adhoc_tasks(self::TASK));
+    }
+
+    /**
      * A hash that no longer matches writes nothing.
      */
     public function test_run_stale_hash(): void {
@@ -238,7 +341,6 @@ final class clonerunner_test extends \advanced_testcase {
      * The copy, once run, is hidden, renamed, dated, without users and with the activities of the seed.
      */
     public function test_end_to_end_copy(): void {
-        $this->skip_if_backup_broken();
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
@@ -350,7 +452,9 @@ final class clonerunner_test extends \advanced_testcase {
 
         $items = [['type' => 'category', 'id' => $root->id]];
         $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END);
-        $result = $runner::run($items, (int) $period->id, '2027-01', self::START, self::END, [], $plan['hash']);
+        $edits = $this->all_rows($plan);
+        $result = $runner::run($items, (int) $period->id, '2027-01', self::START, self::END, $edits, $plan['hash']);
+        $this->assertDebuggingCalled();
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(1, $result['queued']);
@@ -358,6 +462,10 @@ final class clonerunner_test extends \advanced_testcase {
         $bysource = array_column($this->payload((int) $result['batchid'])['items'], null, 'source');
         $failed = $bysource[$b->id];
         $this->assertSame('queuefailed', $failed['error']);
+        // The cause is kept, short, for the administrator.
+        $this->assertStringStartsWith('moodle_exception: ', $failed['reason']);
+        $this->assertLessThanOrEqual(255, \core_text::strlen($failed['reason']));
+        $this->assertArrayNotHasKey('reason', $bysource[$a->id]);
         $this->assertSame(0, $failed['newcourseid']);
         $this->assertSame('', $failed['restoreid']);
         $this->assertGreaterThan(0, $failed['destcategoryid']);

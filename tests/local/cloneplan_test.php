@@ -35,6 +35,16 @@ final class cloneplan_test extends \advanced_testcase {
     private const END = 1814486400;
 
     /**
+     * Every test builds a plan, which a Moodle with broken backups refuses (see backupcheck_test).
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        if (backupcheck::broken()) {
+            $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version: cloning is refused.');
+        }
+    }
+
+    /**
      * Builds a plan with the default label and dates.
      *
      * @param array $items

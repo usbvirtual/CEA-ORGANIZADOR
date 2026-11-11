@@ -101,7 +101,7 @@ class clone_status extends external_api {
             $newcourseid = (int) ($item['newcourseid'] ?? 0);
             $status = self::item_status($item, $controllers, $courses);
             $totals[$status === 'running' ? 'pending' : $status]++;
-            $rows[] = [
+            $row = [
                 'source' => (int) $item['source'],
                 'newcourseid' => $newcourseid,
                 'newfullname' => (string) $item['newfullname'],
@@ -109,6 +109,11 @@ class clone_status extends external_api {
                 'url' => $newcourseid > 0
                     ? (new \moodle_url('/course/view.php', ['id' => $newcourseid]))->out(false) : '',
             ];
+            // Why the copy could not be queued; batches recorded before this field have none.
+            if ((string) ($item['reason'] ?? '') !== '') {
+                $row['reason'] = (string) $item['reason'];
+            }
+            $rows[] = $row;
         }
         return ['rows' => $rows] + $totals;
     }
@@ -163,6 +168,11 @@ class clone_status extends external_api {
                 'newfullname' => new external_value(PARAM_RAW, 'Full name of the copy, raw'),
                 'status' => new external_value(PARAM_ALPHA, 'pending, running, done or failed'),
                 'url' => new external_value(PARAM_RAW, 'Address of the new course; empty when there is none'),
+                'reason' => new external_value(
+                    PARAM_RAW,
+                    'Why the copy could not be queued, only when it failed then',
+                    VALUE_OPTIONAL
+                ),
             ])),
             'pending' => new external_value(PARAM_INT, 'Copies waiting or running'),
             'done' => new external_value(PARAM_INT, 'Copies finished'),
