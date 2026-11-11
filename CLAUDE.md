@@ -21,7 +21,7 @@ No hay Moodle en este equipo: la compatibilidad real la confirma GitHub Actions.
 
 Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y lecciones de los plugins del CEA) y la skill `cea-branding`. Reglas propias de este plugin:
 
-- Requiere Moodle 4.5 o superior (decisión del usuario; `core_external` exige al menos 4.2).
+- Requiere Moodle 4.5 o superior y PHP 8.1 a 8.4 (decisión del usuario).
 - Toda escritura (mover, reordenar, renombrar) pasa solo por `classes/local/mover.php` y `classes/local/journal.php`.
 - `sorter` y `renamer` son puros: no tocan la base de datos.
 
@@ -35,7 +35,7 @@ Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y leccione
 - Mover a un padre oculto oculta el elemento (comportamiento del núcleo). `journal` guarda `visible` en `from`/`to`, y deshacer restaura la visibilidad solo si el movimiento la cambió; si la visibilidad actual no es la que dejó la operación, es un conflicto.
 - Deshacer es atómico y se rechaza si algo cambió después (conflictos listados). `guard::rollback` es el único helper de rollback; `mover` y `journal` lo usan.
 - En las pruebas de rollback hay que llamar `$this->preventResetByRollback()` justo después de `resetAfterTest()`: en PostgreSQL `advanced_testcase` envuelve cada prueba en una transacción delegada y el rollback anidado solo marca `force_rollback`.
-- Los servicios web usan `\core_external\external_api` y sus clases de parámetros, nunca los alias globales (no existen en 5.3); `core_external` exige al menos Moodle 4.2 (el mínimo vigente es 4.5).
+- Los servicios web usan `\core_external\external_api` y sus clases de parámetros, nunca los alias globales (no existen en 5.3).
 - Los módulos JS que necesitan `core/*` lo reciben inyectado (`api.setTransport`, proveedor de cadenas) para que `node:test` corra sin Moodle. Sin librerías externas: el arrastre usa eventos de puntero propios.
 - El candado (`guard::lock()`) vive en la capa `external`, no en `mover`. El renombrado se limita a 500 elementos por lote.
 - El orden de cursos de una categoría se rechaza si supera `maxcoursesincategory` (`error_toomanycourses`).

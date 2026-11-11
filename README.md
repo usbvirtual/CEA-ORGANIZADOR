@@ -1,6 +1,6 @@
 # CEA-ORGANIZADOR
 
-Plugin de Moodle (`tool_ceaorganizador`) del Centro de Innovación Pedagógica y Educación Digital (CEA), USB Cali. Permite organizar el árbol de categorías y cursos de un sitio: mover, ordenar automáticamente, renombrar por lotes, clonar semillas a un periodo y deshacer. Aparece en *Administración del sitio › Cursos › Organizador de categorías (CEA)*. Requiere Moodle 4.5 o superior.
+Plugin de Moodle (`tool_ceaorganizador`) del Centro de Innovación Pedagógica y Educación Digital (CEA), USB Cali. Permite organizar el árbol de categorías y cursos de un sitio: mover, ordenar automáticamente, renombrar por lotes, clonar semillas a un periodo y deshacer. Aparece en *Administración del sitio › Cursos › Organizador de categorías (CEA)*. Requiere Moodle 4.5 o superior y PHP 8.1 a 8.4.
 
 Instalación: ver [INSTALACION.md](INSTALACION.md). Guía para desarrollo: [CLAUDE.md](CLAUDE.md).
 
@@ -26,7 +26,7 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - `mover.php` y `journal.php` son la única puerta de escritura; usan la API del núcleo para que se disparen eventos y se limpien cachés.
 - `guard.php` reúne el candado y el rollback; los permisos nativos se comprueban en `mover::check_category` y `mover::check_course` y en los servicios web; `tree.php` y `sortplan.php` leen el árbol y arman el plan de orden con su firma.
 - `cloner.php` (nombres con periodo y destino en espejo; puro), `cloneplan.php` (vista previa con su firma y los errores por fila) y `clonerunner.php` (crea las categorías, encola las copias y registra el lote) forman el clonado.
-- `classes/external/*.php`: diez servicios web de organización y tres del clonado (`clone_preview`, `clone_apply`, `clone_status`) y `set_visibility` (ocultar y mostrar cursos), uno por clase, sobre `\core_external` (que exige al menos Moodle 4.2).
+- `classes/external/*.php`: diez servicios web de organización y tres del clonado (`clone_preview`, `clone_apply`, `clone_status`) y `set_visibility` (ocultar y mostrar cursos), uno por clase, sobre `\core_external`.
 - `amd/src/`: `organizer` (arranque), `api`, `treemodel` y `treeview`, `dragdrop`, `dropzones` y `keyboard`, `movepicker` y `mover`, `sortpanel`, `renamepanel` e `historypanel`, `selection`, `clonepanel` y `cloneprogress` (clonado y avance), `visibility` (ocultar y mostrar), `toast`, `dialog` y `text`. Se compilan a `amd/build`.
 
 ## Desarrollo

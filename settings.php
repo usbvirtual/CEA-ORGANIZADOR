@@ -26,7 +26,7 @@ defined('MOODLE_INTERNAL') || die();
 
 if ($hassiteconfig) {
     // Right below "Manage courses and categories" (coursemgmt): insert before the page that
-    // follows it in core (addcategory, same order from 4.2 to 5.3). If it is missing, append.
+    // follows it in core (addcategory, same order from 4.5 to 5.3). If it is missing, append.
     $ADMIN->add(
         'courses',
         new admin_externalpage(
