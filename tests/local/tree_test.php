@@ -50,6 +50,7 @@ final class tree_test extends \advanced_testcase {
     public function test_categories_have_path_and_traversal_order(): void {
         global $DB;
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $misc = (int) $DB->get_field_select('course_categories', 'MIN(id)', 'parent = 0');
         $a = (int) $generator->create_category(['name' => 'A'])->id;
@@ -69,6 +70,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_needsort_flags_unsorted_children(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $a = (int) $generator->create_category(['name' => 'A'])->id;
         $generator->create_category(['name' => 'Semestre II', 'parent' => $a]);
@@ -85,6 +87,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_needsort_counts_courses(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $category = (int) $generator->create_category(['name' => 'Cursos'])->id;
         // Moodle puts each new course first, so creating A and then B leaves B before A.
@@ -101,6 +104,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_root_needsort(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $generator->create_category(['name' => 'Facultad de Ingeniería']);
         $generator->create_category(['name' => '2026-02']);
@@ -112,6 +116,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_courses_pagination_and_search(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $category = (int) $generator->create_category(['name' => 'Muchos'])->id;
         for ($i = 1; $i <= 104; $i++) {
@@ -136,6 +141,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_courses_paths_are_full_category_paths(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $a = (int) $generator->create_category(['name' => 'Facultad'])->id;
         $b = (int) $generator->create_category(['name' => 'Programa & Co', 'parent' => $a])->id;
@@ -165,6 +171,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_courses_never_include_site(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $this->getDataGenerator()->create_course();
         $all = tree::courses(0);
         $this->assertNotContains((int) SITEID, array_column($all['courses'], 'id'));
@@ -176,6 +183,7 @@ final class tree_test extends \advanced_testcase {
      */
     public function test_sibling_categories_and_category_courses(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $generator = $this->getDataGenerator();
         $a = (int) $generator->create_category(['name' => 'A'])->id;
         $b = (int) $generator->create_category(['name' => 'B', 'parent' => $a])->id;

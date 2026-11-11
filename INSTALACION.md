@@ -2,7 +2,7 @@
 
 Plugin de Moodle del Centro de Innovación Pedagógica y Educación Digital (CEA), Universidad de San Buenaventura Cali.
 
-- **Requisitos:** Moodle 4.5 o superior y PHP 8.1 a 8.4. Probado en GitHub Actions con Moodle 4.5, 5.0 y 5.1.
+- **Requisitos:** Moodle 4.5 o superior y PHP 8.1 a 8.4. Probado en GitHub Actions con Moodle 4.5, 5.0, 5.1, 5.2 y 5.3.
 - **Carpeta de instalación:** `admin/tool/ceaorganizador`.
 
 ## Opción A · Desde la interfaz
