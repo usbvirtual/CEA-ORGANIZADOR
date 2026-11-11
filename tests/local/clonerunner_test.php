@@ -463,7 +463,7 @@ final class clonerunner_test extends \advanced_testcase {
         $failed = $bysource[$b->id];
         $this->assertSame('queuefailed', $failed['error']);
         // The cause is kept, short, for the administrator.
-        $this->assertStringStartsWith('moodle_exception: ', $failed['reason']);
+        $this->assertMatchesRegularExpression('/(^|\\\\)moodle_exception: /', $failed['reason']);
         $this->assertLessThanOrEqual(255, \core_text::strlen($failed['reason']));
         $this->assertArrayNotHasKey('reason', $bysource[$a->id]);
         $this->assertSame(0, $failed['newcourseid']);
