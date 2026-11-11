@@ -419,7 +419,7 @@ final class mergerunner_test extends \advanced_testcase {
     }
 
     /**
-     * Undo keeps a created category with a question category in its context; a lone empty «top» does not count.
+     * Undo keeps a created category with any question category in its context, an empty «top» too.
      */
     public function test_undo_keeps_created_category_with_questions(): void {
         global $DB;
@@ -429,13 +429,16 @@ final class mergerunner_test extends \advanced_testcase {
         $ing = $this->cat('Ingeniería', $source);
         $sem1 = $this->cat('Semestre I', $ing);
         $sem2 = $this->cat('Semestre II', $ing);
+        $sem3 = $this->cat('Semestre III', $ing);
         $this->course('A', $sem1);
         $this->course('B', $sem2);
+        $this->course('C', $sem3);
         $target = $this->cat('Semillas');
         $result = $this->apply_merge($target, [$source]);
         $newing = $this->child((int) $target->id, 'Ingeniería');
         $newsem1 = $this->child($newing, 'Semestre I');
         $newsem2 = $this->child($newing, 'Semestre II');
+        $newsem3 = $this->child($newing, 'Semestre III');
         // Inserted directly: question banks in category contexts differ between Moodle versions.
         $top1 = $this->question_category(\context_coursecat::instance($newsem1)->id, 'top', 0);
         $this->question_category(\context_coursecat::instance($newsem1)->id, 'Banco', $top1);
@@ -446,7 +449,9 @@ final class mergerunner_test extends \advanced_testcase {
         $this->assertTrue($undo['ok']);
         $this->assertTrue($DB->record_exists('course_categories', ['id' => $newsem1]));
         $this->assertTrue($DB->record_exists('course_categories', ['id' => $newing]));
-        $this->assertFalse($DB->record_exists('course_categories', ['id' => $newsem2]));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newsem2]));
+        // Without any question category it is deleted.
+        $this->assertFalse($DB->record_exists('course_categories', ['id' => $newsem3]));
     }
 
     /**

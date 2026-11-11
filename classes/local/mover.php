@@ -450,8 +450,9 @@ class mover {
     /**
      * Whether a category holds anything delete_full() would destroy.
      *
-     * The «top» question category that core can create in the context by itself is ignored when it holds no
-     * question: delete_full() would only remove that empty placeholder.
+     * Any question category in its context counts, even an empty «top» one: from Moodle 5.0 delete_full() no
+     * longer deletes question categories and would leave the row orphaned. The cost is that, rarely, an empty
+     * category is kept and must be deleted by hand.
      *
      * @param int $id
      * @return bool
@@ -476,23 +477,10 @@ class mover {
             return false;
         }
         $contextid = (int) $contextid;
-        if (
-            $DB->record_exists('contentbank_content', ['contextid' => $contextid])
+        // Any question category counts, an empty «top» too: questions hang from these categories.
+        return $DB->record_exists('contentbank_content', ['contextid' => $contextid])
             || $DB->record_exists('grade_letters', ['contextid' => $contextid])
-        ) {
-            return true;
-        }
-        // Any question category besides the top one, or any question at all, is content.
-        if ($DB->record_exists_select('question_categories', 'contextid = :ctx AND parent <> 0', ['ctx' => $contextid])) {
-            return true;
-        }
-        return $DB->record_exists_sql(
-            "SELECT 1
-               FROM {question_bank_entries} qbe
-               JOIN {question_categories} qc ON qc.id = qbe.questioncategoryid
-              WHERE qc.contextid = :ctx",
-            ['ctx' => $contextid]
-        );
+            || $DB->record_exists('question_categories', ['contextid' => $contextid]);
     }
 
     /**
