@@ -31,6 +31,12 @@ class suggester {
     /** @var string Word token, with combining marks. */
     private const WORD = '/[\p{L}\p{M}\p{N}]+/u';
 
+    /** @var string[] Accent-free words whose accent changes the meaning: never accented automatically. */
+    private const AMBIGUOUS = [
+        'si', 'mas', 'el', 'tu', 'te', 'se', 'de', 'mi', 'solo', 'aun', 'que', 'como', 'cuando', 'donde',
+        'quien', 'cual', 'cuanto', 'este', 'esta', 'ese', 'esa', 'aquel', 'o',
+    ];
+
     /**
      * Word groups of a list of names.
      *
@@ -76,38 +82,53 @@ class suggester {
     }
 
     /**
-     * Preferred form of the words that differ only by a plural.
+     * Plural unifications among sibling names.
      *
-     * @param string[] $siblingnames Names of the sibling categories.
+     * Two sibling names pair up only when they are identical except for one word at the same
+     * position, and one form is the other plus "s" or "es" (so "ción" pairs with "ciones").
+     * The preferred form is the one with more occurrences in the vocabulary; a tie goes to the plural.
+     *
+     * @param string[] $siblingnames Names of the sibling categories (same parent).
      * @param array $vocabulary As returned by vocabulary().
-     * @return array Map from the accent-free lowercase word to its preferred form.
+     * @return array Map from sibling name (as given) to [accent-free lowercase word => preferred
+     *     accent-free lowercase word]; only names that must change appear. Pass the entry of the
+     *     name being suggested as the fourth argument of suggest().
      */
     public static function sibling_forms(array $siblingnames, array $vocabulary): array {
-        $keys = [];
-        foreach ($siblingnames as $name) {
-            preg_match_all(self::WORD, strip_tags((string) $name), $matches);
-            foreach ($matches[0] as $word) {
-                $keys[self::key($word)] = true;
-            }
+        $parsed = [];
+        foreach (array_values(array_unique(array_map('strval', $siblingnames))) as $name) {
+            preg_match_all(self::WORD, strip_tags($name), $matches);
+            $parsed[$name] = [
+                'keys' => array_map([self::class, 'key'], $matches[0]),
+                'skeleton' => preg_replace(self::WORD, '', strip_tags($name)),
+            ];
         }
-        $keys = array_map('strval', array_keys($keys));
-        sort($keys, SORT_STRING);
         $forms = [];
-        foreach ($keys as $singular) {
-            if (\core_text::strlen($singular) < 3 || !preg_match('/^\p{L}+$/u', $singular)) {
-                continue;
-            }
-            foreach (['s', 'es'] as $suffix) {
-                $plural = $singular . $suffix;
-                if (!in_array($plural, $keys, true)) {
+        foreach ($parsed as $namea => $a) {
+            foreach ($parsed as $nameb => $b) {
+                if ($namea === $nameb || count($a['keys']) !== count($b['keys']) || $a['skeleton'] !== $b['skeleton']) {
                     continue;
                 }
-                // On a tie the plural wins.
-                $winner = self::group_count($vocabulary, $plural) >= self::group_count($vocabulary, $singular)
-                    ? $plural : $singular;
-                $preferred = self::top_form($vocabulary, $winner);
-                $forms[$singular] = $preferred;
-                $forms[$plural] = $preferred;
+                $diff = array_keys(array_diff_assoc($a['keys'], $b['keys']));
+                if (count($diff) !== 1) {
+                    continue;
+                }
+                $singular = (string) $a['keys'][$diff[0]];
+                $plural = (string) $b['keys'][$diff[0]];
+                // Each ordered pair is visited once as (singular, plural).
+                if (
+                    \core_text::strlen($singular) < 3 || !preg_match('/^\p{L}+$/u', $singular)
+                        || !in_array($plural, [$singular . 's', $singular . 'es'], true)
+                ) {
+                    continue;
+                }
+                $pluralwins = self::group_count($vocabulary, $plural) >= self::group_count($vocabulary, $singular);
+                $loser = $pluralwins ? $namea : $nameb;
+                $from = $pluralwins ? $singular : $plural;
+                $to = $pluralwins ? $plural : $singular;
+                if (!isset($forms[$loser][$from])) {
+                    $forms[$loser][$from] = $to;
+                }
             }
         }
         return $forms;
@@ -119,7 +140,7 @@ class suggester {
      * @param string $name
      * @param array $vocabulary As returned by vocabulary().
      * @param array $glossary As returned by parse_glossary().
-     * @param array $siblingforms As returned by sibling_forms().
+     * @param array $siblingforms The entry of this very name in sibling_forms() (or empty).
      * @return array ['new' => string, 'reasons' => string[]]; the reasons are empty when nothing changes.
      */
     public static function suggest(string $name, array $vocabulary, array $glossary, array $siblingforms = []): array {
@@ -150,6 +171,14 @@ class suggester {
                 $current = $next;
             }
         }
+        // Glossary output may bring its own spacing: clean once more so the result is stable.
+        $clean = $steps['formato']($current);
+        if ($clean !== $current) {
+            $current = $clean;
+            if (!in_array('formato', $reasons, true)) {
+                array_unshift($reasons, 'formato');
+            }
+        }
         if ($current === $name) {
             return ['new' => $name, 'reasons' => []];
         }
@@ -165,7 +194,7 @@ class suggester {
      */
     private static function apply_glossary(string $text, array $glossary): string {
         foreach ($glossary as [$from, $to]) {
-            $pattern = '/(?<![\p{L}\p{N}])' . preg_quote($from, '/') . '(?![\p{L}\p{N}])/iu';
+            $pattern = '/(?<![\p{L}\p{M}\p{N}])' . preg_quote($from, '/') . '(?![\p{L}\p{M}\p{N}])/iu';
             $result = preg_replace_callback($pattern, function () use ($to): string {
                 return $to;
             }, $text);
@@ -185,7 +214,10 @@ class suggester {
         return preg_replace_callback(self::WORD, function (array $m) use ($vocabulary): string {
             $word = $m[0];
             $key = self::key($word);
-            if ($word !== \core_text::specialtoascii($word) || empty($vocabulary[$key])) {
+            if (
+                $word !== \core_text::specialtoascii($word) || empty($vocabulary[$key])
+                    || in_array($key, self::AMBIGUOUS, true) || preg_match('/\p{N}/u', $word)
+            ) {
                 return $word;
             }
             $forms = $vocabulary[$key];
@@ -202,10 +234,10 @@ class suggester {
     }
 
     /**
-     * Unifies plural variants with the preferred form among siblings.
+     * Unifies plural variants with the preferred form among siblings, changing only the suffix.
      *
      * @param string $text
-     * @param array $siblingforms
+     * @param array $siblingforms Map from accent-free word to its preferred accent-free word.
      * @return string
      */
     private static function apply_siblings(string $text, array $siblingforms): string {
@@ -214,11 +246,26 @@ class suggester {
         }
         return preg_replace_callback(self::WORD, function (array $m) use ($siblingforms): string {
             $word = $m[0];
-            $key = self::key($word);
-            if (!isset($siblingforms[$key]) || \core_text::strtolower($word) === $siblingforms[$key]) {
+            $from = self::key($word);
+            if (!isset($siblingforms[$from])) {
                 return $word;
             }
-            return self::match_case($word, $siblingforms[$key]);
+            $to = (string) $siblingforms[$from];
+            $lower = \core_text::strtolower($word);
+            if (strlen($to) > strlen($from)) {
+                // Singular to plural.
+                if (substr($from, -4) === 'cion') {
+                    $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - 4) . 'ciones';
+                } else {
+                    $new = $lower . substr($to, strlen($from));
+                }
+            } else if (substr($to, -4) === 'cion' && substr($from, -6) === 'ciones') {
+                // Plural to singular: the accent belongs to the suffix.
+                $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - 6) . 'ción';
+            } else {
+                $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - (strlen($from) - strlen($to)));
+            }
+            return self::match_case($word, $new);
         }, $text) ?? $text;
     }
 

@@ -106,44 +106,130 @@ final class suggester_test extends \advanced_testcase {
     }
 
     /**
-     * Plural variants among siblings go to the most used form; a tie goes to the plural.
+     * Sibling names that differ only by a plural word are unified; a tie goes to the plural.
      */
     public function test_sibling_plural_variant(): void {
         $this->resetAfterTest();
-        $siblings = ['Posgrado', 'Posgrados', 'Especialización', 'Especializaciones', 'Especialización'];
+        $siblings = ['Posgrado', 'Posgrados', 'Facultad de Ingeniería - Posgrado', 'Facultad de Ingeniería - Posgrados'];
         $vocabulary = suggester::vocabulary(array_merge($siblings, ['Posgrados']));
         $forms = suggester::sibling_forms($siblings, $vocabulary);
-        $this->assertSame('posgrados', $forms['posgrado']);
-        $this->assertSame('posgrados', $forms['posgrados']);
-        $this->assertSame('especialización', $forms['especializacion']);
-        $this->assertSame('especialización', $forms['especializaciones']);
+        $this->assertSame(['Posgrado', 'Facultad de Ingeniería - Posgrado'], array_keys($forms));
+        $this->assertSame(['posgrado' => 'posgrados'], $forms['Posgrado']);
 
-        $this->assertSame('Posgrados', suggester::suggest('Posgrado', $vocabulary, [], $forms)['new']);
-        $result = suggester::suggest('Especializaciones', $vocabulary, [], $forms);
-        $this->assertSame('Especialización', $result['new']);
+        $result = suggester::suggest('Posgrado', $vocabulary, [], $forms['Posgrado']);
+        $this->assertSame('Posgrados', $result['new']);
         $this->assertSame(['variante'], $result['reasons']);
+        $longname = 'Facultad de Ingeniería - Posgrado';
+        $long = suggester::suggest($longname, $vocabulary, [], $forms[$longname]);
+        $this->assertSame('Facultad de Ingeniería - Posgrados', $long['new']);
 
-        // A tie goes to the plural.
-        $tie = suggester::sibling_forms(['Maestría', 'Maestrías'], suggester::vocabulary(['Maestría', 'Maestrías']));
-        $this->assertSame('maestrías', $tie['maestria']);
+        // The most frequent form wins, even when it is the singular; a tie goes to the plural.
+        $names = ['Maestría', 'Maestrías', 'Diplomado', 'Diplomados'];
+        $vocabulary = suggester::vocabulary(array_merge($names, ['Diplomado']));
+        $forms = suggester::sibling_forms($names, $vocabulary);
+        $this->assertSame(
+            ['Maestría' => ['maestria' => 'maestrias'], 'Diplomados' => ['diplomados' => 'diplomado']],
+            $forms
+        );
+        $this->assertSame('Diplomado', suggester::suggest('Diplomados', $vocabulary, [], $forms['Diplomados'])['new']);
     }
 
     /**
-     * The rules run in order and each one is reported.
+     * Words of different names are never paired, and a name outside the siblings is not touched.
+     */
+    public function test_sibling_needs_same_name_but_one_word(): void {
+        $this->resetAfterTest();
+        $siblings = ['Ciencia Política', 'Ciencias Sociales'];
+        $vocabulary = suggester::vocabulary($siblings);
+        $this->assertSame([], suggester::sibling_forms($siblings, $vocabulary));
+        $this->assertSame('Ciencia Política', suggester::suggest('Ciencia Política', $vocabulary, [], [])['new']);
+
+        // Different structure (word count or separators): no pairing.
+        $different = ['Posgrado', 'Posgrados de Ingeniería', 'A - Posgrado', 'A Posgrados'];
+        $this->assertSame([], suggester::sibling_forms($different, []));
+
+        // Only the entry of the name changes it.
+        $forms = suggester::sibling_forms(['Posgrado', 'Posgrados'], suggester::vocabulary(['Posgrados']));
+        $this->assertSame('Posgrado Otro', suggester::suggest('Posgrado Otro', [], [], [])['new']);
+        $this->assertSame('Posgrados Otro', suggester::suggest('Posgrado Otro', [], [], $forms['Posgrado'])['new']);
+    }
+
+    /**
+     * Only the plural suffix changes: no accent is imported from the other form.
+     */
+    public function test_sibling_keeps_accent_state(): void {
+        $this->resetAfterTest();
+        $siblings = ['Especialización', 'Especializaciones', 'Educación', 'Educaciones'];
+        $vocabulary = suggester::vocabulary(['Especialización', 'Especialización', 'Especializaciones']);
+        $forms = suggester::sibling_forms($siblings, $vocabulary);
+        // The singular is the most used: the plural goes to the singular and the singular is untouched.
+        $this->assertSame(['especializaciones' => 'especializacion'], $forms['Especializaciones']);
+        $this->assertSame(false, isset($forms['Especialización']));
+        $plural = suggester::suggest('Especializaciones', $vocabulary, [], $forms['Especializaciones']);
+        $this->assertSame('Especialización', $plural['new']);
+        // The plural wins on a tie; the stem keeps its own accents.
+        $this->assertSame(['educacion' => 'educaciones'], $forms['Educación']);
+        $this->assertSame('Educaciones', suggester::suggest('Educación', $vocabulary, [], $forms['Educación'])['new']);
+        $this->assertSame('Educacion', suggester::suggest('Educacion', $vocabulary, [], [])['new']);
+    }
+
+    /**
+     * Words whose accent changes the meaning are never accented.
+     */
+    public function test_accent_stoplist(): void {
+        $this->resetAfterTest();
+        $vocabulary = suggester::vocabulary(['Qué', 'Qué hacer', 'Qué es', 'que', 'Él', 'Él y yo', 'Él es', 'el']);
+        $this->assertSame('Que es', suggester::suggest('Que es', $vocabulary, [])['new']);
+        $this->assertSame('El curso', suggester::suggest('El curso', $vocabulary, [])['new']);
+        $this->assertSame([], suggester::suggest('el curso', $vocabulary, [])['reasons']);
+    }
+
+    /**
+     * A tie, a different accent, and codes with digits are left alone.
+     */
+    public function test_accent_ties_other_accents_and_codes(): void {
+        $this->resetAfterTest();
+        $tie = suggester::vocabulary(['Ingeniería', 'Ingeniería A', 'Ingenieria', 'Ingenieria B']);
+        $this->assertSame('Ingenieria Z', suggester::suggest('Ingenieria Z', $tie, [])['new']);
+
+        $vocabulary = suggester::vocabulary(['Química', 'Química A', 'Quimica']);
+        $this->assertSame('Quìmica', suggester::suggest('Quìmica', $vocabulary, [])['new']);
+
+        $codes = suggester::vocabulary(['Cálc1', 'Cálc1 A', '2026S1C01']);
+        foreach (['CALC1', '2026S1C01', 'Calc1'] as $code) {
+            $result = suggester::suggest($code, $codes, []);
+            $this->assertSame($code, $result['new']);
+            $this->assertSame([], $result['reasons']);
+        }
+    }
+
+    /**
+     * The rules run in order and each one is reported; running again changes nothing.
      */
     public function test_chain_reasons(): void {
         $this->resetAfterTest();
-        $siblings = ['Posgrado', 'Posgrados'];
+        $siblings = ['Posgrado Ingenieria Cien', 'Posgrados Ingenieria Cien'];
         $vocabulary = suggester::vocabulary(array_merge(
-            ['Ingeniería A', 'Ingeniería B', 'Posgrados', 'Ciencias'],
+            ['Ingeniería A', 'Ingeniería B', 'Ingeniería C', 'Ingeniería D', 'Posgrados', 'Ciencias'],
             $siblings
         ));
         $glossary = suggester::parse_glossary('Cien => Ciencias');
         $forms = suggester::sibling_forms($siblings, $vocabulary);
+        $entry = $forms['Posgrado Ingenieria Cien'];
 
-        $result = suggester::suggest('  Posgrado   Ingenieria Cien ', $vocabulary, $glossary, $forms);
+        $result = suggester::suggest('  Posgrado   Ingenieria Cien ', $vocabulary, $glossary, $entry);
         $this->assertSame('Posgrados Ingeniería Ciencias', $result['new']);
         $this->assertSame(['formato', 'glosario', 'tilde', 'variante'], $result['reasons']);
+
+        $again = suggester::suggest($result['new'], $vocabulary, $glossary, $entry);
+        $this->assertSame('Posgrados Ingeniería Ciencias', $again['new']);
+        $this->assertSame([], $again['reasons']);
+
+        // Glossary output with its own spacing is cleaned, so the result is stable.
+        $rules = [['Cien', 'Ciencias   Básicas']];
+        $spaced = suggester::suggest('Cien', [], $rules);
+        $this->assertSame('Ciencias Básicas', $spaced['new']);
+        $this->assertSame([], suggester::suggest($spaced['new'], [], $rules)['reasons']);
     }
 
     /**
