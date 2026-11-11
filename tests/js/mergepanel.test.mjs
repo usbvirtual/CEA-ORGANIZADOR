@@ -329,3 +329,22 @@ test('el historial ofrece Deshacer en una entrada merge', async () => {
     await flush();
     assert.deepEqual(undone, [8]);
 });
+
+test('una vista previa en vuelo se descarta si la selección cambia antes de que responda', async () => {
+    let release;
+    const { document } = setup({
+        sourceid: 1,
+        preview: () => new Promise((resolve) => {
+            release = () => resolve(previewOf([row(10, 'Cálculo')]));
+        }),
+    });
+    pickTarget(document, 3);
+    action(document, 'preview').click();
+    await flush();
+    check(document, 5, true);
+    release();
+    await flush();
+    assert.equal(document.querySelector('[data-region="preview"]').hidden, true);
+    assert.equal(document.querySelectorAll('tbody tr').length, 0);
+    assert.equal(action(document, 'apply').disabled, true);
+});

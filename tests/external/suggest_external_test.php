@@ -161,7 +161,9 @@ final class suggest_external_test extends \advanced_testcase {
     public function test_accent_learned_from_the_site(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
-        [, , , $coursea] = $this->site();
+        [, $a, , $coursea] = $this->site();
+        // A third accented course, so that the accented form wins 3 to 2 over the two unaccented ones.
+        $this->course('Ingeniería de Sistemas', 'ISIS', $a);
         $other = $this->category('Otra');
         $lonely = $this->course('Ingenieria Ambiental', 'IAMB', $other);
         $result = $this->suggest($other);

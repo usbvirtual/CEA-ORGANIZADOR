@@ -18,7 +18,7 @@
  * courses that move (with the repeated ones skipped by default) and the apply step, which lists the
  * categories that were left empty.
  *
- * Everything merge_preview, merge_apply and createSeedseedroot return is formatted (entities): it is decoded
+ * Everything merge_preview, merge_apply and createSeedroot return is formatted (entities): it is decoded
  * with options.decode and written with textContent. Links are built with createElement/setAttribute and the
  * URL starts at options.wwwroot. The modules of Moodle arrive in the options, so this one runs in node:test.
  *
@@ -208,6 +208,8 @@ export const open = ({
 
     // Changing the target or the sources makes the preview obsolete.
     const invalidate = () => {
+        // A preview still in flight belongs to the old choice: its answer is discarded.
+        token++;
         plan = null;
         rows = [];
         tbody.textContent = '';
