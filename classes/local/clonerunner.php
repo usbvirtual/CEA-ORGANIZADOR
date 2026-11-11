@@ -95,7 +95,7 @@ class clonerunner {
 
             $transaction = $DB->start_delegated_transaction();
             try {
-                [$todo, $created] = self::create_categories($todo);
+                [$todo, $created] = mover::create_categories($todo);
                 $payload = [
                     'periodid' => $periodid,
                     'label' => $label,
@@ -329,32 +329,6 @@ class clonerunner {
                 $checked[$anchor] = true;
             }
         }
-    }
-
-    /**
-     * Creates the missing categories level by level, once each, and sets the final destination of every row.
-     *
-     * @param array $rows Rows to clone, with 'anchor' and 'missing'.
-     * @return array [rows with 'destcategoryid' set, int[] ids of the categories created]
-     */
-    private static function create_categories(array $rows): array {
-        $created = [];
-        $cache = [];
-        foreach ($rows as &$row) {
-            $parent = (int) $row['anchor'];
-            foreach ($row['missing'] as $name) {
-                $key = $parent . '|' . sorter::normalize($name);
-                if (!isset($cache[$key])) {
-                    $category = \core_course_category::create(['name' => $name, 'parent' => $parent]);
-                    $cache[$key] = (int) $category->id;
-                    $created[] = (int) $category->id;
-                }
-                $parent = $cache[$key];
-            }
-            $row['destcategoryid'] = $parent;
-        }
-        unset($row);
-        return [$rows, $created];
     }
 
     /**

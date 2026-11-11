@@ -128,6 +128,36 @@ class undo extends external_api {
                     self::check_course((int) $item['id'], 'moodle/course:visibility');
                 }
                 return;
+            case 'merge':
+                self::check_merge($payload);
+                return;
+        }
+    }
+
+    /**
+     * Native capabilities of undoing a merge: moving each course back, and deleting the created categories.
+     *
+     * Deleting a category needs moodle/category:manage on its parent; the parent of a created category is
+     * the target, an existing category or another created one.
+     *
+     * @param array $payload
+     */
+    private static function check_merge(array $payload): void {
+        global $DB;
+        $categories = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            self::check_course((int) $item['id'], 'moodle/course:changecategory');
+            $categories[(int) $item['fromcategory']] = true;
+            $categories[(int) $item['tocategory']] = true;
+        }
+        foreach ($payload['created'] ?? [] as $id) {
+            $parent = $DB->get_field('course_categories', 'parent', ['id' => (int) $id]);
+            if ($parent !== false) {
+                $categories[(int) $parent] = true;
+            }
+        }
+        foreach (array_keys($categories) as $id) {
+            self::check_category($id);
         }
     }
 

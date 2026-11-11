@@ -363,6 +363,93 @@ class mover {
     }
 
     /**
+     * Creates the missing categories level by level, once each, and sets the final destination of every row.
+     *
+     * Names are matched by parent and normalized name, so rows that need the same path share its categories.
+     * The caller has checked moodle/category:manage on every anchor and holds the transaction.
+     *
+     * @param array $rows Rows with 'anchor' (int, existing category) and 'missing' (raw names to create below it).
+     * @return array [rows with 'destcategoryid' set, int[] ids of the categories created, in creation order]
+     */
+    public static function create_categories(array $rows): array {
+        $created = [];
+        $cache = [];
+        foreach ($rows as &$row) {
+            $parent = (int) $row['anchor'];
+            foreach ($row['missing'] as $name) {
+                $key = $parent . '|' . sorter::normalize($name);
+                if (!isset($cache[$key])) {
+                    $category = \core_course_category::create(['name' => $name, 'parent' => $parent]);
+                    $cache[$key] = (int) $category->id;
+                    $created[] = (int) $category->id;
+                }
+                $parent = $cache[$key];
+            }
+            $row['destcategoryid'] = $parent;
+        }
+        unset($row);
+        return [$rows, $created];
+    }
+
+    /**
+     * Moves several courses into one category with move_courses(), which keeps no position: they go first.
+     *
+     * Moving into a hidden category hides the course (core behaviour).
+     *
+     * @param int[] $ids
+     * @param int $categoryid
+     */
+    public static function move_courses_into(array $ids, int $categoryid): void {
+        global $DB;
+        self::require_course_lib();
+        $ids = array_map('intval', array_values($ids));
+        if (!$ids) {
+            return;
+        }
+        if (in_array((int) SITEID, $ids, true)) {
+            throw new \moodle_exception('invalidcourseid', 'error');
+        }
+        $DB->get_record('course_categories', ['id' => $categoryid], 'id', MUST_EXIST);
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            if (!move_courses($ids, $categoryid)) {
+                throw new \moodle_exception('invalidcourseid', 'error');
+            }
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            guard::rollback($transaction, $e);
+        }
+    }
+
+    /**
+     * Deletes a category only when it has no courses and no subcategories.
+     *
+     * delete_full() would delete any course inside; with none, it deletes only the category, its context and
+     * what hangs from it (cohorts, grades, content bank, questions, events). No course is deleted, so the
+     * recycle bin stores nothing.
+     *
+     * @param int $id
+     * @return bool Whether it was deleted.
+     */
+    public static function delete_empty_category(int $id): bool {
+        global $DB;
+        if (!$DB->record_exists('course_categories', ['id' => $id])) {
+            return false;
+        }
+        if ($DB->record_exists('course', ['category' => $id]) || $DB->record_exists('course_categories', ['parent' => $id])) {
+            return false;
+        }
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            \core_course_category::get($id, MUST_EXIST, true)->delete_full(false);
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            guard::rollback($transaction, $e);
+        }
+        return true;
+    }
+
+    /**
      * Requires the capability to manage a category (0 for top level, in the system context).
      *
      * @param int $id

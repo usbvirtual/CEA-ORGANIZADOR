@@ -203,6 +203,7 @@ $string['suggesttoggleall'] = 'Marcar/desmarcar todo';
 $string['suggesttruncated'] = 'Hay {$a} correcciones y se muestran solo las primeras 2000. Aplica estas y vuelve a abrir el panel para ver el resto.';
 $string['summary_clone'] = 'Clonado a {$a->label} · cursos: {$a->count}';
 $string['summary_hide'] = 'Ocultar: {$a}';
+$string['summary_merge'] = 'Unificar en {$a->target} · cursos: {$a->count}';
 $string['summary_movecategory'] = 'Mover la categoría «{$a}»';
 $string['summary_movecourse'] = 'Mover el curso «{$a}»';
 $string['summary_rename'] = 'Renombrar {$a} elementos';

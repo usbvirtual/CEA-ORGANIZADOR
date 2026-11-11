@@ -35,6 +35,9 @@ namespace tool_ceaorganizador\local;
  * - clone: {periodid, label, startdate, enddate, categories: [created ids], items: [{source, newfullname,
  *   newshortname, destcategoryid, backupid, restoreid, newcourseid, error}]}; see clonerunner. It cannot be undone.
  * - visibility: {items: [{id, name (raw full name), before: 0|1, after: 0|1}]}, only the courses that changed.
+ * - merge: {targetid, sourceids, created: [category ids, in creation order], items: [{id, fromcategory, tocategory,
+ *   fromvisible, tovisible}]}, only the courses moved; see mergerunner. Undo moves them back and deletes the
+ *   created categories that are empty then; one that received other content is kept.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -45,7 +48,7 @@ class journal {
     public const TABLE = 'tool_ceaorganizador_log';
 
     /** @var string[] Accepted actions. */
-    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility'];
+    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility', 'merge'];
 
     /** @var int Length of the summary column. */
     public const SUMMARY_MAX = 255;
@@ -372,6 +375,8 @@ class journal {
                 return self::conflicts_rename($payload);
             case 'visibility':
                 return self::conflicts_visibility($payload);
+            case 'merge':
+                return self::conflicts_merge($payload);
         }
         throw new \coding_exception('Unknown journal action: ' . $action);
     }
@@ -587,6 +592,88 @@ class journal {
     }
 
     /**
+     * Conflicts of a merge: every course must still be where it was put, and its old category must exist.
+     *
+     * The visibility counts only when the move changed it, since only then the undo writes it.
+     *
+     * @param array $payload
+     * @return string[]
+     */
+    private static function conflicts_merge(array $payload): array {
+        global $DB;
+        $ids = [0];
+        $fromids = [0];
+        foreach ($payload['items'] ?? [] as $item) {
+            $ids[] = (int) $item['id'];
+            $fromids[] = (int) $item['fromcategory'];
+        }
+        $courses = [];
+        $categories = [];
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $courses += $DB->get_records_list('course', 'id', $chunk, '', 'id, category, fullname, visible');
+        }
+        foreach (array_chunk(array_unique($fromids), 1000) as $chunk) {
+            $categories += $DB->get_records_list('course_categories', 'id', $chunk, '', 'id');
+        }
+        $conflicts = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $id = (int) $item['id'];
+            $course = $courses[$id] ?? null;
+            if (!$course || $id === (int) SITEID) {
+                $conflicts[] = self::conflict('missing', $id);
+                continue;
+            }
+            $name = self::course_name($course->fullname);
+            if ((int) $course->category !== (int) $item['tocategory']) {
+                $conflicts[] = self::conflict('moved', $name);
+            }
+            if (self::merge_visibility_changed($item) && (int) $course->visible !== (int) $item['tovisible']) {
+                $conflicts[] = self::conflict('visibility', $name);
+            }
+            if (!isset($categories[(int) $item['fromcategory']])) {
+                $conflicts[] = self::conflict('targetmissing', $name);
+            }
+        }
+        return $conflicts;
+    }
+
+    /**
+     * Whether moving a merged course changed its visibility (moving into a hidden category hides it).
+     *
+     * @param array $item Item of a merge payload.
+     * @return bool
+     */
+    private static function merge_visibility_changed(array $item): bool {
+        return isset($item['fromvisible'], $item['tovisible']) && (int) $item['fromvisible'] !== (int) $item['tovisible'];
+    }
+
+    /**
+     * Undoes a merge: the courses go back, then the created categories left empty are deleted, deepest first.
+     *
+     * Categories are created parent before child, so the reverse creation order is deepest first.
+     * A created category that holds a course or a subcategory now is kept: it is not a conflict.
+     *
+     * @param array $payload
+     */
+    private static function restore_merge(array $payload): void {
+        $groups = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $groups[(int) $item['fromcategory']][] = (int) $item['id'];
+        }
+        foreach ($groups as $categoryid => $ids) {
+            mover::move_courses_into($ids, $categoryid);
+        }
+        foreach ($payload['items'] ?? [] as $item) {
+            if (self::merge_visibility_changed($item)) {
+                self::restore_course_visibility((int) $item['id'], (bool) $item['fromvisible']);
+            }
+        }
+        foreach (array_reverse(self::ids($payload['created'] ?? null)) as $id) {
+            mover::delete_empty_category($id);
+        }
+    }
+
+    /**
      * Restores the state before the operation through the mover. Runs inside the undo transaction.
      *
      * @param string $action
@@ -636,6 +723,9 @@ class journal {
                 foreach ($payload['items'] ?? [] as $item) {
                     mover::set_course_visibility((int) $item['id'], (bool) $item['before']);
                 }
+                return;
+            case 'merge':
+                self::restore_merge($payload);
                 return;
         }
         throw new \coding_exception('Unknown journal action: ' . $action);

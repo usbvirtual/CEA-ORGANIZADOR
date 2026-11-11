@@ -1,0 +1,471 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace tool_ceaorganizador\local;
+
+// Cobertura declarada dos veces: el atributo para PHPUnit 11 (Moodle 5.x) y la
+// anotación @covers para PHPUnit 9.6 (Moodle 4.x) y el verificador de código.
+#[\PHPUnit\Framework\Attributes\CoversClass(mergerunner::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(journal::class)]
+/**
+ * Tests for running and undoing a merge of seed categories.
+ *
+ * @package    tool_ceaorganizador
+ * @copyright  2026 Universidad de San Buenaventura Cali
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers     \tool_ceaorganizador\local\mergerunner
+ * @covers     \tool_ceaorganizador\local\journal
+ */
+final class mergerunner_test extends \advanced_testcase {
+    /**
+     * Creates a category.
+     *
+     * @param string $name
+     * @param \core_course_category|null $parent
+     * @return \core_course_category
+     */
+    private function cat(string $name, ?\core_course_category $parent = null): \core_course_category {
+        $record = $this->getDataGenerator()->create_category(['name' => $name, 'parent' => $parent ? $parent->id : 0]);
+        return \core_course_category::get((int) $record->id, MUST_EXIST, true);
+    }
+
+    /**
+     * Creates a course.
+     *
+     * @param string $fullname
+     * @param \core_course_category $category
+     * @return int
+     */
+    private function course(string $fullname, \core_course_category $category): int {
+        static $n = 0;
+        $n++;
+        $course = $this->getDataGenerator()->create_course([
+            'fullname' => $fullname,
+            'shortname' => 'MR' . $n,
+            'category' => $category->id,
+        ]);
+        return (int) $course->id;
+    }
+
+    /**
+     * Previews and applies a merge with the hash of that preview.
+     *
+     * @param \core_course_category $target
+     * @param \core_course_category[] $sources
+     * @param array $rows Rows sent: [['courseid' => int, 'action' => 'move'|'skip']].
+     * @return array Result of mergerunner::run().
+     */
+    private function apply_merge(\core_course_category $target, array $sources, array $rows = []): array {
+        $sourceids = array_map(static function (\core_course_category $c): int {
+            return (int) $c->id;
+        }, $sources);
+        $plan = mergeplan::build((int) $target->id, $sourceids);
+        return mergerunner::run((int) $target->id, $sourceids, $rows, $plan['hash']);
+    }
+
+    /**
+     * Category of a course.
+     *
+     * @param int $courseid
+     * @return int
+     */
+    private function category_of(int $courseid): int {
+        global $DB;
+        return (int) $DB->get_field('course', 'category', ['id' => $courseid], MUST_EXIST);
+    }
+
+    /**
+     * Id of the child category with that name, or 0.
+     *
+     * @param int $parent
+     * @param string $name
+     * @return int
+     */
+    private function child(int $parent, string $name): int {
+        global $DB;
+        return (int) $DB->get_field('course_categories', 'id', ['parent' => $parent, 'name' => $name]);
+    }
+
+    /**
+     * Payload of a journal row.
+     *
+     * @param int $logid
+     * @return array
+     */
+    private function payload(int $logid): array {
+        global $DB;
+        return json_decode($DB->get_field(journal::TABLE, 'payload', ['id' => $logid], MUST_EXIST), true);
+    }
+
+    /**
+     * The courses are moved to the mirrored path; the missing categories are created once; it is recorded.
+     */
+    public function test_run_moves_and_creates(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $facultades = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $facultades);
+        $sem1 = $this->cat('Semestre I', $ing);
+        $a = $this->course('Cálculo I', $sem1);
+        $b = $this->course('Física I', $sem1);
+        $target = $this->cat('Semillas');
+        // Same faculty with other accents: it is reused, not repeated.
+        $existing = $this->cat('Ingenieria', $target);
+
+        $result = $this->apply_merge($target, [$facultades]);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(2, $result['moved']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertGreaterThan(0, $result['logid']);
+        $new = $this->child((int) $existing->id, 'Semestre I');
+        $this->assertGreaterThan(0, $new);
+        $this->assertSame(1, $DB->count_records('course_categories', ['parent' => $target->id]));
+        $this->assertSame($new, $this->category_of($a));
+        $this->assertSame($new, $this->category_of($b));
+
+        $log = $DB->get_record(journal::TABLE, ['id' => $result['logid']], '*', MUST_EXIST);
+        $this->assertSame('merge', $log->action);
+        $this->assertSame(
+            get_string('summary_merge', 'tool_ceaorganizador', (object) ['target' => 'Semillas', 'count' => 2]),
+            $log->summary
+        );
+        $payload = $this->payload((int) $result['logid']);
+        $this->assertSame((int) $target->id, $payload['targetid']);
+        $this->assertSame([(int) $facultades->id], $payload['sourceids']);
+        $this->assertSame([$new], $payload['created']);
+        $items = array_column($payload['items'], null, 'id');
+        $this->assertEqualsCanonicalizing([$a, $b], array_keys($items));
+        $this->assertSame((int) $sem1->id, $items[$a]['fromcategory']);
+        $this->assertSame($new, $items[$a]['tocategory']);
+
+        // The source tree is left empty, deepest first.
+        $this->assertSame(
+            [(int) $sem1->id, (int) $ing->id, (int) $facultades->id],
+            array_column($result['emptied'], 'id')
+        );
+    }
+
+    /**
+     * A possible duplicate stays by default; the others move, and the source is not reported empty.
+     */
+    public function test_run_skips_duplicates_by_default(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $dup = $this->course('Cálculo I', $ing);
+        $other = $this->course('Física I', $ing);
+        $target = $this->cat('Semillas');
+        $ting = $this->cat('Ingeniería', $target);
+        $this->course('Cálculo I', $ting);
+
+        $result = $this->apply_merge($target, [$source]);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame((int) $ing->id, $this->category_of($dup));
+        $this->assertSame((int) $ting->id, $this->category_of($other));
+        $this->assertSame([], $result['emptied']);
+    }
+
+    /**
+     * A duplicate sent with 'move' is moved, and the source is then reported empty.
+     */
+    public function test_run_override_moves_duplicate(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $dup = $this->course('Cálculo I', $ing);
+        $target = $this->cat('Semillas');
+        $ting = $this->cat('Ingeniería', $target);
+        $this->course('Cálculo I', $ting);
+
+        $result = $this->apply_merge($target, [$source], [['courseid' => $dup, 'action' => 'move']]);
+
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertSame((int) $ting->id, $this->category_of($dup));
+        $this->assertSame([(int) $ing->id, (int) $source->id], array_column($result['emptied'], 'id'));
+    }
+
+    /**
+     * An action that is not move or skip, or a course outside the merge, is rejected before any write.
+     */
+    public function test_run_rejects_invalid_rows(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $a = $this->course('A', $source);
+        $target = $this->cat('Semillas');
+
+        try {
+            $this->apply_merge($target, [$source], [['courseid' => $a, 'action' => 'delete']]);
+            $this->fail('An invalid action must be rejected');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertSame((int) $source->id, $this->category_of($a));
+        }
+        $this->expectException(\invalid_parameter_exception::class);
+        $this->apply_merge($target, [$source], [['courseid' => $a + 1000, 'action' => 'move']]);
+    }
+
+    /**
+     * A preview that no longer matches returns 'stale' and writes nothing.
+     */
+    public function test_stale(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $a = $this->course('A', $source);
+        $target = $this->cat('Semillas');
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+        // A course added after the preview changes the plan.
+        $this->course('B', $source);
+
+        $result = mergerunner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
+
+        $this->assertSame('stale', $result['status']);
+        $this->assertSame(0, $result['logid']);
+        $this->assertSame((int) $source->id, $this->category_of($a));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+
+    /**
+     * Without every capability nothing is created, moved or recorded.
+     */
+    public function test_requires_capability(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $a = $this->course('A', $ing);
+        $target = $this->cat('Semillas');
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+        $categories = $DB->count_records('course_categories');
+
+        // Manages every category but cannot change the category of a course.
+        $user = $this->getDataGenerator()->create_user();
+        $roleid = $this->getDataGenerator()->create_role();
+        $system = \context_system::instance();
+        assign_capability('moodle/category:manage', CAP_ALLOW, $roleid, $system->id);
+        role_assign($roleid, $user->id, $system->id);
+        $this->setUser($user);
+        try {
+            mergerunner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
+            $this->fail('moodle/course:changecategory must be required');
+        } catch (\required_capability_exception $e) {
+            $this->assertStringContainsString('changecategory', $e->getMessage() . ' ' . $e->debuginfo);
+        }
+
+        // Can move courses and manage the source, but not the target.
+        $other = $this->getDataGenerator()->create_user();
+        $partial = $this->getDataGenerator()->create_role();
+        assign_capability('moodle/course:changecategory', CAP_ALLOW, $partial, $system->id);
+        assign_capability('moodle/category:manage', CAP_ALLOW, $partial, \context_coursecat::instance($source->id)->id);
+        role_assign($partial, $other->id, $system->id);
+        $this->setUser($other);
+        try {
+            mergerunner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
+            $this->fail('moodle/category:manage on the target must be required');
+        } catch (\required_capability_exception $e) {
+            $this->assertStringContainsString('category:manage', $e->getMessage() . ' ' . $e->debuginfo);
+        }
+
+        $this->assertSame((int) $ing->id, $this->category_of($a));
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+
+    /**
+     * When every course stays, nothing is recorded.
+     */
+    public function test_nothing_to_move(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $a = $this->course('A', $source);
+        $target = $this->cat('Semillas');
+
+        $result = $this->apply_merge($target, [$source], [['courseid' => $a, 'action' => 'skip']]);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(0, $result['logid']);
+        $this->assertSame(0, $result['moved']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+        $this->assertSame((int) $source->id, $this->category_of($a));
+    }
+
+    /**
+     * Undo moves every course back and deletes the categories the merge created.
+     */
+    public function test_undo_restores_and_deletes_created(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $sem1 = $this->cat('Semestre I', $ing);
+        $a = $this->course('A', $sem1);
+        $b = $this->course('B', $ing);
+        $target = $this->cat('Semillas');
+        $result = $this->apply_merge($target, [$source]);
+        $this->assertCount(2, $this->payload((int) $result['logid'])['created']);
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame([], $undo['conflicts']);
+        $this->assertSame((int) $sem1->id, $this->category_of($a));
+        $this->assertSame((int) $ing->id, $this->category_of($b));
+        $this->assertSame(0, $DB->count_records('course_categories', ['parent' => $target->id]));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $target->id]));
+        $this->assertGreaterThan(0, (int) $DB->get_field(journal::TABLE, 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * Undo keeps a created category that received other content after the merge, and deletes the empty ones.
+     */
+    public function test_undo_keeps_nonempty_created_category(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $sem1 = $this->cat('Semestre I', $ing);
+        $sem2 = $this->cat('Semestre II', $ing);
+        $a = $this->course('A', $sem1);
+        $b = $this->course('B', $sem2);
+        $target = $this->cat('Semillas');
+        $result = $this->apply_merge($target, [$source]);
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        $newsem1 = $this->child($newing, 'Semestre I');
+        $newsem2 = $this->child($newing, 'Semestre II');
+        // Someone adds a course to a created category after the merge.
+        $c = $this->course('C', \core_course_category::get($newsem1, MUST_EXIST, true));
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $sem1->id, $this->category_of($a));
+        $this->assertSame((int) $sem2->id, $this->category_of($b));
+        $this->assertSame($newsem1, $this->category_of($c));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newsem1]));
+        // Its parent has a subcategory, so it is kept too; the empty sibling is deleted.
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newing]));
+        $this->assertFalse($DB->record_exists('course_categories', ['id' => $newsem2]));
+    }
+
+    /**
+     * Undo is refused, and writes nothing, when a course moved since or its old category is gone.
+     */
+    public function test_undo_conflict(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $sem1 = $this->cat('Semestre I', $ing);
+        $a = $this->course('Curso A', $ing);
+        $b = $this->course('Curso B', $sem1);
+        $target = $this->cat('Semillas');
+        $elsewhere = $this->cat('Otra');
+        $result = $this->apply_merge($target, [$source]);
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        $newsem1 = $this->child($newing, 'Semestre I');
+        // A moves on; the old category of B is deleted.
+        move_courses([$a], (int) $elsewhere->id);
+        \core_course_category::get((int) $sem1->id, MUST_EXIST, true)->delete_full(false);
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertContains(get_string('conflict_moved', 'tool_ceaorganizador', 'Curso A'), $undo['conflicts']);
+        $this->assertContains(get_string('conflict_targetmissing', 'tool_ceaorganizador', 'Curso B'), $undo['conflicts']);
+        $this->assertSame((int) $elsewhere->id, $this->category_of($a));
+        $this->assertSame($newsem1, $this->category_of($b));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newing]));
+        $this->assertSame(0, (int) $DB->get_field(journal::TABLE, 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * A course hidden by moving it into a hidden target is shown again by the undo.
+     */
+    public function test_undo_restores_visibility(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $a = $this->course('A', $source);
+        $target = $this->cat('Semillas');
+        $target->hide();
+        $result = $this->apply_merge($target, [$source]);
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $a]));
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $source->id, $this->category_of($a));
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $a]));
+    }
+
+    /**
+     * A failure inside the transaction leaves no category, move or journal row behind.
+     */
+    public function test_failure_rolls_back(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $a = $this->course('A', $ing);
+        $target = $this->cat('Semillas');
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+        $categories = $DB->count_records('course_categories');
+        // Fails at the last step of the transaction, after the categories are created and the course moved.
+        $runner = new class extends mergerunner {
+            /**
+             * Fails instead of recording.
+             *
+             * @param int $targetid
+             * @param array $payload
+             * @return int
+             */
+            protected static function record_merge(int $targetid, array $payload): int {
+                throw new \coding_exception('Simulated failure');
+            }
+        };
+
+        try {
+            $runner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
+            $this->fail('The failure must reach the caller');
+        } catch (\coding_exception $e) {
+            $this->assertStringContainsString('Simulated failure', $e->getMessage());
+        }
+
+        $this->assertSame((int) $ing->id, $this->category_of($a));
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+}

@@ -39,9 +39,11 @@ class mergeplan {
      *
      * @param int $targetid Category that receives the courses.
      * @param int[] $sourceids Categories whose courses are moved, at any depth.
+     * @param bool $details Adds to each row, for mergerunner: 'fromid' (current category), 'anchor' (deepest
+     *      existing destination category) and 'missing' (raw names to create below it). The hash does not change.
      * @return array ['rows' => array[], 'emptied' => array[], 'hash' => string]
      */
-    public static function build(int $targetid, array $sourceids): array {
+    public static function build(int $targetid, array $sourceids, bool $details = false): array {
         global $DB;
 
         $sourceids = array_map('intval', array_values($sourceids));
@@ -131,6 +133,9 @@ class mergeplan {
                 'duplicate' => false,
                 'action' => 'move',
             ];
+            if ($details) {
+                $rows[count($rows) - 1] += ['fromid' => $category, 'anchor' => $resolved['existing'], 'missing' => $missing];
+            }
             $slots[] = [$key, sorter::normalize($course->fullname)];
         }
 
