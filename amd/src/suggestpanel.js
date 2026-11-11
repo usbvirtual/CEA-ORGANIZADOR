@@ -83,11 +83,15 @@ export const open = ({api, strings, toast, onError, undo, reload, decode, catego
         return {wrap, input};
     };
 
+    let closed = false;
     const dialog = openDialog({
         doc,
         title: strings.suggest,
         trigger,
         className: 'tool-ceaorganizador-dialogo-ancho',
+        onClose: () => {
+            closed = true;
+        },
     });
     const root = dialog.element;
 
@@ -218,8 +222,12 @@ export const open = ({api, strings, toast, onError, undo, reload, decode, catego
         for (const logid of [...logids].reverse()) {
             const result = await undo(logid);
             if (!result || !result.ok) {
-                return;
+                break;
             }
+        }
+        // The panel is stale after an undo: load it again if it is still open.
+        if (!closed) {
+            load();
         }
     };
 

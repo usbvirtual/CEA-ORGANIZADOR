@@ -17,7 +17,7 @@ test('cada método envía la función web y los parámetros exactos', async () =
     await api.sortPreview({ categoryid: 0, categoryids: [4, 5], scope: 'both' });
     await api.renamePreview({ items: [], ops: '[]' });
     await api.renameApply({ changes: [] });
-    await api.suggestPreview(3, false);
+    await api.suggestPreview({ categoryid: 3, includecourses: false });
     await api.undo(7);
     await api.history(2);
     assert.deepEqual(calls, [

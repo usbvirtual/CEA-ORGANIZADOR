@@ -81,11 +81,10 @@ export const renamePreview = (params) => call('rename_preview', params);
 export const renameApply = (params) => call('rename_apply', params);
 
 /**
- * @param {Number} categoryid Category and its descendants; 0 is the whole site.
- * @param {Boolean} includecourses Also suggest course full names.
+ * @param {Object} params {categoryid (0 is the whole site), includecourses}.
  * @returns {Promise} {rows, total, truncated}.
  */
-export const suggestPreview = (categoryid, includecourses) => call('suggest_preview', {categoryid, includecourses});
+export const suggestPreview = (params) => call('suggest_preview', params);
 
 export const undo = (logid) => call('undo', {logid});
 

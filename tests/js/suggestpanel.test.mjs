@@ -176,3 +176,57 @@ test('más de 500 cambios se envían en lotes de 500, uno tras otro', async () =
     await flush();
     assert.deepEqual(calls.undo, [53, 52, 51]);
 });
+
+test('con el api real, el panel llega a los servicios con los parámetros exactos y recarga tras deshacer', async () => {
+    const real = await import('tool_ceaorganizador/api');
+    const sent = [];
+    real.setTransport(async (methodname, args) => {
+        sent.push({ methodname, args });
+        if (methodname === 'tool_ceaorganizador_suggest_preview') {
+            return { rows: [rowOf('course', 2, 'Fisica', 'Física')], total: 1, truncated: false };
+        }
+        return { results: [{ type: 'course', id: 2, status: 'ok', message: '' }], logid: 9 };
+    });
+    try {
+        const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
+        const { document } = dom.window;
+        globalThis.DOMParser = dom.window.DOMParser;
+        const toasts = [];
+        open({
+            api: real,
+            strings,
+            toast: { show: (message, options) => toasts.push(options) },
+            onError: (error) => {
+                throw error;
+            },
+            undo: async () => ({ ok: true }),
+            reload: async () => {},
+            decode: decodeEntities,
+            categoryid: 7,
+            trigger: document.getElementById('t'),
+            doc: document,
+        });
+        await flush();
+        assert.deepEqual(sent[0], {
+            methodname: 'tool_ceaorganizador_suggest_preview',
+            args: { categoryid: 7, includecourses: true },
+        });
+        const box = document.querySelector('[data-field="includecourses"]');
+        box.checked = false;
+        box.dispatchEvent(new document.defaultView.Event('change'));
+        await flush();
+        assert.deepEqual(sent[1].args, { categoryid: 7, includecourses: false });
+        action(document, 'apply').click();
+        await flush();
+        const apply = sent.find((call) => call.methodname === 'tool_ceaorganizador_rename_apply');
+        assert.deepEqual(apply.args, { changes: [{ type: 'course', id: 2, old: 'Fisica', new: 'Física' }] });
+        // After the apply the panel loaded again; an undo loads it once more while it is open.
+        const loads = () => sent.filter((call) => call.methodname === 'tool_ceaorganizador_suggest_preview').length;
+        assert.equal(loads(), 3);
+        toasts[0].onAction();
+        await flush();
+        assert.equal(loads(), 4);
+    } finally {
+        real.setTransport();
+    }
+});
