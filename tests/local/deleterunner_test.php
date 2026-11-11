@@ -271,16 +271,17 @@ final class deleterunner_test extends \advanced_testcase {
         $this->assertSame([['id' => $child, 'name' => 'Hija', 'reason' => 'nopermission']], $result['skipped']);
         $this->assertTrue($this->exists($child));
 
-        // Manages the parent: the subcategory can go, but a top-level category needs the system context.
+        // Manages the parent: a subcategory can go, but a top-level category needs the system context.
+        // A new subcategory: the role assigned above in Hija counts as content and keeps it.
         $this->setAdminUser();
+        $second = $this->cat('Segunda', $parent);
         $other = $this->getDataGenerator()->create_user();
         $this->grant_manage((int) $other->id, \context_coursecat::instance($parent));
-        $this->grant_manage((int) $other->id, \context_coursecat::instance($top));
         $this->setUser($other);
-        $result = deleterunner::run([$child, $top]);
+        $result = deleterunner::run([$second, $top]);
         $this->assertSame(1, $result['deleted']);
         $this->assertSame([['id' => $top, 'name' => 'Arriba', 'reason' => 'nopermission']], $result['skipped']);
-        $this->assertFalse($this->exists($child));
+        $this->assertFalse($this->exists($second));
         $this->assertTrue($this->exists($top));
     }
 
