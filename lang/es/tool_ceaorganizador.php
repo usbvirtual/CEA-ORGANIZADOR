@@ -104,7 +104,6 @@ $string['dropcancelled'] = 'Movimiento cancelado';
 $string['dropinside'] = 'Dentro de {$a}';
 $string['error_aftermismatch'] = 'La posición de destino ya no es válida; recarga el árbol.';
 $string['error_alreadyundone'] = 'Esta operación ya se deshizo.';
-$string['error_backupbroken'] = 'Las copias de seguridad de este Moodle no funcionan con la versión de PHP del servidor (error del núcleo de Moodle 4.2, corregido en 4.3). Actualiza Moodle para poder clonar.';
 $string['error_busy'] = 'Otra persona está reorganizando; intenta en un momento.';
 $string['error_cannotmoveintodescendant'] = 'No se puede mover una categoría dentro de sí misma o de una de sus subcategorías.';
 $string['error_cannotundoclone'] = 'Los clonados no se pueden deshacer; borra los cursos desde Moodle si sobran.';

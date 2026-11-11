@@ -17,7 +17,6 @@
 namespace tool_ceaorganizador\external;
 
 use core_external\external_api;
-use tool_ceaorganizador\local\backupcheck;
 use tool_ceaorganizador\local\journal;
 
 // Cobertura declarada dos veces: el atributo para PHPUnit 11 (Moodle 5.x) y la
@@ -41,16 +40,6 @@ final class clone_external_test extends \advanced_testcase {
 
     /** @var int End date used by the tests. */
     private const END = 1814486400;
-
-    /**
-     * Skips the test when the Moodle backup cannot run (Moodle 4.2 xml_writer regex vs. modern PCRE).
-     */
-    private function skip_if_backup_broken(): void {
-        if (backupcheck::broken()) {
-            $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version '
-                . '(xml_writer \x regex, fixed in Moodle 4.3).');
-        }
-    }
 
     /**
      * Runs the queued copies the way core's own copy tests do, with the trace output buffered.
@@ -98,8 +87,6 @@ final class clone_external_test extends \advanced_testcase {
      * @return array
      */
     private function preview(\core_course_category $root, \core_course_category $period): array {
-        // A Moodle with broken backups refuses every preview (see backupcheck_test).
-        $this->skip_if_backup_broken();
         $result = clone_preview::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
@@ -125,8 +112,6 @@ final class clone_external_test extends \advanced_testcase {
         array $preview,
         ?array $rows = null
     ): array {
-        // A Moodle with broken backups refuses every batch (see backupcheck_test).
-        $this->skip_if_backup_broken();
         if ($rows === null) {
             $rows = [];
             foreach ($preview['rows'] ?? [] as $row) {
@@ -265,7 +250,6 @@ final class clone_external_test extends \advanced_testcase {
      * Once the cron has run the copies, the status reports them as done, with their course.
      */
     public function test_status_progresses_after_running_tasks(): void {
-        $this->skip_if_backup_broken();
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();

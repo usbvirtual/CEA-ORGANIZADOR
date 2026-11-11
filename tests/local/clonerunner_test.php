@@ -89,18 +89,6 @@ final class clonerunner_test extends \advanced_testcase {
     }
 
     /**
-     * Every test runs a batch, which a Moodle whose backup cannot run (Moodle 4.2 xml_writer regex vs. modern
-     * PCRE) refuses before any write (see backupcheck_test).
-     */
-    protected function setUp(): void {
-        parent::setUp();
-        if (backupcheck::broken()) {
-            $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version '
-                . '(xml_writer \x regex, fixed in Moodle 4.3): cloning is refused.');
-        }
-    }
-
-    /**
      * Silences the backup loggers, as the core copy tests do.
      */
     private function quiet_backup(): void {

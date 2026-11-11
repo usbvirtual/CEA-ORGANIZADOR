@@ -2,7 +2,7 @@
 
 Plugin de Moodle del Centro de Innovación Pedagógica y Educación Digital (CEA), Universidad de San Buenaventura Cali.
 
-- **Requisitos:** Moodle 4.2 o superior y PHP 8.0 a 8.4. Probado en GitHub Actions con Moodle 4.2, 4.5, 5.0 y 5.1.
+- **Requisitos:** Moodle 4.5 o superior y PHP 8.1 a 8.4. Probado en GitHub Actions con Moodle 4.5, 5.0 y 5.1.
 - **Carpeta de instalación:** `admin/tool/ceaorganizador`.
 
 ## Opción A · Desde la interfaz
@@ -82,8 +82,6 @@ Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial
 Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno.
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
-
-**Requisito: copias de seguridad.** Clonar usa las copias de seguridad de Moodle. Moodle 4.2 con versiones recientes de PHP tiene un error del núcleo que impide toda copia de seguridad (corregido en Moodle 4.3); para clonar se recomienda Moodle 4.3 o superior. Si el plugin detecta ese error, la vista previa y el clonado se rechazan con el mensaje «Las copias de seguridad de este Moodle no funcionan con la versión de PHP del servidor…» y no se crea nada.
 
 **Dónde está.** En el menú del nodo de una categoría y en la barra de selección, la opción «Clonar a periodo…».
 

@@ -104,7 +104,6 @@ $string['dropcancelled'] = 'Move cancelled';
 $string['dropinside'] = 'Inside {$a}';
 $string['error_aftermismatch'] = 'The target position is no longer valid; reload the tree.';
 $string['error_alreadyundone'] = 'This operation has already been undone.';
-$string['error_backupbroken'] = 'Course backups on this Moodle do not work with the PHP version of the server (a Moodle 4.2 core bug, fixed in 4.3). Upgrade Moodle to be able to clone.';
 $string['error_busy'] = 'Someone else is reorganising; try again in a moment.';
 $string['error_cannotmoveintodescendant'] = 'A category cannot be moved into itself or into one of its subcategories.';
 $string['error_cannotundoclone'] = 'Clones cannot be undone; delete the extra courses in Moodle if needed.';
