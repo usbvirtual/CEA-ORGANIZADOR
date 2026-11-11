@@ -128,7 +128,7 @@ final class suggester_test extends \advanced_testcase {
         $vocabulary = suggester::vocabulary(array_merge($names, ['Diplomado']));
         $forms = suggester::sibling_forms($names, $vocabulary);
         $this->assertSame(
-            ['Maestría' => ['maestria' => 'maestrias'], 'Diplomados' => ['diplomados' => 'diplomado']],
+            ['Maestría' => ['maestria' => 'maestrías'], 'Diplomados' => ['diplomados' => 'diplomado']],
             $forms
         );
         $this->assertSame('Diplomado', suggester::suggest('Diplomados', $vocabulary, [], $forms['Diplomados'])['new']);
@@ -163,7 +163,7 @@ final class suggester_test extends \advanced_testcase {
         $vocabulary = suggester::vocabulary(['Especialización', 'Especialización', 'Especializaciones']);
         $forms = suggester::sibling_forms($siblings, $vocabulary);
         // The singular is the most used: the plural goes to the singular and the singular is untouched.
-        $this->assertSame(['especializaciones' => 'especializacion'], $forms['Especializaciones']);
+        $this->assertSame(['especializaciones' => 'especialización'], $forms['Especializaciones']);
         $this->assertSame(false, isset($forms['Especialización']));
         $plural = suggester::suggest('Especializaciones', $vocabulary, [], $forms['Especializaciones']);
         $this->assertSame('Especialización', $plural['new']);
@@ -171,6 +171,32 @@ final class suggester_test extends \advanced_testcase {
         $this->assertSame(['educacion' => 'educaciones'], $forms['Educación']);
         $this->assertSame('Educaciones', suggester::suggest('Educación', $vocabulary, [], $forms['Educación'])['new']);
         $this->assertSame('Educacion', suggester::suggest('Educacion', $vocabulary, [], [])['new']);
+    }
+
+    /**
+     * The preferred word is copied as written, so accented endings stay correct in both directions.
+     */
+    public function test_sibling_copies_written_form(): void {
+        $this->resetAfterTest();
+        $cases = [
+            // [vocabulary names, singular, plural, expected singular result, expected plural result].
+            [['Sesión', 'Sesiones'], 'Sesión', 'Sesiones', 'Sesiones', 'Sesiones'],
+            [['Sesión', 'Sesión', 'Sesiones'], 'Sesión', 'Sesiones', 'Sesión', 'Sesión'],
+            [['Región', 'Región', 'Región', 'Regiones'], 'Región', 'Regiones', 'Región', 'Región'],
+            [['Extensión', 'Extensiones', 'Extensiones'], 'Extensión', 'Extensiones', 'Extensiones', 'Extensiones'],
+            [['Inglés', 'Ingleses', 'Ingleses'], 'Inglés', 'Ingleses', 'Ingleses', 'Ingleses'],
+            [['Inglés', 'Inglés', 'Ingleses'], 'Inglés', 'Ingleses', 'Inglés', 'Inglés'],
+        ];
+        foreach ($cases as [$names, $singular, $plural, $expectedsingular, $expectedplural]) {
+            $vocabulary = suggester::vocabulary($names);
+            $forms = suggester::sibling_forms([$singular, $plural], $vocabulary);
+            $this->assertSame($expectedsingular, suggester::suggest($singular, $vocabulary, [], $forms[$singular] ?? [])['new']);
+            $this->assertSame($expectedplural, suggester::suggest($plural, $vocabulary, [], $forms[$plural] ?? [])['new']);
+        }
+        // Uppercase keeps its case pattern.
+        $vocabulary = suggester::vocabulary(['Región', 'Región', 'Regiones']);
+        $forms = suggester::sibling_forms(['REGIONES', 'REGIÓN'], $vocabulary);
+        $this->assertSame('REGIÓN', suggester::suggest('REGIONES', $vocabulary, [], $forms['REGIONES'])['new']);
     }
 
     /**

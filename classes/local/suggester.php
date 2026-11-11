@@ -91,7 +91,7 @@ class suggester {
      * @param string[] $siblingnames Names of the sibling categories (same parent).
      * @param array $vocabulary As returned by vocabulary().
      * @return array Map from sibling name (as given) to [accent-free lowercase word => preferred
-     *     accent-free lowercase word]; only names that must change appear. Pass the entry of the
+     *     word as written in the vocabulary]; only names that must change appear. Pass the entry of the
      *     name being suggested as the fourth argument of suggest().
      */
     public static function sibling_forms(array $siblingnames, array $vocabulary): array {
@@ -125,7 +125,7 @@ class suggester {
                 $pluralwins = self::group_count($vocabulary, $plural) >= self::group_count($vocabulary, $singular);
                 $loser = $pluralwins ? $namea : $nameb;
                 $from = $pluralwins ? $singular : $plural;
-                $to = $pluralwins ? $plural : $singular;
+                $to = self::top_form($vocabulary, $pluralwins ? $plural : $singular);
                 if (!isset($forms[$loser][$from])) {
                     $forms[$loser][$from] = $to;
                 }
@@ -234,10 +234,10 @@ class suggester {
     }
 
     /**
-     * Unifies plural variants with the preferred form among siblings, changing only the suffix.
+     * Unifies plural variants with the preferred form among siblings, copying that form.
      *
      * @param string $text
-     * @param array $siblingforms Map from accent-free word to its preferred accent-free word.
+     * @param array $siblingforms Map from accent-free word to the preferred word as written.
      * @return string
      */
     private static function apply_siblings(string $text, array $siblingforms): string {
@@ -246,28 +246,14 @@ class suggester {
         }
         return preg_replace_callback(self::WORD, function (array $m) use ($siblingforms): string {
             $word = $m[0];
-            $from = self::key($word);
-            if (!isset($siblingforms[$from])) {
+            $key = self::key($word);
+            if (!isset($siblingforms[$key])) {
                 return $word;
             }
-            $to = (string) $siblingforms[$from];
-            $lower = \core_text::strtolower($word);
-            if (strlen($to) > strlen($from)) {
-                // Singular to plural.
-                if (substr($from, -4) === 'cion') {
-                    $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - 4) . 'ciones';
-                } else {
-                    $new = $lower . substr($to, strlen($from));
-                }
-            } else if (substr($to, -4) === 'cion' && substr($from, -6) === 'ciones') {
-                // Plural to singular: the accent belongs to the suffix.
-                $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - 6) . 'ción';
-            } else {
-                $new = \core_text::substr($lower, 0, \core_text::strlen($lower) - (strlen($from) - strlen($to)));
-            }
-            return self::match_case($word, $new);
+            return self::match_case($word, (string) $siblingforms[$key]);
         }, $text) ?? $text;
     }
+
 
     /**
      * Gives the replacement the capitalization of the original word.
