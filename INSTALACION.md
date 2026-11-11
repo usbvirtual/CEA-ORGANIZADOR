@@ -71,7 +71,7 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea programada `\core\task\asynchronous_copy_task`. Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
-**Dónde está.** En el menú del nodo de una categoría o curso y en la barra de selección, la opción «Clonar a periodo…».
+**Dónde está.** En el menú del nodo de una categoría y en la barra de selección, la opción «Clonar a periodo…».
 
 **Cómo se usa.**
 
@@ -86,14 +86,14 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 **Nombres.**
 
-- Nombre completo: el periodo que ya tenga se reemplaza por la etiqueta; si no tiene, se agrega después de un espacio (`Cálculo I` pasa a `Cálculo I 2027-01`).
-- Nombre corto: igual, pero con guion (`CALC1` pasa a `CALC1-2027-01`).
+- Nombre completo: el periodo que ya tenga se quita y la etiqueta se agrega al final, después de un espacio; si el nombre era solo el periodo, queda la etiqueta sola (`Curso 2026-02 Grupo A` pasa a `Curso Grupo A 2027-01`).
+- Nombre corto: igual, pero con guion (`CALC1-2026-02` pasa a `CALC1-2027-01`; `CALC1` pasa a `CALC1-2027-01`).
 - Límite de Moodle: 254 caracteres; un nombre más largo se marca «El nombre es demasiado largo.» y no se clona.
 - Si el nombre corto ya existe en el sitio o se repite en el lote, la fila se omite.
 
 **Fechas.** Moodle desplaza las fechas de las actividades según la nueva fecha de inicio del curso.
 
-**Límite y relanzar.** Máximo **100 cursos por lote**; si hay más, el servidor lo rechaza. Relanzar el mismo lote es seguro: las copias ya hechas o en cola (de los últimos 30 días) se omiten y aparecen como «Ya está clonado en este periodo.».
+**Límite y relanzar.** Máximo **100 cursos por lote**; si hay más, el servidor lo rechaza. Relanzar el mismo lote es seguro: las copias en cola o en curso de los últimos 30 días se omiten, y las ya terminadas se omiten porque su nombre corto ya existe en esa categoría y aparecen como «Ya está clonado en este periodo.».
 
 **No se puede deshacer.** El historial muestra el lote («Clonado a 2027-01 · N cursos»), pero «Deshacer» no aplica a los clonados. Para quitar copias que sobren, borrarlas desde la gestión de cursos de Moodle (*Administración del sitio › Cursos › Gestionar cursos y categorías*). Las categorías que se crearon quedan; se pueden borrar igual.
 
@@ -101,11 +101,11 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 - En la semilla: `moodle/backup:backupcourse`, `moodle/restore:restorecourse` y `moodle/course:create`.
 - En la categoría de destino: `moodle/course:create` y `moodle/restore:restorecourse` (más estricto que el núcleo, que lo exige en el curso de destino).
-- En el padre de cada categoría nueva: `moodle/category:manage`.
+- En la categoría existente de la que cuelgan las categorías nuevas: `moodle/category:manage`.
 
-Si falta alguno, no se clona nada.
+Si falta un permiso en una semilla, esa fila se omite y las demás se clonan. Si falta un permiso en el destino, la petición se rechaza entera y no se crea nada.
 
-**Si una copia falla.** El panel la marca «Fallido» y las demás siguen. Moodle puede dejar un curso provisional «Copiando curso…» en la categoría de destino; hay que borrarlo a mano. Después se puede relanzar el lote: solo se reintentan las que fallaron.
+**Si una copia falla.** El panel la marca «Fallido» y las demás siguen. Moodle puede dejar un curso provisional «Copiando curso…» en la categoría de destino; hay que borrarlo a mano. Mientras ese curso provisional exista, la copia sigue contando como en curso y aparece como «Ya está clonado en este periodo.»; por eso hay que borrarlo antes de relanzar. Después se puede relanzar el lote: solo se reintentan las que fallaron.
 
 ### Pruebas seguras
 
