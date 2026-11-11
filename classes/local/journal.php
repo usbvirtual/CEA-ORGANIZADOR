@@ -42,7 +42,7 @@ namespace tool_ceaorganizador\local;
  *   theme (only when set)}]}, in deletion order (deepest first); see deleterunner. Undo creates them again in the
  *   reverse order, with new ids: a parent deleted in the same batch is created first and its children go under
  *   the new id. Each one goes back right after its old previous sibling when that one is still there; otherwise
- *   it stays last.
+ *   it goes last. A category with the same normalized name under the old parent is a conflict.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -681,8 +681,11 @@ class journal {
     }
 
     /**
-     * Conflicts of a deletion: the old parent must still exist, unless the same batch deleted it, and the old
-     * idnumber must be free.
+     * Conflicts of a deletion: the old parent must still exist, unless the same batch deleted it, the old idnumber
+     * must be free, and no category with the same normalized name may be under that parent now.
+     *
+     * A parent deleted in the same batch is created again by the undo, empty but for the batch, so only the
+     * parents that were not deleted are compared by name.
      *
      * @param array $payload
      * @return string[]
@@ -693,12 +696,26 @@ class journal {
         foreach ($payload['items'] ?? [] as $item) {
             $batch[(int) $item['id']] = true;
         }
+        $siblings = [];
         $conflicts = [];
         foreach ($payload['items'] ?? [] as $item) {
             $name = format_string((string) $item['name'], true, ['context' => \context_system::instance()]);
             $parent = (int) $item['parent'];
-            if ($parent !== 0 && !isset($batch[$parent]) && !$DB->record_exists('course_categories', ['id' => $parent])) {
-                $conflicts[] = self::conflict('parentmissing', $name);
+            if (!isset($batch[$parent])) {
+                if ($parent !== 0 && !$DB->record_exists('course_categories', ['id' => $parent])) {
+                    $conflicts[] = self::conflict('parentmissing', $name);
+                    continue;
+                }
+                if (!isset($siblings[$parent])) {
+                    // Compared in PHP, normalized as the plugin compares names, whatever the database collation.
+                    $siblings[$parent] = [];
+                    foreach ($DB->get_records('course_categories', ['parent' => $parent], '', 'id, name') as $record) {
+                        $siblings[$parent][sorter::normalize($record->name)] = true;
+                    }
+                }
+                if (isset($siblings[$parent][sorter::normalize((string) $item['name'])])) {
+                    $conflicts[] = self::conflict('nametaken', $name);
+                }
             }
             // Compared as core_course_category::create() does, which would refuse it.
             $idnumber = (string) ($item['idnumber'] ?? '');
@@ -710,50 +727,72 @@ class journal {
     }
 
     /**
-     * Undoes a deletion: creates the categories again, shallowest first, each in its old place when it can.
+     * Undoes a deletion: creates the categories again, then puts each parent's children in order once.
      *
      * The items are in deletion order, deepest first, so the reverse order creates every parent before its
-     * children and every previous sibling before the category that followed it. The new ids are mapped from the
-     * old ones. A category hidden only because its parent was hidden is created visible under the hidden parent,
-     * so it shows again with the parent, as before.
+     * children; the new ids are mapped from the old ones. Each category is created last; the final order of
+     * every parent is then computed from the 'afterid' chain, replaying the deletions backwards: each category
+     * goes right after its old previous sibling (its new id when it was in the batch), first when it was first,
+     * or last when that sibling is no longer there. One apply_category_order() per parent, one cleanup at the end.
+     *
+     * A category hidden on purpose (visibleold 0) is created hidden; any other one is created visible and
+     * inherits the visibility of its parent, as the core does, so one hidden only by its parent shows again
+     * with it.
      *
      * @param array $payload
      */
     private static function restore_delete(array $payload): void {
-        global $DB;
+        $items = array_reverse($payload['items'] ?? []);
         $map = [];
-        foreach (array_reverse($payload['items'] ?? []) as $item) {
+        $created = [];
+        foreach ($items as $item) {
             $oldparent = (int) $item['parent'];
-            $parent = $map[$oldparent] ?? $oldparent;
-            $visible = (int) ($item['visible'] ?? 1);
-            if (
-                !$visible
-                && !empty($item['visibleold'])
-                && $parent !== 0
-                && !$DB->get_field('course_categories', 'visible', ['id' => $parent])
-            ) {
-                $visible = 1;
-            }
+            $hidden = !(int) ($item['visible'] ?? 1) && !(int) ($item['visibleold'] ?? 0);
             $data = [
                 'name' => (string) $item['name'],
                 'idnumber' => (string) ($item['idnumber'] ?? ''),
                 'description' => (string) ($item['description'] ?? ''),
                 'descriptionformat' => (int) ($item['descriptionformat'] ?? FORMAT_MOODLE),
-                'parent' => $parent,
-                'visible' => $visible,
+                'parent' => $map[$oldparent] ?? $oldparent,
+                'visible' => $hidden ? 0 : 1,
             ];
             if ((string) ($item['theme'] ?? '') !== '') {
                 $data['theme'] = (string) $item['theme'];
             }
             $id = mover::create_category($data);
             $map[(int) $item['id']] = $id;
+            $created[$id] = true;
+        }
+
+        // The siblings each parent had before the undo, then the created ones inserted in creation order.
+        $orders = [];
+        foreach ($items as $item) {
+            $id = $map[(int) $item['id']];
+            $parent = $map[(int) $item['parent']] ?? (int) $item['parent'];
+            if (!isset($orders[$parent])) {
+                $orders[$parent] = array_values(array_filter(
+                    tree::sibling_categories($parent),
+                    static function (int $sibling) use ($created): bool {
+                        return !isset($created[$sibling]);
+                    }
+                ));
+            }
             $afterid = (int) ($item['afterid'] ?? 0);
             $afterid = $map[$afterid] ?? $afterid;
-            // Created last; it goes back after its old previous sibling, or first, when that place still exists.
-            if ($afterid === 0 || in_array($afterid, tree::sibling_categories($parent), true)) {
-                mover::move_category($id, $parent, $afterid);
+            $list = $orders[$parent];
+            if ($afterid === 0) {
+                $position = 0;
+            } else {
+                $index = array_search($afterid, $list, true);
+                $position = $index === false ? count($list) : $index + 1;
             }
+            array_splice($list, $position, 0, [$id]);
+            $orders[$parent] = $list;
         }
+        foreach ($orders as $parent => $list) {
+            mover::apply_category_order((int) $parent, $list, false);
+        }
+        \core_course_category::resort_categories_cleanup();
     }
 
     /**

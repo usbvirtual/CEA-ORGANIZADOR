@@ -29,6 +29,9 @@
 import {openDialog} from 'tool_ceaorganizador/dialog';
 import {format} from 'tool_ceaorganizador/treeview';
 
+/** @var {Number} Maximum categories per call; the server refuses more (deleterunner::MAX_ITEMS). */
+export const MAX_ITEMS = 200;
+
 /**
  * Text of the reason a category is kept.
  *
@@ -49,7 +52,8 @@ const reasonText = (strings, reason) => strings[`deletereason_${reason}`] || rea
  * @param {Function} options.undo Undoes a journal entry and reloads the tree.
  * @param {Function} options.reload Reloads the tree from the server.
  * @param {Number[]} options.ids Categories chosen (courses are not sent).
- * @param {Function} [options.onApplied] Called after categories were deleted (for example to clear the selection).
+ * @param {Function} [options.onApplied] Called with the ids deleted, after categories were deleted (for example to
+ *                                        take them out of the selection).
  * @param {Function} [options.decode] Turns a formatted string into plain text.
  * @param {Element} [options.trigger] Gets the focus back on close.
  * @param {Document} [options.doc]
@@ -160,6 +164,12 @@ export const open = ({
     };
 
     const ready = (async() => {
+        // One batch only, so a single journal entry and a single undo: more is refused before any request.
+        if (ids.length > MAX_ITEMS) {
+            say(format(strings.error_toomanydelete, MAX_ITEMS));
+            setBusy(false);
+            return;
+        }
         try {
             const result = await api.deletePreview(ids);
             if (!closed) {
@@ -192,7 +202,8 @@ export const open = ({
         }
         toast.show(message, result.logid > 0 ? {actionLabel: strings.undo, onAction: () => undo(result.logid)} : {});
         if (result.deleted > 0) {
-            onApplied(result);
+            const kept = new Set(result.skipped.map((row) => Number(row.id)));
+            onApplied(todo.filter((id) => !kept.has(id)));
             try {
                 await reload();
             } catch (error) {

@@ -426,13 +426,13 @@ class mover {
     /**
      * Deletes a category only when nothing would be lost: no courses, subcategories or data in its context.
      *
-     * delete_full() deletes, besides the category and its context, what hangs from that context: the backups of
-     * the courses deleted from it (recycle bin), content bank items, question categories and questions,
-     * grade letters and category events (cohorts are moved to the parent). A category that holds any of these
-     * is kept.
+     * delete_full() deletes, besides the category and its context, what hangs from that context. A category that
+     * holds anything (see category_content()) is kept. If delete_full() still deletes a course (one added between
+     * the check and the call, by another tool), it throws, so the caller's transaction rolls everything back.
      *
      * @param int $id
      * @return bool Whether it was deleted.
+     * @throws \moodle_exception error_notempty when delete_full() deleted courses.
      */
     public static function delete_empty_category(int $id): bool {
         global $DB;
@@ -441,7 +441,10 @@ class mover {
         }
         $transaction = $DB->start_delegated_transaction();
         try {
-            \core_course_category::get($id, MUST_EXIST, true)->delete_full(false);
+            $deletedcourses = \core_course_category::get($id, MUST_EXIST, true)->delete_full(false);
+            if (!empty($deletedcourses)) {
+                self::fail('notempty');
+            }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
             guard::rollback($transaction, $e);
@@ -462,17 +465,21 @@ class mover {
     /**
      * Why deleting a category would lose something, or '' when it is empty.
      *
-     * Empty means no courses, no subcategories and no content of its own: recycle bin items, content bank
-     * items, events, grade letters or question categories. Any question category in its context counts, even
-     * an empty «top» one: from Moodle 5.0 delete_full() no longer deletes question categories and would leave
-     * the row orphaned. The cost is that, rarely, an empty category is kept and must be deleted by hand.
+     * Empty means no courses, no subcategories and nothing of its own that delete_full() would destroy or move
+     * and an undo could not bring back: recycle bin items, events, and in its context content bank items, grade
+     * letters, question categories, role assignments, permission overrides, cohorts (delete_full() moves them to
+     * the parent), blocks, files (description images too), comments, filter settings and competency frameworks
+     * or templates. The default category for course requests counts as content too. Any question category
+     * counts, even an empty «top» one: from Moodle 5.0 delete_full() no longer deletes question categories and
+     * would leave the row orphaned. The cost is that, rarely, an empty category is kept and must be deleted by
+     * hand. One indexed existence query per table.
      *
      * @param int $id
      * @param int[] $gone Subcategories that do not count, because the caller deletes them first.
      * @return string '', 'hascourses', 'haschildren' or 'hascontent'.
      */
     public static function category_content(int $id, array $gone = []): string {
-        global $DB;
+        global $CFG, $DB;
         if ($DB->record_exists('course', ['category' => $id])) {
             return 'hascourses';
         }
@@ -491,16 +498,38 @@ class mover {
         if ($DB->record_exists('event', ['categoryid' => $id])) {
             return 'hascontent';
         }
+        // Moodle needs it for course requests; core_course_category::can_delete() refuses it too.
+        if (!empty($CFG->defaultrequestcategory) && (int) $CFG->defaultrequestcategory === $id) {
+            return 'hascontent';
+        }
         $contextid = $DB->get_field('context', 'id', ['contextlevel' => CONTEXT_COURSECAT, 'instanceid' => $id]);
         if ($contextid === false) {
             return '';
         }
         $contextid = (int) $contextid;
         // Any question category counts, an empty «top» too: questions hang from these categories.
-        $owned = $DB->record_exists('contentbank_content', ['contextid' => $contextid])
-            || $DB->record_exists('grade_letters', ['contextid' => $contextid])
-            || $DB->record_exists('question_categories', ['contextid' => $contextid]);
-        return $owned ? 'hascontent' : '';
+        $tables = [
+            'contentbank_content' => 'contextid',
+            'grade_letters' => 'contextid',
+            'question_categories' => 'contextid',
+            'role_assignments' => 'contextid',
+            'role_capabilities' => 'contextid',
+            'cohort' => 'contextid',
+            'block_instances' => 'parentcontextid',
+            'comments' => 'contextid',
+            'filter_active' => 'contextid',
+            'filter_config' => 'contextid',
+            'competency_framework' => 'contextid',
+            'competency_template' => 'contextid',
+        ];
+        foreach ($tables as $table => $field) {
+            if ($DB->record_exists($table, [$field => $contextid])) {
+                return 'hascontent';
+            }
+        }
+        // Directory entries ('.') do not count: they are left by areas that are empty now.
+        $files = $DB->record_exists_select('files', "contextid = :contextid AND filename <> '.'", ['contextid' => $contextid]);
+        return $files ? 'hascontent' : '';
     }
 
     /**

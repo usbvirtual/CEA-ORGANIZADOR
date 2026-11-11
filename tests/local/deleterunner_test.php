@@ -162,9 +162,12 @@ final class deleterunner_test extends \advanced_testcase {
         $child = $this->cat('Hija', $withchild);
         $withquestions = $this->cat('Con preguntas');
         $this->question_category($withquestions);
+        // The default category for course requests is never deleted.
+        $requests = $this->cat('Solicitudes');
+        set_config('defaultrequestcategory', $requests);
         $missing = $withquestions + 1000;
 
-        $result = deleterunner::run([$withcourse, $withchild, $withquestions, $missing]);
+        $result = deleterunner::run([$withcourse, $withchild, $withquestions, $requests, $missing]);
 
         $this->assertSame(0, $result['deleted']);
         $this->assertSame(0, $result['logid']);
@@ -172,14 +175,54 @@ final class deleterunner_test extends \advanced_testcase {
         $this->assertSame('hascourses', $reasons[$withcourse]);
         $this->assertSame('haschildren', $reasons[$withchild]);
         $this->assertSame('hascontent', $reasons[$withquestions]);
+        $this->assertSame('hascontent', $reasons[$requests]);
         $this->assertSame('notfound', $reasons[$missing]);
         $names = array_column($result['skipped'], 'name', 'id');
         $this->assertSame('Con hija', $names[$withchild]);
         $this->assertSame('', $names[$missing]);
-        foreach ([$withcourse, $withchild, $child, $withquestions] as $id) {
+        foreach ([$withcourse, $withchild, $child, $withquestions, $requests] as $id) {
             $this->assertTrue($this->exists($id));
         }
         $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+
+    /**
+     * A category with a role assigned in it is kept: the undo could not bring the assignment back.
+     */
+    public function test_skips_category_with_role_assignment(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->cat('Con rol');
+        $user = $this->getDataGenerator()->create_user();
+        $roleid = $this->getDataGenerator()->create_role();
+        role_assign($roleid, $user->id, \context_coursecat::instance($category)->id);
+
+        $result = deleterunner::run([$category]);
+
+        $this->assertSame(0, $result['deleted']);
+        $this->assertSame([['id' => $category, 'name' => 'Con rol', 'reason' => 'hascontent']], $result['skipped']);
+        $this->assertTrue($this->exists($category));
+    }
+
+    /**
+     * A category with a cohort is kept: deleting it would move the cohort to the parent.
+     */
+    public function test_skips_category_with_cohort(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->cat('Con cohorte');
+        $contextid = \context_coursecat::instance($category)->id;
+        $cohort = $this->getDataGenerator()->create_cohort(['contextid' => $contextid]);
+
+        $plan = deleterunner::plan([$category]);
+        $result = deleterunner::run([$category]);
+
+        $this->assertSame('hascontent', $plan['skipped'][0]['reason']);
+        $this->assertSame(0, $result['deleted']);
+        $this->assertSame('hascontent', $result['skipped'][0]['reason']);
+        $this->assertTrue($this->exists($category));
+        $this->assertSame((int) $contextid, (int) $DB->get_field('cohort', 'contextid', ['id' => $cohort->id]));
     }
 
     /**
@@ -321,6 +364,29 @@ final class deleterunner_test extends \advanced_testcase {
     }
 
     /**
+     * A category hidden on purpose comes back hidden; one hidden only by its parent comes back visible when the
+     * parent is visible again.
+     */
+    public function test_undo_restores_visibility_from_visibleold(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->cat('Padre', 0, ['visible' => 0]);
+        // Hidden only because its parent is hidden: visible 0, visibleold 1.
+        $child = $this->cat('Hija', $parent);
+        $own = $this->cat('Propia', 0, ['visible' => 0]);
+        $this->assertSame(1, (int) $DB->get_field('course_categories', 'visibleold', ['id' => $child]));
+        $result = deleterunner::run([$child, $own]);
+        $this->assertSame(2, $result['deleted']);
+        \core_course_category::get($parent, MUST_EXIST, true)->show();
+
+        $this->assertTrue(journal::undo((int) $result['logid'])['ok']);
+
+        $this->assertSame(1, (int) $this->child_record($parent, 'Hija')->visible);
+        $this->assertSame(0, (int) $this->child_record(0, 'Propia')->visible);
+    }
+
+    /**
      * Siblings deleted together come back in their old order.
      */
     public function test_undo_restores_order_of_siblings(): void {
@@ -384,6 +450,26 @@ final class deleterunner_test extends \advanced_testcase {
     }
 
     /**
+     * Undo is refused, and creates nothing, when a category with the same normalized name is now in its place.
+     */
+    public function test_undo_conflict_name_taken(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->cat('Padre');
+        $child = $this->cat('Hija', $parent);
+        $result = deleterunner::run([$child]);
+        $this->cat('HÍJA', $parent);
+        $count = $DB->count_records('course_categories');
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertSame([get_string('conflict_nametaken', 'tool_ceaorganizador', 'Hija')], $undo['conflicts']);
+        $this->assertSame($count, $DB->count_records('course_categories'));
+    }
+
+    /**
      * More than the limit is rejected before anything is read or written.
      */
     public function test_rejects_too_many(): void {
@@ -391,7 +477,7 @@ final class deleterunner_test extends \advanced_testcase {
         $this->setAdminUser();
 
         $this->expectException(\moodle_exception::class);
-        $this->expectExceptionMessageMatches('/500/');
+        $this->expectExceptionMessageMatches('/200/');
         deleterunner::run(range(1, deleterunner::MAX_ITEMS + 1));
     }
 }

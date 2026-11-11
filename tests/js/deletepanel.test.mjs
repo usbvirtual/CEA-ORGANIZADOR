@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import * as api from 'tool_ceaorganizador/api';
-import { open } from 'tool_ceaorganizador/deletepanel';
+import { open, MAX_ITEMS } from 'tool_ceaorganizador/deletepanel';
 import { open as openHistory } from 'tool_ceaorganizador/historypanel';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 import { createSelection } from 'tool_ceaorganizador/selection';
@@ -37,7 +37,7 @@ const setup = (overrides = {}) => {
     const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
     const { document } = dom.window;
     globalThis.DOMParser = dom.window.DOMParser;
-    const calls = { preview: [], apply: [], toasts: [], undo: [], reload: 0, applied: 0, errors: [] };
+    const calls = { preview: [], apply: [], toasts: [], undo: [], reload: 0, applied: [], errors: [] };
     const panel = open({
         api: {
             deletePreview: async (ids) => {
@@ -57,8 +57,8 @@ const setup = (overrides = {}) => {
             calls.reload += 1;
         },
         ids: overrides.ids || [2, 3, 4, 9],
-        onApplied: () => {
-            calls.applied += 1;
+        onApplied: (deleted) => {
+            calls.applied.push(deleted);
         },
         decode: decodeEntities,
         trigger: document.getElementById('t'),
@@ -96,7 +96,8 @@ test('aplicar envía los ids que se borran, cierra, recarga y el aviso ofrece De
     assert.deepEqual(calls.apply, [[3, 2]]);
     assert.equal(panel.element.isConnected, false);
     assert.equal(calls.reload, 1);
-    assert.equal(calls.applied, 1);
+    // Only the deleted categories leave the selection: 3 was kept.
+    assert.deepEqual(calls.applied, [[2]]);
     assert.equal(calls.toasts.length, 1);
     assert.equal(calls.toasts[0].message, 'Borradas: 2 Se conservaron: 1');
     assert.equal(calls.toasts[0].options.actionLabel, 'undo');
@@ -130,7 +131,7 @@ test('si al aplicar no se borra nada, no hay Deshacer ni recarga', async () => {
     assert.equal(calls.toasts[0].message, 'deletenothing Se conservaron: 1');
     assert.deepEqual(calls.toasts[0].options, {});
     assert.equal(calls.reload, 0);
-    assert.equal(calls.applied, 0);
+    assert.deepEqual(calls.applied, []);
 });
 
 test('api: deletePreview y deleteApply envían los ids', async () => {
@@ -229,4 +230,28 @@ test('una entrada de borrado del historial se puede deshacer', async () => {
     });
     await flush();
     assert.ok(document.querySelector('[data-id="8"] [data-action="undo"]'));
+});
+
+test('más categorías que el límite: se avisa y no se pide nada', async () => {
+    const ids = Array.from({ length: MAX_ITEMS + 1 }, (_, index) => index + 1);
+    assert.equal(MAX_ITEMS, 200);
+    const { document, calls, panel } = setup({ ids });
+    await panel.ready;
+    assert.deepEqual(calls.preview, []);
+    assert.equal(region(document, 'notice').textContent, 'error_toomanydelete');
+    assert.equal(document.querySelector('[data-action="apply"]').disabled, true);
+});
+
+test('la selección quita solo las categorías borradas y conserva los cursos', () => {
+    const selection = createSelection();
+    selection.toggle('category', 1);
+    selection.toggle('category', 2);
+    selection.toggle('course', 1);
+    let changes = 0;
+    selection.onChange(() => {
+        changes += 1;
+    });
+    selection.removeCategories([1]);
+    assert.deepEqual(selection.items(), [{ type: 'category', id: 2 }, { type: 'course', id: 1 }]);
+    assert.equal(changes, 1);
 });

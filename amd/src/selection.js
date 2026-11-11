@@ -117,7 +117,8 @@ export const exclusive = (task) => {
 /**
  * Creates an empty selection.
  *
- * @returns {Object} toggle, has, addCategoryContents, addSearchResults, items, count, clear and onChange.
+ * @returns {Object} toggle, has, addCategoryContents, addSearchResults, removeCategories, items, count, clear
+ *                   and onChange.
  */
 export const createSelection = () => {
     // Insertion order is kept, so items() is stable.
@@ -183,6 +184,16 @@ export const createSelection = () => {
         notify();
     };
 
+    /**
+     * Removes some categories (for example the deleted ones); the courses stay selected.
+     *
+     * @param {Number[]} ids
+     */
+    const removeCategories = (ids) => {
+        ids.forEach((id) => chosen.delete(keyOf('category', id)));
+        notify();
+    };
+
     const clear = () => {
         chosen.clear();
         notify();
@@ -193,6 +204,7 @@ export const createSelection = () => {
         has,
         addCategoryContents,
         addSearchResults,
+        removeCategories,
         items: () => [...chosen.values()].map((item) => ({...item})),
         count: () => chosen.size,
         clear,

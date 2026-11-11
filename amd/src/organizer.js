@@ -136,6 +136,7 @@ const REQUESTS = [
     {key: 'dropcancelled', component: 'tool_ceaorganizador'},
     {key: 'dropinside', component: 'tool_ceaorganizador'},
     {key: 'error_generic', component: 'tool_ceaorganizador'},
+    {key: 'error_toomanydelete', component: 'tool_ceaorganizador'},
     {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
     {key: 'hidecourse', component: 'tool_ceaorganizador'},
@@ -316,11 +317,11 @@ export const init = ({root}) => {
             getModel: () => ctx.model,
             wwwroot: Config.wwwroot,
         });
-        // Deleting: only categories are sent; the deleted ones leave the selection.
+        // Deleting: only categories are sent; only the deleted ones leave the selection.
         const deleteOptions = (trigger, ids) => ({
             ...panelOptions(trigger),
             ids,
-            onApplied: () => selection.clear(),
+            onApplied: (deletedids) => selection.removeCategories(deletedids),
         });
         // Every course of the category and of its subcategories, not only the ones drawn.
         const contentsOf = async(id) => {

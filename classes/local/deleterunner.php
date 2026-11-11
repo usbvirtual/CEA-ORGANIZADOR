@@ -37,8 +37,8 @@ namespace tool_ceaorganizador\local;
  * Undo (journal, action 'delete') creates the categories again, with new ids.
  */
 class deleterunner {
-    /** @var int Maximum number of categories in one call. */
-    public const MAX_ITEMS = 500;
+    /** @var int Maximum number of categories in one call: one transaction and one undo, kept short. */
+    public const MAX_ITEMS = 200;
 
     /** @var string[] Reasons a category is skipped. */
     public const REASONS = ['hascourses', 'haschildren', 'hascontent', 'nopermission', 'notfound'];
@@ -126,12 +126,12 @@ class deleterunner {
      *
      * @param int[] $ids
      * @return int[]
-     * @throws \moodle_exception error_toomany beyond the limit.
+     * @throws \moodle_exception error_toomanydelete beyond the limit.
      */
     private static function clean(array $ids): array {
         $ids = array_values(array_unique(array_map('intval', $ids)));
         if (count($ids) > self::MAX_ITEMS) {
-            throw new \moodle_exception('error_toomany', 'tool_ceaorganizador');
+            throw new \moodle_exception('error_toomanydelete', 'tool_ceaorganizador', '', self::MAX_ITEMS);
         }
         foreach ($ids as $id) {
             if ($id <= 0) {
