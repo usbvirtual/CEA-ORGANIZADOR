@@ -312,4 +312,25 @@ final class cloneplan_test extends \advanced_testcase {
         $this->assertSame('A & B 2027-01', $plan['rows'][0]['newfullname']);
         $this->assertNull($plan['rows'][0]['error']);
     }
+
+    /**
+     * More courses than the batch limit are rejected.
+     */
+    public function test_too_many_courses_rejected(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        for ($i = 1; $i <= cloneplan::MAX_ROWS + 1; $i++) {
+            $gen->create_course(['fullname' => "Curso $i", 'shortname' => "C$i", 'category' => $root->id]);
+        }
+
+        try {
+            $this->plan([['type' => 'category', 'id' => $root->id]], (int) $period->id);
+            $this->fail('Expected moodle_exception');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_toomanyclones', $e->errorcode);
+        }
+    }
 }

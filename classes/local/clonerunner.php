@@ -138,15 +138,21 @@ class clonerunner {
                         ['backupid' => $ids['restoreid']],
                         MUST_EXIST
                     );
-                    $payload['items'][$index] = $item;
-                    self::save_payload($logid, $payload);
+                    // The ids join the payload only once the row has committed, so a rolled-back attempt leaves none.
+                    $candidate = $payload;
+                    $candidate['items'][$index] = $item;
+                    self::save_payload($logid, $candidate);
                     $transaction->allow_commit();
+                    $payload = $candidate;
                     $queued++;
                 } catch (\Throwable $e) {
                     try {
                         guard::rollback($transaction, $e);
                     } catch (\Throwable $rethrown) {
                         // Expected: rollback always rethrows. The row is marked and the batch goes on.
+                        $payload['items'][$index]['backupid'] = '';
+                        $payload['items'][$index]['restoreid'] = '';
+                        $payload['items'][$index]['newcourseid'] = 0;
                         $payload['items'][$index]['error'] = 'queuefailed';
                     }
                     self::save_payload($logid, $payload);

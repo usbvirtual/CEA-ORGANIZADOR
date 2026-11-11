@@ -105,4 +105,28 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_clone_preview' => [
+        'classname' => \tool_ceaorganizador\external\clone_preview::class,
+        'description' => 'Preview of cloning seed courses into a period, with its signature.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_clone_apply' => [
+        'classname' => \tool_ceaorganizador\external\clone_apply::class,
+        'description' => 'Queues the copies of a cloning preview that is still current.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_clone_status' => [
+        'classname' => \tool_ceaorganizador\external\clone_status::class,
+        'description' => 'Progress of the copies of a cloning batch.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
 ];

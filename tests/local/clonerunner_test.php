@@ -87,6 +87,21 @@ final class clonerunner_test extends \advanced_testcase {
     }
 
     /**
+     * Runs the queued copies the way core's own copy tests do, with the trace output buffered.
+     */
+    private function run_copy_tasks(): void {
+        ob_start();
+        try {
+            while ($task = \core\task\manager::get_next_adhoc_task(time())) {
+                $task->execute();
+                \core\task\manager::adhoc_task_complete($task);
+            }
+        } finally {
+            ob_end_clean();
+        }
+    }
+
+    /**
      * One copy is queued per course, the missing categories are created once and the batch is recorded.
      */
     public function test_run_queues_one_task_per_course(): void {
@@ -235,8 +250,7 @@ final class clonerunner_test extends \advanced_testcase {
         $this->assertSame(1, $result['queued']);
         $newid = (int) $this->payload((int) $result['batchid'])['items'][0]['newcourseid'];
 
-        $this->expectOutputRegex('/Course copy/');
-        $this->runAdhocTasks(self::TASK);
+        $this->run_copy_tasks();
 
         $course = $DB->get_record('course', ['id' => $newid], '*', MUST_EXIST);
         $this->assertSame(0, (int) $course->visible);
