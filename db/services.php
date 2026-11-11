@@ -145,4 +145,28 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_merge_preview' => [
+        'classname' => \tool_ceaorganizador\external\merge_preview::class,
+        'description' => 'Preview of merging seed categories into one, with its signature.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_merge_apply' => [
+        'classname' => \tool_ceaorganizador\external\merge_apply::class,
+        'description' => 'Moves the courses of a merge preview that is still current.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_create_seedroot' => [
+        'classname' => \tool_ceaorganizador\external\create_seedroot::class,
+        'description' => 'Creates the top-level category for the merged seeds, or returns the one that exists.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
 ];

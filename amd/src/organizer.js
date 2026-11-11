@@ -37,6 +37,7 @@ import {createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCa
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openSuggest} from 'tool_ceaorganizador/suggestpanel';
+import {open as openMerge} from 'tool_ceaorganizador/mergepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
@@ -129,6 +130,27 @@ const REQUESTS = [
     {key: 'keyboardhint', component: 'tool_ceaorganizador'},
     {key: 'loadingcourses', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
+    {key: 'merge', component: 'tool_ceaorganizador'},
+    {key: 'mergeaction', component: 'tool_ceaorganizador'},
+    {key: 'mergeapply', component: 'tool_ceaorganizador'},
+    {key: 'mergecourse', component: 'tool_ceaorganizador'},
+    {key: 'mergecreate', component: 'tool_ceaorganizador'},
+    {key: 'mergedone', component: 'tool_ceaorganizador'},
+    {key: 'mergeduplicate', component: 'tool_ceaorganizador'},
+    {key: 'mergeemptied', component: 'tool_ceaorganizador'},
+    {key: 'mergefrom', component: 'tool_ceaorganizador'},
+    {key: 'mergemove', component: 'tool_ceaorganizador'},
+    {key: 'mergenothing', component: 'tool_ceaorganizador'},
+    {key: 'mergepreview', component: 'tool_ceaorganizador'},
+    {key: 'mergeseeddefault', component: 'tool_ceaorganizador'},
+    {key: 'mergeseedexists', component: 'tool_ceaorganizador'},
+    {key: 'mergeseedname', component: 'tool_ceaorganizador'},
+    {key: 'mergeskip', component: 'tool_ceaorganizador'},
+    {key: 'mergesources', component: 'tool_ceaorganizador'},
+    {key: 'mergestale', component: 'tool_ceaorganizador'},
+    {key: 'mergetarget', component: 'tool_ceaorganizador'},
+    {key: 'mergetargetnow', component: 'tool_ceaorganizador'},
+    {key: 'mergeto', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
     {key: 'moveto', component: 'tool_ceaorganizador'},
@@ -270,6 +292,11 @@ export const init = ({root}) => {
             decode: decodeEntities,
             trigger,
         });
+        const mergeOptions = (trigger) => ({
+            ...panelOptions(trigger),
+            getModel: () => ctx.model,
+            wwwroot: Config.wwwroot,
+        });
         // Every course of the category and of its subcategories, not only the ones drawn.
         const contentsOf = async(id) => {
             const own = createSelection();
@@ -322,6 +349,8 @@ export const init = ({root}) => {
                 }
             } else if (action === 'suggest') {
                 openSuggest({...panelOptions(trigger), categoryid: dragged.id});
+            } else if (action === 'merge') {
+                openMerge({...mergeOptions(trigger), sourceid: dragged.id});
             } else if (action === 'clone') {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
             } else if (action === 'hide' || action === 'show') {
@@ -374,6 +403,12 @@ export const init = ({root}) => {
         suggestButton.dataset.action = 'suggest';
         suggestButton.textContent = strings.suggest;
         suggestButton.addEventListener('click', () => openSuggest({...panelOptions(suggestButton), categoryid: 0}));
+        const mergeButton = document.createElement('button');
+        mergeButton.type = 'button';
+        mergeButton.className = 'btn btn-secondary btn-sm';
+        mergeButton.dataset.action = 'merge';
+        mergeButton.textContent = strings.merge;
+        mergeButton.addEventListener('click', () => openMerge(mergeOptions(mergeButton)));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';
@@ -425,7 +460,7 @@ export const init = ({root}) => {
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
         bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, clearButton);
-        toolbar.append(historyButton, suggestButton, busyText, bar);
+        toolbar.append(historyButton, suggestButton, mergeButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
         hint.textContent = strings.keyboardhint;

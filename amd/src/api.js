@@ -102,6 +102,24 @@ export const clonePreview = (params) => call('clone_preview', params);
  */
 export const cloneApply = (params) => call('clone_apply', params);
 
+/**
+ * @param {Object} params {targetid, sourceids}.
+ * @returns {Promise} {rows, emptied, hash}.
+ */
+export const mergePreview = (params) => call('merge_preview', params);
+
+/**
+ * @param {Object} params {targetid, sourceids, rows: [{courseid, action}], hash}.
+ * @returns {Promise} {status, logid, moved, skipped, emptied}.
+ */
+export const mergeApply = (params) => call('merge_apply', params);
+
+/**
+ * @param {Object} params {name}.
+ * @returns {Promise} {id, name, created}.
+ */
+export const createSeedroot = (params) => call('create_seedroot', params);
+
 export const cloneStatus = (batchid) => call('clone_status', {batchid});
 
 /**

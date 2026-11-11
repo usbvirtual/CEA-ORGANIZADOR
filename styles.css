@@ -566,3 +566,12 @@
         grid-template-columns: 1fr;
     }
 }
+
+.tool-ceaorganizador-fusion-bloque {
+    margin-bottom: 1rem;
+}
+
+.tool-ceaorganizador-fusion-bloque .tool-ceaorganizador-dialogo-lista {
+    max-height: 12rem;
+    overflow-y: auto;
+}
