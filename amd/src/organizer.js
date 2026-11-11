@@ -36,6 +36,7 @@ import {open as openPicker} from 'tool_ceaorganizador/movepicker';
 import {createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCategoryIds} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
+import {open as openSuggest} from 'tool_ceaorganizador/suggestpanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
@@ -156,6 +157,10 @@ const REQUESTS = [
     {key: 'renameop_replace', component: 'tool_ceaorganizador'},
     {key: 'renameoptype', component: 'tool_ceaorganizador'},
     {key: 'renamepreview', component: 'tool_ceaorganizador'},
+    {key: 'reason_formato', component: 'tool_ceaorganizador'},
+    {key: 'reason_glosario', component: 'tool_ceaorganizador'},
+    {key: 'reason_tilde', component: 'tool_ceaorganizador'},
+    {key: 'reason_variante', component: 'tool_ceaorganizador'},
     {key: 'renameskipped', component: 'tool_ceaorganizador'},
     {key: 'replacewith', component: 'tool_ceaorganizador'},
     {key: 'resultscount', component: 'tool_ceaorganizador'},
@@ -170,6 +175,13 @@ const REQUESTS = [
     {key: 'sortselectedcount', component: 'tool_ceaorganizador'},
     {key: 'stale', component: 'tool_ceaorganizador'},
     {key: 'suffix', component: 'tool_ceaorganizador'},
+    {key: 'suggest', component: 'tool_ceaorganizador'},
+    {key: 'suggestapply', component: 'tool_ceaorganizador'},
+    {key: 'suggestcourses', component: 'tool_ceaorganizador'},
+    {key: 'suggestnone', component: 'tool_ceaorganizador'},
+    {key: 'suggestroot', component: 'tool_ceaorganizador'},
+    {key: 'suggesttoggleall', component: 'tool_ceaorganizador'},
+    {key: 'suggesttruncated', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
     {key: 'undoconflicts', component: 'tool_ceaorganizador'},
     {key: 'visibilitychanged', component: 'tool_ceaorganizador'},
@@ -308,6 +320,8 @@ export const init = ({root}) => {
                 if (pending) {
                     pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
                 }
+            } else if (action === 'suggest') {
+                openSuggest({...panelOptions(trigger), categoryid: dragged.id});
             } else if (action === 'clone') {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
             } else if (action === 'hide' || action === 'show') {
@@ -354,6 +368,12 @@ export const init = ({root}) => {
                 trigger: historyButton,
             }),
         }));
+        const suggestButton = document.createElement('button');
+        suggestButton.type = 'button';
+        suggestButton.className = 'btn btn-secondary btn-sm';
+        suggestButton.dataset.action = 'suggest';
+        suggestButton.textContent = strings.suggest;
+        suggestButton.addEventListener('click', () => openSuggest({...panelOptions(suggestButton), categoryid: 0}));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';
@@ -405,7 +425,7 @@ export const init = ({root}) => {
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
         bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, clearButton);
-        toolbar.append(historyButton, busyText, bar);
+        toolbar.append(historyButton, suggestButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
         hint.textContent = strings.keyboardhint;

@@ -159,7 +159,7 @@ const defaultStorage = (container) => {
  * @param {Function} [state.onError] Receives the errors of the web services.
  * @param {Object} [state.selection] Selection from selection.createSelection(); adds a checkbox per row.
  * @param {Function} [state.onAction] Called with (action, item, button) by the node menu: moveto, sort,
- *                   rename, clone, selectcontents, hide or show. Adds the menu button.
+ *                   rename, suggest, clone, selectcontents, hide or show. Adds the menu button.
  * @param {String} [state.wwwroot] Site URL, for the "Open in Moodle" link of the menu.
  * @returns {{refresh: Function, toggle: Function}}
  */
@@ -267,6 +267,7 @@ export const render = (container, model, state) => {
             entries.push(
                 ['sort', strings.autosort],
                 ['rename', strings.rename],
+                ['suggest', strings.suggest],
                 ['clone', strings.clonetoperiod],
                 ['open', strings.opencategory],
                 ['selectcontents', strings.selectcontents]

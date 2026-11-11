@@ -57,6 +57,14 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_suggest_preview' => [
+        'classname' => \tool_ceaorganizador\external\suggest_preview::class,
+        'description' => 'Suggested corrections for the names of a category tree and its courses.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
     'tool_ceaorganizador_sort_preview' => [
         'classname' => \tool_ceaorganizador\external\sort_preview::class,
         'description' => 'Preview of an automatic sort, with its signature.',

@@ -540,3 +540,29 @@
     justify-content: space-between;
     padding: 0.25rem 0;
 }
+
+/* Panel de sugerencias: grupos por categoría, una fila por nombre. */
+.tool-ceaorganizador-sugerencias-titulo {
+    font-size: 1rem;
+    margin: 1rem 0 0.25rem;
+}
+
+.tool-ceaorganizador-sugerencia {
+    display: grid;
+    grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+}
+
+.tool-ceaorganizador-razones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+@media (max-width: 40rem) {
+    .tool-ceaorganizador-sugerencia {
+        grid-template-columns: 1fr;
+    }
+}

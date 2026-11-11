@@ -17,6 +17,7 @@ test('cada método envía la función web y los parámetros exactos', async () =
     await api.sortPreview({ categoryid: 0, categoryids: [4, 5], scope: 'both' });
     await api.renamePreview({ items: [], ops: '[]' });
     await api.renameApply({ changes: [] });
+    await api.suggestPreview(3, false);
     await api.undo(7);
     await api.history(2);
     assert.deepEqual(calls, [
@@ -29,6 +30,7 @@ test('cada método envía la función web y los parámetros exactos', async () =
         ['tool_ceaorganizador_sort_preview', { categoryid: 0, categoryids: [4, 5], scope: 'both' }],
         ['tool_ceaorganizador_rename_preview', { items: [], ops: '[]' }],
         ['tool_ceaorganizador_rename_apply', { changes: [] }],
+        ['tool_ceaorganizador_suggest_preview', { categoryid: 3, includecourses: false }],
         ['tool_ceaorganizador_undo', { logid: 7 }],
         ['tool_ceaorganizador_history', { page: 2 }],
     ]);
