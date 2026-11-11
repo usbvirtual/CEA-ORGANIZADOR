@@ -129,12 +129,13 @@ test('el selector arranca en el periodo más reciente con la etiqueta sugerida y
     const { document, calls } = setup([{ rows: [row(1)], total: 1, hash: 'h1' }], [ok]);
     assert.equal(field(document, 'period').value, '21');
     assert.equal(field(document, 'label').value, '2027-01');
+    // An end date before the start, or an end without a start, is refused.
+    fill(document, '2027-05-30', '2027-01-25');
     click(document, 'preview');
     await flush();
     assert.equal(calls.preview.length, 0);
     assert.match(document.querySelector('[data-region="notice"]').textContent, /cloneerror_dates/);
-
-    fill(document, '2027-05-30', '2027-01-25');
+    fill(document, '', '2027-05-30');
     click(document, 'preview');
     await flush();
     assert.equal(calls.preview.length, 0);
@@ -157,6 +158,24 @@ test('el selector arranca en el periodo más reciente con la etiqueta sugerida y
         enddate: new Date(2027, 4, 30).getTime() / 1000,
         container: '',
     });
+});
+
+test('las fechas son opcionales: vacías viajan como 0 y con solo inicio el fin es 0', async () => {
+    const { document, calls } = setup([{ rows: [row(1)], total: 1, hash: 'h1' }, { rows: [row(1)], total: 1, hash: 'h2' }], [ok]);
+    assert.match(document.querySelector('[data-region="datesnote"]').textContent, /clonedates_help/);
+    click(document, 'preview');
+    await flush();
+    assert.equal(calls.preview.length, 1);
+    assert.equal(calls.preview[0].startdate, 0);
+    assert.equal(calls.preview[0].enddate, 0);
+    assert.equal(document.querySelector('[data-action="apply"]').disabled, false);
+
+    fill(document, '2027-01-25', '');
+    click(document, 'preview');
+    await flush();
+    assert.equal(calls.preview.length, 2);
+    assert.equal(calls.preview[1].startdate, new Date(2027, 0, 25).getTime() / 1000);
+    assert.equal(calls.preview[1].enddate, 0);
 });
 
 test('las filas con error quedan deshabilitadas, no viajan y el botón cuenta solo las demás', async () => {

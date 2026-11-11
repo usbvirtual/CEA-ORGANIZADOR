@@ -372,6 +372,41 @@ final class clonerunner_test extends \advanced_testcase {
     }
 
     /**
+     * Without dates the copy keeps those of its seed course.
+     */
+    public function test_copy_without_dates_keeps_seed_dates(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->quiet_backup();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $seedstart = self::START - 200 * DAYSECS;
+        $seedend = $seedstart + 120 * DAYSECS;
+        $calc = $gen->create_course([
+            'fullname' => 'Cálculo I 2026-02',
+            'shortname' => 'CALC1-2026-02',
+            'category' => $prog->id,
+            'startdate' => $seedstart,
+            'enddate' => $seedend,
+        ]);
+
+        $items = [['type' => 'course', 'id' => $calc->id]];
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', 0, 0);
+        $result = clonerunner::run($items, (int) $period->id, '2027-01', 0, 0, $this->all_rows($plan), $plan['hash']);
+        $this->assertSame(1, $result['queued']);
+        $newid = (int) $this->payload((int) $result['batchid'])['items'][0]['newcourseid'];
+
+        $this->run_copy_tasks();
+
+        $course = $DB->get_record('course', ['id' => $newid], '*', MUST_EXIST);
+        $this->assertSame($seedstart, (int) $course->startdate);
+        $this->assertSame($seedend, (int) $course->enddate);
+    }
+
+    /**
      * A clone batch cannot be undone.
      */
     public function test_undo_clone_rejected(): void {

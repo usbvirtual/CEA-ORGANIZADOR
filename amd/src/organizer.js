@@ -90,6 +90,7 @@ const REQUESTS = [
     {key: 'clonecontainer', component: 'tool_ceaorganizador'},
     {key: 'clonecontainer_help', component: 'tool_ceaorganizador'},
     {key: 'clonecronnote', component: 'tool_ceaorganizador'},
+    {key: 'clonedates_help', component: 'tool_ceaorganizador'},
     {key: 'clonedest', component: 'tool_ceaorganizador'},
     {key: 'clonedone', component: 'tool_ceaorganizador'},
     {key: 'clonefailed', component: 'tool_ceaorganizador'},

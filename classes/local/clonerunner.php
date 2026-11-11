@@ -333,6 +333,8 @@ class clonerunner {
     /**
      * The form data of one copy: content only, hidden, no users and no idnumber.
      *
+     * A start date of 0 keeps the dates of the seed course.
+     *
      * Every field that copy_helper::process_formdata() requires; no role_* fields, so no roles are kept.
      *
      * @param array $item Payload item.
@@ -341,6 +343,13 @@ class clonerunner {
      * @return \stdClass
      */
     private static function formdata(array $item, int $startdate, int $enddate): \stdClass {
+        global $DB;
+        if ($startdate === 0) {
+            // Without dates the copy keeps those of its seed course.
+            $seed = $DB->get_record('course', ['id' => (int) $item['source']], 'startdate, enddate', MUST_EXIST);
+            $startdate = (int) $seed->startdate;
+            $enddate = (int) $seed->enddate;
+        }
         return (object) [
             'courseid' => (int) $item['source'],
             'fullname' => $item['newfullname'],

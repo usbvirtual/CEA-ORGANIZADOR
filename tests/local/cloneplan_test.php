@@ -260,6 +260,7 @@ final class cloneplan_test extends \advanced_testcase {
                 [$period->id, '2027 II', self::START, self::END],
                 [$period->id, '2027-01', self::END, self::START],
                 [$period->id, '2027-01', 0, self::END],
+                [$period->id, '2027-01', -1, 0],
                 [$period->id + 1000, '2027-01', self::START, self::END],
             ] as [$id, $label, $start, $end]
         ) {
@@ -270,6 +271,10 @@ final class cloneplan_test extends \advanced_testcase {
                 $this->assertInstanceOf(\invalid_parameter_exception::class, $e);
             }
         }
+
+        // Dates are optional: none at all, or only the start.
+        $this->assertSame([], cloneplan::build([], $period->id, '2027-01', 0, 0)['rows']);
+        $this->assertSame([], cloneplan::build([], $period->id, '2027-01', self::START, 0)['rows']);
 
         // Category 0 would expand to the whole site; negative ids are just as wrong.
         foreach ([['type' => 'category', 'id' => 0], ['type' => 'course', 'id' => -3]] as $item) {

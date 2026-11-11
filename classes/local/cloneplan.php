@@ -44,8 +44,8 @@ class cloneplan {
      *      and those of their descendants. Items that do not exist are ignored; ids below 1 are rejected.
      * @param int $periodid Category of the period that receives the copies.
      * @param string $label Period text such as "2027-01".
-     * @param int $startdate Start date of the copies.
-     * @param int $enddate End date of the copies.
+     * @param int $startdate Start date of the copies; 0 keeps the dates of each seed course.
+     * @param int $enddate End date of the copies; 0 means no end date (or the seed's, when the start is 0 too).
      * @param string $container Folder under the period that receives the mirrored paths; '' hangs them from the period.
      *      It is created when missing and matched by normalised name, like every other level.
      * @return array ['rows' => array[], 'total' => int, 'hash' => string]
@@ -66,7 +66,8 @@ class cloneplan {
         if (cloner::period_label($label) !== $label) {
             throw new \invalid_parameter_exception('Invalid period label');
         }
-        if ($startdate <= 0 || $enddate <= $startdate) {
+        // Dates are optional: 0 keeps the dates of each seed course, a start without an end leaves no end date.
+        if ($startdate < 0 || $enddate < 0 || ($enddate > 0 && ($startdate === 0 || $enddate <= $startdate))) {
             throw new \invalid_parameter_exception('Invalid dates');
         }
         $container = self::container($container);

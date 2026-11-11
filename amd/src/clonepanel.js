@@ -128,6 +128,8 @@ export const open = ({
     notice.dataset.region = 'notice';
     notice.setAttribute('role', 'status');
     notice.hidden = true;
+    const datesNote = create('p', 'tool-ceaorganizador-ruta', strings.clonedates_help);
+    datesNote.dataset.region = 'datesnote';
     const note = create('p', 'tool-ceaorganizador-ruta', strings.clonecronnote);
     const total = create('p', 'tool-ceaorganizador-ruta');
     total.dataset.region = 'total';
@@ -151,7 +153,7 @@ export const open = ({
     closeButton.addEventListener('click', () => dialog.close());
     const actions = create('div', 'tool-ceaorganizador-acciones');
     actions.append(previewButton, applyButton, closeButton);
-    root.append(form, note, actions, notice, total, tablewrap);
+    root.append(form, datesNote, note, actions, notice, total, tablewrap);
 
     if (options.length === 0) {
         notice.textContent = strings.clonenoperiods;
@@ -282,15 +284,16 @@ export const open = ({
     const readForm = () => {
         const periodid = Number(select.value);
         const periodlabel = label.value.trim();
-        const startdate = dateToTimestamp(start.value);
-        const enddate = dateToTimestamp(end.value);
+        // Dates are optional: empty keeps the dates of each seed course; an end needs a start before it.
+        const startdate = start.value === '' ? 0 : dateToTimestamp(start.value);
+        const enddate = end.value === '' ? 0 : dateToTimestamp(end.value);
         if (!periodid) {
             return {error: strings.cloneerror_noperiod};
         }
         if (!isValidLabel(periodlabel)) {
             return {error: strings.cloneerror_label};
         }
-        if (startdate === null || enddate === null || enddate <= startdate) {
+        if (startdate === null || enddate === null || (enddate > 0 && (startdate === 0 || enddate <= startdate))) {
             return {error: strings.cloneerror_dates};
         }
         return {periodid, periodlabel, startdate, enddate, container: container.value.trim()};

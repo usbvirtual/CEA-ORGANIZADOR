@@ -146,7 +146,7 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 **Cómo se usa.**
 
 1. Elegir las semillas: una categoría (menú de su nodo) o una selección. Para clonar un solo curso, seleccionarlo y usar «Clonar a periodo…» en la barra de selección.
-2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`), revisar la «Carpeta bajo el periodo» (opcional, ver abajo) y poner las fechas de inicio y de fin.
+2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`), revisar la «Carpeta bajo el periodo» (opcional, ver abajo) y, si se quiere, poner las fechas de inicio y de fin. Las fechas son opcionales: sin fechas, cada copia conserva las de su curso semilla; con solo la de inicio, el curso queda sin fecha de fin.
 3. Pulsar «Vista previa»: muestra, por cada curso, la semilla, el destino, el nombre de la copia y el estado («Nueva», o el motivo por el que se omite).
 4. Pulsar «Clonar cursos (N)». Solo se clonan las filas que el panel envía: una fila con un nombre vacío o con un motivo de omisión no se envía y no se clona. Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido». Si una consulta falla, se reintenta a los 15, 30 y 60 segundos antes de mostrar el error. Para volver a ver el avance más tarde, abrir el historial y pulsar «Ver avance» en la entrada del clonado.
 
