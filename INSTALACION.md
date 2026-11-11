@@ -83,6 +83,8 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea programada `\core\task\asynchronous_copy_task`. Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
+**Requisito: copias de seguridad.** Clonar usa las copias de seguridad de Moodle. Moodle 4.2 con versiones recientes de PHP tiene un error del núcleo que impide toda copia de seguridad (corregido en Moodle 4.5); para clonar se recomienda Moodle 4.5 o superior.
+
 **Dónde está.** En el menú del nodo de una categoría y en la barra de selección, la opción «Clonar a periodo…».
 
 **Cómo se usa.**

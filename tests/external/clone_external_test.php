@@ -42,6 +42,16 @@ final class clone_external_test extends \advanced_testcase {
     private const END = 1814486400;
 
     /**
+     * Skips the test when the Moodle backup cannot run (Moodle 4.2 xml_writer regex vs. modern PCRE).
+     */
+    private function skip_if_backup_broken(): void {
+        if (@preg_match('/[\x-\x8]/', '') === false) {
+            $this->markTestSkipped('Moodle 4.2 backup is incompatible with this PCRE version '
+                . '(xml_writer \x regex, fixed in Moodle 4.5).');
+        }
+    }
+
+    /**
      * Runs the queued copies the way core's own copy tests do, with the trace output buffered.
      */
     private function run_copy_tasks(): void {
@@ -125,7 +135,7 @@ final class clone_external_test extends \advanced_testcase {
      * @param int $batchid
      * @return array
      */
-    private function status(int $batchid): array {
+    private function batch_status(int $batchid): array {
         return external_api::clean_returnvalue(clone_status::execute_returns(), clone_status::execute($batchid));
     }
 
@@ -180,7 +190,7 @@ final class clone_external_test extends \advanced_testcase {
         $this->assertSame(0, $result['skipped']);
         $this->assertGreaterThan(0, $result['batchid']);
 
-        $status = $this->status($result['batchid']);
+        $status = $this->batch_status($result['batchid']);
         $this->assertSame(2, $status['pending']);
         $this->assertSame(0, $status['done']);
         $this->assertSame(0, $status['failed']);
@@ -211,18 +221,19 @@ final class clone_external_test extends \advanced_testcase {
      * Once the cron has run the copies, the status reports them as done, with their course.
      */
     public function test_status_progresses_after_running_tasks(): void {
+        $this->skip_if_backup_broken();
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
         [$root, $period, $a] = $this->seeds();
         $result = $this->apply($root, $period, $this->preview($root, $period));
 
-        $before = $this->status($result['batchid']);
+        $before = $this->batch_status($result['batchid']);
         $this->assertSame(2, $before['pending']);
 
         $this->run_copy_tasks();
 
-        $after = $this->status($result['batchid']);
+        $after = $this->batch_status($result['batchid']);
         $this->assertSame(0, $after['pending']);
         $this->assertSame(2, $after['done']);
         $this->assertSame(0, $after['failed']);
@@ -246,11 +257,11 @@ final class clone_external_test extends \advanced_testcase {
 
         // Before the copy runs the provisional course has another name: the row has not finished.
         $DB->delete_records('backup_controllers');
-        $this->assertSame(2, $this->status($result['batchid'])['failed']);
+        $this->assertSame(2, $this->batch_status($result['batchid'])['failed']);
 
         // The course now carries the expected name for one of the items only.
         $DB->set_field('course', 'shortname', $items[0]['newshortname'], ['id' => $items[0]['newcourseid']]);
-        $status = $this->status($result['batchid']);
+        $status = $this->batch_status($result['batchid']);
         $this->assertSame(1, $status['done']);
         $this->assertSame(1, $status['failed']);
         $this->assertSame(0, $status['pending']);
@@ -265,17 +276,20 @@ final class clone_external_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
+        // Without the recycle bin, deleting a course takes no backup.
+        set_config('coursebinenable', 0, 'tool_recyclebin');
+        set_config('categorybinenable', 0, 'tool_recyclebin');
         [$root, $period] = $this->seeds();
         $result = $this->apply($root, $period, $this->preview($root, $period));
         $items = json_decode($DB->get_field(journal::TABLE, 'payload', ['id' => $result['batchid']], MUST_EXIST), true)['items'];
-        $this->assertSame(2, $this->status($result['batchid'])['pending']);
+        $this->assertSame(2, $this->batch_status($result['batchid'])['pending']);
 
         $DB->set_field('backup_controllers', 'status', \backup::STATUS_FINISHED_ERR, ['backupid' => $items[0]['backupid']]);
-        $this->assertSame('failed', $this->status($result['batchid'])['rows'][0]['status']);
+        $this->assertSame('failed', $this->batch_status($result['batchid'])['rows'][0]['status']);
 
         // The second copy: the restore never finishes and its course is gone.
         delete_course((int) $items[1]['newcourseid'], false);
-        $status = $this->status($result['batchid']);
+        $status = $this->batch_status($result['batchid']);
         $this->assertSame('failed', $status['rows'][1]['status']);
         $this->assertSame(2, $status['failed']);
         $this->assertSame(0, $status['pending']);
