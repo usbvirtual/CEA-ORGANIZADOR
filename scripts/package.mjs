@@ -31,7 +31,9 @@ for (const item of include) {
     if (!existsSync(from)) {
         throw new Error(`Falta ${item}`);
     }
-    cpSync(from, path.join(stage, item), { recursive: true });
+    // Los .map de amd/build quedan en git (CI comprueba que amd/build esté al día),
+    // pero Moodle no los necesita para funcionar: no van al ZIP.
+    cpSync(from, path.join(stage, item), { recursive: true, filter: (src) => !src.endsWith('.map') });
 }
 
 // --- Escritor ZIP mínimo (PKZIP, deflate, nombres UTF-8, fecha fija) ---
