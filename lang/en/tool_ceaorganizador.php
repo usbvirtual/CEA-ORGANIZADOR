@@ -109,7 +109,6 @@ $string['error_cannotmoveintodescendant'] = 'A category cannot be moved into its
 $string['error_cannotundoclone'] = 'Clones cannot be undone; delete the extra courses in Moodle if needed.';
 $string['error_generic'] = 'Something went wrong. Reload the page and try again.';
 $string['error_ordermismatch'] = 'The order sent does not match the current contents; reload the tree.';
-$string['error_stale'] = 'The order changed since the preview; review it again.';
 $string['error_toomany'] = 'At most 500 items per batch.';
 $string['error_toomanyclones'] = 'At most {$a} courses per cloning batch.';
 $string['error_toomanycourses'] = 'The category has more courses than Moodle can sort ({$a}); adjust maxcoursesincategory.';

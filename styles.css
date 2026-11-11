@@ -28,14 +28,6 @@
     color: var(--cea-tinta);
 }
 
-/* Tarjeta: esquinas de 14 px, filete en lugar de sombra. */
-.tool-ceaorganizador-tarjeta {
-    background: var(--cea-papel);
-    border: 1px solid var(--cea-linea);
-    border-radius: var(--cea-radio-tarjeta);
-    box-shadow: none;
-}
-
 /* Botones en cápsula. Se añaden a las clases btn de Bootstrap del tema. */
 .tool-ceaorganizador .btn {
     border-radius: 999px;

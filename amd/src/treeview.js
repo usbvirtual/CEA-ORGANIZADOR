@@ -46,7 +46,7 @@ export const format = (text, value) => String(text).replace('{$a}', value);
  * @param {Object|null} storage localStorage or a stand-in.
  * @returns {Set<Number>}
  */
-export const loadExpanded = (storage) => {
+const loadExpanded = (storage) => {
     try {
         const ids = JSON.parse(storage.getItem(STORAGE_KEY));
         return new Set(Array.isArray(ids) ? ids.filter(Number.isInteger) : []);
@@ -61,7 +61,7 @@ export const loadExpanded = (storage) => {
  * @param {Object|null} storage
  * @param {Set<Number>} expanded
  */
-export const saveExpanded = (storage, expanded) => {
+const saveExpanded = (storage, expanded) => {
     try {
         storage.setItem(STORAGE_KEY, JSON.stringify([...expanded]));
     } catch (e) {
