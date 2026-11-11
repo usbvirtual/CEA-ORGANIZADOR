@@ -259,6 +259,29 @@ final class clone_external_test extends \advanced_testcase {
     }
 
     /**
+     * When the backup half fails the course is deleted and the restore controller never finishes: failed.
+     */
+    public function test_status_backup_failed(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        [$root, $period] = $this->seeds();
+        $result = $this->apply($root, $period, $this->preview($root, $period));
+        $items = json_decode($DB->get_field(journal::TABLE, 'payload', ['id' => $result['batchid']], MUST_EXIST), true)['items'];
+        $this->assertSame(2, $this->status($result['batchid'])['pending']);
+
+        $DB->set_field('backup_controllers', 'status', \backup::STATUS_FINISHED_ERR, ['backupid' => $items[0]['backupid']]);
+        $this->assertSame('failed', $this->status($result['batchid'])['rows'][0]['status']);
+
+        // The second copy: the restore never finishes and its course is gone.
+        delete_course((int) $items[1]['newcourseid'], false);
+        $status = $this->status($result['batchid']);
+        $this->assertSame('failed', $status['rows'][1]['status']);
+        $this->assertSame(2, $status['failed']);
+        $this->assertSame(0, $status['pending']);
+    }
+
+    /**
      * Only clone batches can be queried.
      */
     public function test_status_rejects_other_actions(): void {
@@ -292,23 +315,23 @@ final class clone_external_test extends \advanced_testcase {
         $this->setUser($this->getDataGenerator()->create_user());
 
         $calls = [
-                static function () use ($root, $period): void {
-                    clone_preview::execute([['type' => 'category', 'id' => (int) $root->id]], (int) $period->id, '2027-01', 1, 2);
-                },
-                static function () use ($root, $period, $preview): void {
-                    clone_apply::execute(
-                        [['type' => 'category', 'id' => (int) $root->id]],
-                        (int) $period->id,
-                        '2027-01',
-                        self::START,
-                        self::END,
-                        [],
-                        $preview['hash']
-                    );
-                },
-                static function (): void {
-                    clone_status::execute(1);
-                },
+            static function () use ($root, $period): void {
+                clone_preview::execute([['type' => 'category', 'id' => (int) $root->id]], (int) $period->id, '2027-01', 1, 2);
+            },
+            static function () use ($root, $period, $preview): void {
+                clone_apply::execute(
+                    [['type' => 'category', 'id' => (int) $root->id]],
+                    (int) $period->id,
+                    '2027-01',
+                    self::START,
+                    self::END,
+                    [],
+                    $preview['hash']
+                );
+            },
+            static function (): void {
+                clone_status::execute(1);
+            },
         ];
         foreach ($calls as $call) {
             try {
@@ -349,7 +372,7 @@ final class clone_external_test extends \advanced_testcase {
         try {
             $this->apply($root, $period, $preview);
             $this->fail('Expected required_capability_exception');
-        } catch (equired_capability_exception $e) {
+        } catch (\required_capability_exception $e) {
             $this->assertSame('nopermissions', $e->errorcode);
         }
         $this->assertSame(0, $DB->count_records(journal::TABLE));

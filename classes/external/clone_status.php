@@ -71,18 +71,23 @@ class clone_status extends external_api {
         $items = is_array($payload) ? ($payload['items'] ?? []) : [];
 
         $restoreids = [];
+        $backupids = [];
         $courseids = [];
         foreach ($items as $item) {
             if ((string) ($item['restoreid'] ?? '') !== '') {
                 $restoreids[] = (string) $item['restoreid'];
+            }
+            if ((string) ($item['backupid'] ?? '') !== '') {
+                $backupids[] = (string) $item['backupid'];
             }
             if ((int) ($item['newcourseid'] ?? 0) > 0) {
                 $courseids[] = (int) $item['newcourseid'];
             }
         }
         $controllers = [];
-        if ($restoreids) {
-            [$insql, $inparams] = $DB->get_in_or_equal($restoreids, SQL_PARAMS_NAMED);
+        $allids = array_values(array_unique(array_merge($restoreids, $backupids)));
+        if ($allids) {
+            [$insql, $inparams] = $DB->get_in_or_equal($allids, SQL_PARAMS_NAMED);
             $controllers = $DB->get_records_sql_menu(
                 "SELECT backupid, status FROM {backup_controllers} WHERE backupid $insql",
                 $inparams
@@ -120,6 +125,11 @@ class clone_status extends external_api {
         if (!empty($item['error'])) {
             return 'failed';
         }
+        // A failed backup deletes the course and leaves the restore controller waiting for ever.
+        $backupid = (string) ($item['backupid'] ?? '');
+        if ($backupid !== '' && (int) ($controllers[$backupid] ?? 0) === \backup::STATUS_FINISHED_ERR) {
+            return 'failed';
+        }
         $restoreid = (string) ($item['restoreid'] ?? '');
         if ($restoreid !== '' && isset($controllers[$restoreid])) {
             switch ((int) $controllers[$restoreid]) {
@@ -127,10 +137,12 @@ class clone_status extends external_api {
                     return 'done';
                 case \backup::STATUS_FINISHED_ERR:
                     return 'failed';
-                case \backup::STATUS_EXECUTING:
-                    return 'running';
                 default:
-                    return 'pending';
+                    // Not finished: if its course is gone the copy cannot go on.
+                    if (!isset($courses[(int) ($item['newcourseid'] ?? 0)])) {
+                        return 'failed';
+                    }
+                    return (int) $controllers[$restoreid] === \backup::STATUS_EXECUTING ? 'running' : 'pending';
             }
         }
         // No controller (the cron purges them): the copy is done when its course carries the expected name.
