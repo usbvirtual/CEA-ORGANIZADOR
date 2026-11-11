@@ -381,6 +381,21 @@ test('suggestContainer queda vacío con cero o con dos hijas que contienen facul
     assert.equal(suggestContainer(elsewhere, 22, decodeEntities), 'Facultades');
 });
 
+test('suggestContainer ignora las hijas cuyo nombre contiene un periodo', () => {
+    const rows = rowsWith([
+        { id: 30, parent: 21, name: 'Facultades 2026-02' },
+        { id: 31, parent: 30, name: 'Facultad de Ingeniería' },
+        { id: 32, parent: 21, name: 'Facultades' },
+        { id: 33, parent: 32, name: 'Facultad de Artes' },
+    ]);
+    assert.equal(suggestContainer(rows, 21, decodeEntities), 'Facultades');
+    const only = rowsWith([
+        { id: 30, parent: 21, name: 'Facultades 2026-02' },
+        { id: 31, parent: 30, name: 'Facultad de Ingeniería' },
+    ]);
+    assert.equal(suggestContainer(only, 21, decodeEntities), '');
+});
+
 const folderModel = {
     snapshot: () => rowsWith([
         { id: 30, parent: 21, name: 'Facultades' },

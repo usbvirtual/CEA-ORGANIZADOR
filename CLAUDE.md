@@ -38,6 +38,15 @@ Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y leccione
 - Los servicios web usan `\core_external\external_api` y sus clases de parámetros, nunca los alias globales (no existen en 5.3).
 - Los módulos JS que necesitan `core/*` lo reciben inyectado (`api.setTransport`, proveedor de cadenas) para que `node:test` corra sin Moodle. Sin librerías externas: el arrastre usa eventos de puntero propios.
 - El candado (`guard::lock()`) vive en la capa `external`, no en `mover`. El renombrado se limita a 500 elementos por lote.
+- `suggester` nunca tilda palabras de diacrítico ambiguo (stoplist: si, mas, el, tu, te, se, de, mi, solo, aun, que, como, cuando, donde, quien, cual, cuanto, este, esta, ese, esa, aquel, o): una tilde gramatical equivocada es peor que ninguna; lo que falte va al glosario.
+- La regla «variante» solo empareja nombres hermanos idénticos salvo una palabra en la misma posición (singular/plural), nunca palabras sueltas entre hermanos.
+- «variante» copia la palabra preferida tal como está escrita en el sitio (con su tilde); no construye sufijos.
+- Deshacer una unificación solo borra categorías creadas que no tengan nada: cursos, subcategorías, papelera de reciclaje, banco de contenidos, eventos, letras de calificación ni categorías de preguntas (cualquiera, incluso una «top» vacía; `mover::delete_empty_category`). Las que tienen contenido se conservan.
+- `mergeplan` rechaza orígenes anidados (uno dentro de otro, o el destino dentro/fuera de un origen); `cloneplan::path_of` y `format` son públicos para reutilizarlos.
+- Los elementos del diario de unificación llevan `fromvisible`/`tovisible`: deshacer restaura la visibilidad solo si el movimiento la cambió, igual que mover.
+- Con carpeta bajo el periodo, los cursos que no están bajo una raíz de semillas también van a la carpeta (`container + []`): la carpeta es donde viven las facultades del periodo.
+- El destino en espejo (clonar y unificar) deja fuera la raíz de semillas (o la categoría de origen): la ruta empieza en la facultad.
+- `period.suggestContainer` ignora las hijas del periodo cuyo nombre contiene un periodo (`parsePeriod`), porque el servidor rechaza esa carpeta.
 - El orden de cursos de una categoría se rechaza si supera `maxcoursesincategory` (`error_toomanycourses`).
 - `clonerunner` llama a `create_copy` después del commit de las categorías, una transacción delegada por copia (un fallo no deja un esqueleto ni revierte las demás).
 - Las copias en curso cuentan como ya tomadas (ventana de 30 días, `cloneplan::INFLIGHT_DAYS`): relanzar el lote antes de que corra el cron no duplica.

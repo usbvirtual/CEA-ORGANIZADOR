@@ -76,7 +76,8 @@ export const periodOptions = (rows, decode) => rows
 
 /**
  * Suggested folder under a period: the name of its only direct child that holds, below it, a category whose
- * name starts with «facultad». Empty when no child or more than one child does.
+ * name starts with «facultad». Children whose name has a period are skipped. Empty when no child or more than one
+ * child does.
  *
  * @param {Object[]} rows Rows with id, parent and name (formatted), as treemodel snapshot gives.
  * @param {Number} periodid
@@ -107,7 +108,10 @@ export const suggestContainer = (rows, periodid, decode) => {
         }
         return false;
     };
-    const found = (kids.get(periodid) || []).filter((child) => holdsFaculty(child.id));
+    // A name with a period is not a valid folder: the server rejects it.
+    const found = (kids.get(periodid) || []).filter(
+        (child) => parsePeriod(decode(child.name)) === null && holdsFaculty(child.id)
+    );
     return found.length === 1 ? decode(found[0].name).trim() : '';
 };
 

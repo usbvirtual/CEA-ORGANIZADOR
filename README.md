@@ -16,6 +16,8 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - **Auto ordenar varias categorías** a la vez desde la barra de selección: una sola vista previa, un solo cambio y un solo «Deshacer».
 - **Ocultar y mostrar cursos** desde el menú del curso o, para varios (hasta 500), desde la barra de selección; se puede deshacer.
 - **Renombrar en lote** categorías y cursos (reemplazar, limpiar, prefijo o sufijo, tipo oración o título), con vista previa y edición manual.
+- **Sugerir correcciones** de nombres de categorías y cursos con cuatro reglas (formato, glosario, tilde y variante singular/plural), vista previa de hasta 2000 filas, aplicación en lotes de 500 y deshacer. Solo cambia nombres completos; nunca los nombres cortos.
+- **Unificar semillas**: mueve a una sola categoría de semillas los cursos de varias categorías de origen (hasta 1000), en espejo y sin repetir cursos; deshacer devuelve los cursos a su categoría original. Nunca borra cursos ni categorías de origen: las que quedan vacías se listan.
 - **Selección** múltiple de categorías y cursos.
 - **Clonar semillas a un periodo** (hasta 100 cursos por lote): vista previa, destino en espejo bajo el periodo (sin la raíz de semillas y, si se quiere, dentro de una carpeta como «Facultades»), copias en segundo plano con panel de avance; los clonados no se deshacen.
 - **Historial y deshacer** (90 días); deshacer se rechaza si algo cambió después.
@@ -25,9 +27,11 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - `classes/local/sorter.php` y `renamer.php` son puros: reciben y devuelven datos, sin base de datos.
 - `mover.php` y `journal.php` son la única puerta de escritura; usan la API del núcleo para que se disparen eventos y se limpien cachés.
 - `guard.php` reúne el candado y el rollback; los permisos nativos se comprueban en `mover::check_category` y `mover::check_course` y en los servicios web; `tree.php` y `sortplan.php` leen el árbol y arman el plan de orden con su firma.
+- `suggester.php` (reglas formato, glosario, tilde y variante; puro) arma las sugerencias; se aplican por `rename_apply`.
+- `mergeplan.php` (vista previa de la unificación, con su firma y los repetidos; no escribe) y `mergerunner.php` (aplica todo o nada, registra en el historial y lo deshace) forman la unificación de semillas; las categorías nuevas y el borrado de vacías pasan por `mover.php`.
 - `cloner.php` (nombres con periodo y destino en espejo; puro), `cloneplan.php` (vista previa con su firma y los errores por fila) y `clonerunner.php` (crea las categorías, encola las copias y registra el lote) forman el clonado.
-- `classes/external/*.php`: diez servicios web de organización y tres del clonado (`clone_preview`, `clone_apply`, `clone_status`) y `set_visibility` (ocultar y mostrar cursos), uno por clase, sobre `\core_external`.
-- `amd/src/`: `organizer` (arranque), `api`, `treemodel` y `treeview`, `dragdrop`, `dropzones` y `keyboard`, `movepicker` y `mover`, `sortpanel`, `renamepanel` e `historypanel`, `selection`, `clonepanel` y `cloneprogress` (clonado y avance), `visibility` (ocultar y mostrar), `toast`, `dialog` y `text`. Se compilan a `amd/build`.
+- `classes/external/*.php`: diez servicios web de organización, tres del clonado (`clone_preview`, `clone_apply`, `clone_status`), `set_visibility` (ocultar y mostrar cursos), `suggest_preview` (sugerencias) y tres de la unificación (`merge_preview`, `merge_apply`, `create_seedroot`), uno por clase, sobre `\core_external`.
+- `amd/src/`: `organizer` (arranque), `api`, `treemodel` y `treeview`, `dragdrop`, `dropzones` y `keyboard`, `movepicker` y `mover`, `sortpanel`, `renamepanel` e `historypanel`, `suggestpanel` (sugerencias) y `mergepanel` (unificación), `selection`, `clonepanel` y `cloneprogress` (clonado y avance), `visibility` (ocultar y mostrar), `toast`, `dialog` y `text`. Se compilan a `amd/build`.
 
 ## Desarrollo
 
