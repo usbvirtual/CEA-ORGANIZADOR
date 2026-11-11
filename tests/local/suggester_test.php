@@ -179,7 +179,7 @@ final class suggester_test extends \advanced_testcase {
     public function test_sibling_copies_written_form(): void {
         $this->resetAfterTest();
         $cases = [
-            // [vocabulary names, singular, plural, expected singular result, expected plural result].
+            // Columns: vocabulary names, singular, plural, expected singular result, expected plural result.
             [['Sesión', 'Sesiones'], 'Sesión', 'Sesiones', 'Sesiones', 'Sesiones'],
             [['Sesión', 'Sesión', 'Sesiones'], 'Sesión', 'Sesiones', 'Sesión', 'Sesión'],
             [['Región', 'Región', 'Región', 'Regiones'], 'Región', 'Regiones', 'Región', 'Región'],
