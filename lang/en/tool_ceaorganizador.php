@@ -151,6 +151,7 @@ $string['error_toomany'] = 'At most 500 items per batch.';
 $string['error_toomanyclones'] = 'At most {$a} courses per cloning batch.';
 $string['error_toomanycourses'] = 'The category has more courses than Moodle can sort ({$a}); adjust maxcoursesincategory.';
 $string['error_toomanydedupe'] = 'At most {$a} courses per «Remove repeated courses» batch.';
+$string['error_toomanydedupecourses'] = 'The category and its subcategories have more than {$a} courses to check; choose a smaller category, such as a programme or a semester.';
 $string['error_toomanydelete'] = 'At most {$a} categories per deletion batch.';
 $string['error_toomanymerge'] = 'At most {$a} courses per merge.';
 $string['glossary'] = 'Institutional glossary';

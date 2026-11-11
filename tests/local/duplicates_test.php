@@ -75,7 +75,7 @@ final class duplicates_test extends \advanced_testcase {
      * Copy markers, counters and periods are stripped from the short name, case aside.
      */
     public function test_key_shortname(): void {
-        foreach (['CALC1', 'calc1', 'CALC1_1', 'CALC1-1', 'CALC1-2025-2', 'CALC1_2025-02', 'CALC1 (copia)'] as $short) {
+        foreach (['CALC1', 'calc1', 'CALC1_1', 'CALC1-2025-2', 'CALC1_2025-02', 'CALC1 (copia)'] as $short) {
             $this->assertSame('calc1', duplicates::key_shortname($short), $short);
         }
         $this->assertSame('calc2', duplicates::key_shortname('CALC2'));
@@ -84,11 +84,55 @@ final class duplicates_test extends \advanced_testcase {
     }
 
     /**
+     * A level number in a short name is a different course: only «_N» and a period are stripped, never a bare «-N».
+     */
+    public function test_key_shortname_keeps_levels(): void {
+        $this->assertNotSame(duplicates::key_shortname('MAT-1'), duplicates::key_shortname('MAT-2'));
+        $this->assertNotSame(duplicates::key_shortname('ING-I'), duplicates::key_shortname('ING-II'));
+        $this->assertNotSame(duplicates::key_shortname('FIS1'), duplicates::key_shortname('FIS2'));
+        $this->assertSame('mat-1', duplicates::key_shortname('MAT-1'));
+        $this->assertSame('calc1-1', duplicates::key_shortname('CALC1-1'));
+    }
+
+    /**
+     * Names that differ only in a level number are never grouped, not by a matching short name, not through a third.
+     */
+    public function test_groups_never_join_levels(): void {
+        $this->assertSame([], duplicates::groups([
+            ['id' => 1, 'fullname' => 'Cálculo I', 'shortname' => 'CALC', 'timemodified' => 1],
+            ['id' => 2, 'fullname' => 'Cálculo II', 'shortname' => 'CALC_1', 'timemodified' => 1],
+        ]));
+        $this->assertSame([], duplicates::groups([
+            ['id' => 1, 'fullname' => 'Física 1', 'shortname' => 'FISX', 'timemodified' => 1],
+            ['id' => 2, 'fullname' => 'Física 2 (copia)', 'shortname' => 'FISX_1', 'timemodified' => 1],
+        ]));
+
+        // C repeats A by name and by short name; B shares the short name base but is another level.
+        $groups = duplicates::groups([
+            ['id' => 1, 'fullname' => 'Cálculo I', 'shortname' => 'CALC', 'timemodified' => 1],
+            ['id' => 2, 'fullname' => 'Cálculo II', 'shortname' => 'CALC_1', 'timemodified' => 1],
+            ['id' => 3, 'fullname' => 'Cálculo I copia', 'shortname' => 'CALC_2', 'timemodified' => 1],
+        ]);
+        $this->assertCount(1, $groups);
+        $this->assertSame('1-3', $groups[0]['key']);
+        $this->assertSame(['key', 'shortname'], $groups[0]['courses'][0]['reasons']);
+    }
+
+    /**
+     * The stem and the level numbers of a name key.
+     */
+    public function test_levels(): void {
+        $this->assertSame(['calculo #', '2'], duplicates::levels('calculo ii'));
+        $this->assertSame(['fisica #', '1'], duplicates::levels('fisica 1'));
+        $this->assertSame(['civil', ''], duplicates::levels('civil'));
+    }
+
+    /**
      * A base short name with fewer than three letters and digits does not match.
      */
     public function test_key_shortname_too_short(): void {
         $this->assertSame('', duplicates::key_shortname('PC_1'));
-        $this->assertSame('', duplicates::key_shortname('AB-1'));
+        $this->assertSame('', duplicates::key_shortname('AB_1'));
         $this->assertSame('', duplicates::key_shortname(''));
     }
 

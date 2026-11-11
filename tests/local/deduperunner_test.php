@@ -383,6 +383,41 @@ final class deduperunner_test extends \advanced_testcase {
     }
 
     /**
+     * A tree with more courses than the preview examines is refused, with the limit in the message; the courses of
+     * a «Repetidos» folder do not count.
+     */
+    public function test_preview_limit(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->assertSame(5000, dedupeplan::MAX_COURSES);
+        $root = $this->cat('Programa');
+        $sub = $this->cat('Semestre 1', $root);
+        $folder = $this->cat('Repetidos', $root);
+        $this->course('Cálculo I', $root);
+        $this->course('Física', $sub);
+        $this->course('Química', $folder);
+        $this->course('Química', $folder);
+        $plan = new class extends dedupeplan {
+            /** @var int A small limit for the test. */
+            public const MAX_COURSES = 2;
+        };
+
+        // Two courses to examine: within the limit.
+        $this->assertSame([], $plan::build((int) $root->id)['groups']);
+
+        $this->course('Álgebra', $sub);
+        try {
+            $plan::build((int) $root->id);
+            $this->fail('The limit must be enforced');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_toomanydedupecourses', $e->errorcode);
+            $this->assertSame(get_string('error_toomanydedupecourses', 'tool_ceaorganizador', 2), $e->getMessage());
+        }
+        // A smaller category is fine.
+        $this->assertSame([], $plan::build((int) $sub->id)['groups']);
+    }
+
+    /**
      * Without moodle/course:changecategory, or without managing the category, nothing is created, moved or
      * recorded.
      */

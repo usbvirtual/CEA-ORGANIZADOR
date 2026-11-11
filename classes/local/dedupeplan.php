@@ -31,6 +31,9 @@ namespace tool_ceaorganizador\local;
  * named «Repetidos» (normalized), and everything under it, is never analysed: that is where the repeated courses go.
  */
 class dedupeplan {
+    /** @var int Most courses one preview examines; a larger tree is refused, before its courses are loaded. */
+    public const MAX_COURSES = 5000;
+
     /** @var int Most values in one IN clause. */
     private const CHUNK = 1000;
 
@@ -43,6 +46,7 @@ class dedupeplan {
      *      'timemodified' => int, 'reasons' => string[], 'keep' => bool]]]], 'folder' => ['id' => int (0 when it will
      *      be created), 'path' => string (formatted)], 'hash' => string]
      * @throws \invalid_parameter_exception When the category does not exist.
+     * @throws \moodle_exception error_toomanydedupecourses beyond MAX_COURSES courses to examine.
      */
     public static function build(int $categoryid): array {
         global $DB;
@@ -72,6 +76,9 @@ class dedupeplan {
             }
         }
 
+        if (self::count_courses($analysed) > static::MAX_COURSES) {
+            throw new \moodle_exception('error_toomanydedupecourses', 'tool_ceaorganizador', '', static::MAX_COURSES);
+        }
         $bycategory = self::load_courses($analysed);
         $paths = [];
         $groups = [];
@@ -121,6 +128,23 @@ class dedupeplan {
         // Ids only (see sortplan): the names are not signed, the groups and where they are are.
         $hash = sha1(json_encode([$categoryid, $folderid, $signature]));
         return ['groups' => $groups, 'folder' => $folder, 'hash' => $hash];
+    }
+
+    /**
+     * How many courses some categories hold, without the site course.
+     *
+     * @param int[] $categoryids
+     * @return int
+     */
+    private static function count_courses(array $categoryids): int {
+        global $DB;
+        $total = 0;
+        foreach (array_chunk($categoryids, self::CHUNK) as $chunk) {
+            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
+            $params['site'] = SITEID;
+            $total += $DB->count_records_select('course', "category $insql AND id <> :site", $params);
+        }
+        return $total;
     }
 
     /**

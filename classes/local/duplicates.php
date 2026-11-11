@@ -29,8 +29,10 @@ namespace tool_ceaorganizador\local;
  *
  * Two courses are the same when any of these holds: the same normalized full name (rule 'name'); the same full
  * name once a trailing copy, period or group marker is stripped (rule 'key'); the same short name once a trailing
- * copy marker, period or counter is stripped (rule 'shortname'). The rules are conservative: level numbers, roman
- * or arabic («Cálculo I» and «Cálculo II», «Física 1» and «Física 2»), are never stripped.
+ * copy marker, period or «_N» counter is stripped (rule 'shortname'). The rules are conservative: level numbers,
+ * roman or arabic («Cálculo I» and «Cálculo II», «Física 1» and «Física 2», «MAT-1» and «MAT-2»), are never stripped.
+ * And two courses whose name keys differ only in such a number are never grouped, by any rule, not even through a
+ * third course (see groups()).
  */
 class duplicates {
     /** @var string Name of the hidden folder that receives the repeated courses. */
@@ -57,8 +59,11 @@ class duplicates {
     /** @var string A trailing period in a short name; the separator between year and term may be missing. */
     private const SHORT_PERIOD = '/[\s_-]*\(?\s*(?<!\d)20\d\d\s*[-–_\/ ]?\s*(?:0?[12]|ii|i)\s*\)?$/u';
 
-    /** @var string A trailing counter of a short name: «_1» (as a restore names a copy) or «-2». */
-    private const COUNTER = '/[_-]\d{1,2}$/';
+    /**
+     * @var string A trailing «_1», the counter Moodle adds when a short name is taken. Never «-1»: «MAT-1» and «MAT-2»
+     *      are two levels, two different courses. A hyphen is stripped only as part of a period (SHORT_PERIOD).
+     */
+    private const COUNTER = '/_\d{1,2}$/';
 
     /** @var string Characters trimmed from the end of a key. */
     private const TRIM = " \t-_.,:;";
@@ -107,10 +112,49 @@ class duplicates {
     }
 
     /**
+     * Splits a name key into its stem and its level numbers.
+     *
+     * Every run of digits and every isolated roman numeral (sorter::roman_value) is a level; the stem is the key with
+     * each level replaced by '#'. «calculo ii» gives ['calculo #', '2'], «fisica 1» gives ['fisica #', '1'].
+     *
+     * @param string $key As key_name() returns it.
+     * @return array [string stem, string levels joined by ',']
+     */
+    public static function levels(string $key): array {
+        preg_match_all('/\d+|[a-z]+|[^a-z\d]+/', $key, $matches);
+        $parts = $matches[0];
+        $stem = '';
+        $levels = [];
+        foreach ($parts as $i => $part) {
+            if (ctype_digit($part)) {
+                $stem .= '#';
+                $levels[] = (string) (int) $part;
+                continue;
+            }
+            $isolated = ctype_alpha($part)
+                && !(isset($parts[$i - 1]) && ctype_digit($parts[$i - 1]))
+                && !(isset($parts[$i + 1]) && ctype_digit($parts[$i + 1]));
+            $roman = $isolated ? sorter::roman_value($part) : null;
+            if ($roman !== null && $roman > 0) {
+                $stem .= '#';
+                $levels[] = (string) $roman;
+                continue;
+            }
+            $stem .= $part;
+        }
+        return [$stem, implode(',', $levels)];
+    }
+
+    /**
      * Groups of repeated courses among the courses of one category.
      *
      * Grouping is transitive: A like B by name and B like C by short name put A, B and C in one group. The course
      * that stays is the most recently modified; a tie goes to the highest id.
+     *
+     * A group never holds two courses whose name keys differ only in a level number (levels()): «Cálculo I» and
+     * «Cálculo II» stay apart even when their short names match, and even through a third course. Two groups that
+     * would break this are not joined; links are made in a fixed order (rule, then course order), so the result
+     * does not depend on chance.
      *
      * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int],
      *      raw names. The order is kept inside each group and between groups.
@@ -130,12 +174,15 @@ class duplicates {
         };
 
         $names = [];
+        // Per component root: stem => level numbers of the courses in it.
+        $profile = [];
         $buckets = array_fill_keys(self::RULES, []);
         foreach ($courses as $i => $course) {
             $names[$i] = sorter::normalize((string) $course['fullname']);
+            $key = self::key_name((string) $course['fullname']);
             $values = [
                 'name' => $names[$i],
-                'key' => self::key_name((string) $course['fullname']),
+                'key' => $key,
                 'shortname' => self::key_shortname((string) $course['shortname']),
             ];
             foreach ($values as $rule => $value) {
@@ -143,25 +190,41 @@ class duplicates {
                     $buckets[$rule][$value][] = $i;
                 }
             }
+            $profile[$i] = [];
+            if ($key !== '') {
+                [$stem, $levels] = self::levels($key);
+                $profile[$i][$stem] = $levels;
+            }
         }
+        // Joins two components unless that puts two level numbers of the same stem together.
+        $join = static function (int $i, int $j) use (&$parent, &$profile, $find): bool {
+            $a = $find($i);
+            $b = $find($j);
+            if ($a === $b) {
+                return true;
+            }
+            foreach ($profile[$a] as $stem => $levels) {
+                if (isset($profile[$b][$stem]) && $profile[$b][$stem] !== $levels) {
+                    return false;
+                }
+            }
+            $parent[$a] = $b;
+            $profile[$b] += $profile[$a];
+            return true;
+        };
 
         $reasons = array_fill(0, $count, []);
         foreach ($buckets as $rule => $list) {
             foreach ($list as $members) {
-                if (count($members) < 2) {
-                    continue;
-                }
-                foreach ($members as $i) {
-                    $parent[$find($i)] = $find($members[0]);
-                    // The key rule is reported only when it links names that differ; otherwise 'name' says it all.
-                    if ($rule !== 'key') {
-                        $reasons[$i][$rule] = true;
-                        continue;
-                    }
-                    foreach ($members as $j) {
-                        if ($names[$j] !== $names[$i]) {
+                foreach ($members as $position => $i) {
+                    foreach (array_slice($members, 0, $position) as $j) {
+                        if (!$join($j, $i)) {
+                            continue;
+                        }
+                        // The key rule is reported only when it links names that differ; otherwise 'name' says it all.
+                        if ($rule !== 'key' || $names[$i] !== $names[$j]) {
                             $reasons[$i][$rule] = true;
-                            break;
+                            $reasons[$j][$rule] = true;
                         }
                     }
                 }

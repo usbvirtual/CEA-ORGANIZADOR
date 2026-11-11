@@ -124,9 +124,9 @@ Reúne en una sola categoría de semillas los cursos que están repartidos en va
 
 1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
 2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
-3. **Mismo nombre corto base**: sin «copia», sin periodo al final y sin contador «_1» o «-2», sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2` son el mismo). Si quedan menos de tres letras o dígitos, esta regla no se aplica.
+3. **Mismo nombre corto base**: sin «copia», sin periodo al final (`-2025-2`, `_2025-02`) y sin el contador «_1» que Moodle agrega cuando el nombre corto ya existe, sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2`, `CALC1_2025-02` y `CALC1 (copia)` son el mismo). Un «-1» suelto **no** se quita: `MAT-1` y `MAT-2`, `ING-I` e `ING-II` o `FIS1` y `FIS2` son cursos distintos. Si quedan menos de tres letras o dígitos, esta regla no se aplica.
 
-La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
+La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. Pero dos cursos cuyos nombres solo se diferencian en un número de nivel («Cálculo I» y «Cálculo II») nunca quedan en el mismo grupo, por ninguna regla ni a través de un tercero. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
 
 Los repetidos de la unificación van a una carpeta oculta «Repetidos» directamente bajo la categoría de destino (se crea si no existe; si ya hay una con ese nombre, sin importar tildes ni mayúsculas, se reutiliza). Un curso que ya estaba en el destino y pierde frente a uno más reciente del origen aparece como fila propia («Ya está en el destino») y también va a «Repetidos». Lo que ya está dentro de «Repetidos» nunca se compara.
 
@@ -155,9 +155,9 @@ Busca cursos repetidos en una categoría y en **todas sus subcategorías** y mue
 
 1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
 2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
-3. **Mismo nombre corto base**: sin «copia», sin periodo al final y sin contador «_1» o «-2», sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2` son el mismo). Si quedan menos de tres letras o dígitos, esta regla no se aplica.
+3. **Mismo nombre corto base**: sin «copia», sin periodo al final (`-2025-2`, `_2025-02`) y sin el contador «_1» que Moodle agrega cuando el nombre corto ya existe, sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2`, `CALC1_2025-02` y `CALC1 (copia)` son el mismo). Un «-1» suelto **no** se quita: `MAT-1` y `MAT-2`, `ING-I` e `ING-II` o `FIS1` y `FIS2` son cursos distintos. Si quedan menos de tres letras o dígitos, esta regla no se aplica.
 
-La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
+La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. Pero dos cursos cuyos nombres solo se diferencian en un número de nivel («Cálculo I» y «Cálculo II») nunca quedan en el mismo grupo, por ninguna regla ni a través de un tercero. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
 
 **Cómo se usa.** La vista previa muestra cada grupo con la ruta de su categoría (de dónde viene cada curso) y, por curso, su nombre corto, la fecha de modificación y la regla que lo agrupó. En cada grupo se elige con un botón de opción cuál se conserva y con la casilla «Incluir este grupo» si se toca; un grupo sin marcar no se mueve. El botón dice cuántos cursos se moverán: «Mover N repetidos a Repetidos».
 
@@ -167,7 +167,7 @@ La agrupación es transitiva: si A se parece a B por el nombre y B a C por el no
 
 **Deshacer.** Queda una entrada en el historial («Quitar repetidos en … · cursos: N»). Deshacer devuelve los cursos a su categoría, los vuelve a mostrar si la carpeta oculta los ocultó y borra la carpeta solo si este lote la creó y quedó vacía. Se rechaza, con los conflictos listados, si algún curso se movió después.
 
-**Límite.** Máximo **1000** cursos movidos por lote; si son más, se rechaza con ese número: excluir grupos o trabajar por subcategorías.
+**Límites.** La vista previa revisa como máximo **5000** cursos (la categoría y sus subcategorías, sin contar las carpetas «Repetidos»); si hay más, pide elegir una categoría más pequeña, como un programa o un semestre. Se mueven como máximo **1000** cursos por lote; si son más, se rechaza con ese número: excluir grupos o trabajar por subcategorías.
 
 ### Borrar categorías
 

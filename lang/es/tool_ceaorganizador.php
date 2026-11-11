@@ -151,6 +151,7 @@ $string['error_toomany'] = 'Máximo 500 elementos por lote.';
 $string['error_toomanyclones'] = 'Máximo {$a} cursos por lote de clonado.';
 $string['error_toomanycourses'] = 'La categoría tiene más cursos de los que Moodle permite ordenar ({$a}); ajusta maxcoursesincategory.';
 $string['error_toomanydedupe'] = 'Máximo {$a} cursos por lote de «Quitar repetidos».';
+$string['error_toomanydedupecourses'] = 'La categoría y sus subcategorías tienen más de {$a} cursos para revisar; elige una categoría más pequeña, por ejemplo un programa o un semestre.';
 $string['error_toomanydelete'] = 'Máximo {$a} categorías por lote de borrado.';
 $string['error_toomanymerge'] = 'Máximo {$a} cursos por unificación.';
 $string['glossary'] = 'Glosario institucional';
