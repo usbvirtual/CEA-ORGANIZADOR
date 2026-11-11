@@ -47,9 +47,11 @@ final class mergerunner_test extends \advanced_testcase {
      *
      * @param string $fullname
      * @param \core_course_category $category
+     * @param int $timemodified 0 keeps the time of creation.
      * @return int
      */
-    private function course(string $fullname, \core_course_category $category): int {
+    private function course(string $fullname, \core_course_category $category, int $timemodified = 0): int {
+        global $DB;
         static $n = 0;
         $n++;
         $course = $this->getDataGenerator()->create_course([
@@ -57,7 +59,22 @@ final class mergerunner_test extends \advanced_testcase {
             'shortname' => 'MR' . $n,
             'category' => $category->id,
         ]);
+        if ($timemodified > 0) {
+            $DB->set_field('course', 'timemodified', $timemodified, ['id' => $course->id]);
+        }
         return (int) $course->id;
+    }
+
+    /**
+     * Visibility of a course or a category.
+     *
+     * @param string $table course or course_categories.
+     * @param int $id
+     * @return int
+     */
+    private function visible(string $table, int $id): int {
+        global $DB;
+        return (int) $DB->get_field($table, 'visible', ['id' => $id], MUST_EXIST);
     }
 
     /**
@@ -65,7 +82,7 @@ final class mergerunner_test extends \advanced_testcase {
      *
      * @param \core_course_category $target
      * @param \core_course_category[] $sources
-     * @param array $rows Rows sent: [['courseid' => int, 'action' => 'move'|'skip']].
+     * @param array $rows Rows sent: [['courseid' => int, 'action' => 'move'|'repeated'|'skip']].
      * @return array Result of mergerunner::run().
      */
     private function apply_merge(\core_course_category $target, array $sources, array $rows = []): array {
@@ -161,48 +178,138 @@ final class mergerunner_test extends \advanced_testcase {
     }
 
     /**
-     * A possible duplicate stays by default; the others move, and the source is not reported empty.
+     * By default an older repeated course goes to a hidden «Repetidos» folder created under the target, and is
+     * hidden; the others move; undo brings it back visible and deletes the folder.
      */
-    public function test_run_skips_duplicates_by_default(): void {
+    public function test_run_sends_repeated_to_hidden_folder(): void {
+        global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
         $source = $this->cat('Facultades');
         $ing = $this->cat('Ingeniería', $source);
-        $dup = $this->course('Cálculo I', $ing);
+        $dup = $this->course('Cálculo I', $ing, 1000);
         $other = $this->course('Física I', $ing);
         $target = $this->cat('Semillas');
         $ting = $this->cat('Ingeniería', $target);
-        $this->course('Cálculo I', $ting);
+        $kept = $this->course('Cálculo I', $ting, 2000);
 
         $result = $this->apply_merge($target, [$source]);
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(1, $result['moved']);
-        $this->assertSame(1, $result['skipped']);
-        $this->assertSame((int) $ing->id, $this->category_of($dup));
+        $this->assertSame(1, $result['repeated']);
+        $this->assertSame(0, $result['skipped']);
+        $folder = $this->child((int) $target->id, duplicates::FOLDER);
+        $this->assertGreaterThan(0, $folder);
+        $this->assertSame(0, $this->visible('course_categories', $folder));
+        $this->assertSame($folder, $this->category_of($dup));
+        $this->assertSame(0, $this->visible('course', $dup));
         $this->assertSame((int) $ting->id, $this->category_of($other));
-        $this->assertSame([], $result['emptied']);
+        $this->assertSame((int) $ting->id, $this->category_of($kept));
+        $this->assertSame([(int) $ing->id, (int) $source->id], array_column($result['emptied'], 'id'));
+        $payload = $this->payload((int) $result['logid']);
+        $this->assertSame([$folder], $payload['created']);
+        $items = array_column($payload['items'], null, 'id');
+        $this->assertSame(1, $items[$dup]['fromvisible']);
+        $this->assertSame(0, $items[$dup]['tovisible']);
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $ing->id, $this->category_of($dup));
+        $this->assertSame(1, $this->visible('course', $dup));
+        $this->assertFalse($DB->record_exists('course_categories', ['id' => $folder]));
     }
 
     /**
-     * A duplicate sent with 'move' is moved, and the source is then reported empty.
+     * A repeated course sent with 'move' is moved to the destination next to the other one.
      */
     public function test_run_override_moves_duplicate(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         $source = $this->cat('Facultades');
         $ing = $this->cat('Ingeniería', $source);
-        $dup = $this->course('Cálculo I', $ing);
+        $dup = $this->course('Cálculo I', $ing, 1000);
         $target = $this->cat('Semillas');
         $ting = $this->cat('Ingeniería', $target);
-        $this->course('Cálculo I', $ting);
+        $this->course('Cálculo I', $ting, 2000);
 
         $result = $this->apply_merge($target, [$source], [['courseid' => $dup, 'action' => 'move']]);
 
         $this->assertSame(1, $result['moved']);
+        $this->assertSame(0, $result['repeated']);
         $this->assertSame(0, $result['skipped']);
         $this->assertSame((int) $ting->id, $this->category_of($dup));
+        $this->assertSame(0, $this->child((int) $target->id, duplicates::FOLDER));
         $this->assertSame([(int) $ing->id, (int) $source->id], array_column($result['emptied'], 'id'));
+    }
+
+    /**
+     * A target course that loses to a newer source course goes to the existing «Repetidos» folder, which is
+     * reused; undo brings it back and keeps the folder, which the merge did not create.
+     */
+    public function test_run_existing_target_course_loses(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $new = $this->course('Cálculo I 2026-1', $ing, 2000);
+        $target = $this->cat('Semillas');
+        $ting = $this->cat('Ingeniería', $target);
+        $folder = $this->cat(duplicates::FOLDER, $target);
+        $folder->hide();
+        $old = $this->course('Cálculo I', $ting, 1000);
+        $categories = $DB->count_records('course_categories');
+
+        $result = $this->apply_merge($target, [$source]);
+
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame(1, $result['repeated']);
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame((int) $ting->id, $this->category_of($new));
+        $this->assertSame((int) $folder->id, $this->category_of($old));
+        $this->assertSame(0, $this->visible('course', $old));
+        $items = array_column($this->payload((int) $result['logid'])['items'], null, 'id');
+        $this->assertSame((int) $ting->id, $items[$old]['fromcategory']);
+        $this->assertSame((int) $folder->id, $items[$old]['tocategory']);
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $ting->id, $this->category_of($old));
+        $this->assertSame(1, $this->visible('course', $old));
+        $this->assertSame((int) $ing->id, $this->category_of($new));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $folder->id]));
+    }
+
+    /**
+     * Repeated courses from two sources: the newest goes to the destination, the other to Repetidos; a course
+     * left in the source with 'skip' stays and keeps its category from being reported empty.
+     */
+    public function test_run_winner_across_sources_and_leave_in_source(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $first = $this->cat('Facultades');
+        $second = $this->cat('Semillas viejas');
+        $ing1 = $this->cat('Ingeniería', $first);
+        $ing2 = $this->cat('Ingeniería', $second);
+        $old = $this->course('Cálculo I', $ing1, 1000);
+        $new = $this->course('Cálculo I (copia)', $ing2, 2000);
+        $stay = $this->course('Física I', $ing1);
+        $target = $this->cat('Semillas');
+
+        $result = $this->apply_merge($target, [$first, $second], [['courseid' => $stay, 'action' => 'skip']]);
+
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame(1, $result['repeated']);
+        $this->assertSame(1, $result['skipped']);
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        $folder = $this->child((int) $target->id, duplicates::FOLDER);
+        $this->assertSame($newing, $this->category_of($new));
+        $this->assertSame($folder, $this->category_of($old));
+        $this->assertSame((int) $ing1->id, $this->category_of($stay));
+        $this->assertSame([(int) $ing2->id, (int) $second->id], array_column($result['emptied'], 'id'));
     }
 
     /**
@@ -530,7 +637,7 @@ final class mergerunner_test extends \advanced_testcase {
     }
 
     /**
-     * A failure inside the transaction leaves no category, move or journal row behind.
+     * A failure while recording the journal row rolls back the categories: no category, move or row is left.
      */
     public function test_failure_rolls_back(): void {
         global $DB;
@@ -543,16 +650,15 @@ final class mergerunner_test extends \advanced_testcase {
         $target = $this->cat('Semillas');
         $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
         $categories = $DB->count_records('course_categories');
-        // Fails at the last step of the transaction, after the categories are created and the course moved.
+        // Fails at the last step of the first transaction, after the categories are created.
         $runner = new class extends mergerunner {
             /**
              * Fails instead of recording.
              *
-             * @param int $targetid
              * @param array $payload
              * @return int
              */
-            protected static function record_merge(int $targetid, array $payload): int {
+            protected static function record_batch(array $payload): int {
                 throw new \coding_exception('Simulated failure');
             }
         };
@@ -567,5 +673,65 @@ final class mergerunner_test extends \advanced_testcase {
         $this->assertSame((int) $ing->id, $this->category_of($a));
         $this->assertSame($categories, $DB->count_records('course_categories'));
         $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+
+    /**
+     * A failure in a later chunk rolls back only that chunk: what moved before is in the journal row and undoes.
+     */
+    public function test_chunk_failure_keeps_what_was_recorded(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $derecho = $this->cat('Derecho', $source);
+        $ing = $this->cat('Ingeniería', $source);
+        $law = $this->course('Penal', $derecho);
+        $calc = $this->course('Cálculo', $ing);
+        $target = $this->cat('Semillas');
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+        $categories = $DB->count_records('course_categories');
+        // One chunk per destination, in path order: Derecho first, then Ingeniería, which fails.
+        $runner = new class extends mergerunner {
+            /** @var int Chunks recorded so far. */
+            private static $chunks = 0;
+
+            /**
+             * Fails on the second chunk.
+             *
+             * @param int $logid
+             * @param array $payload
+             */
+            protected static function update_batch(int $logid, array $payload): void {
+                self::$chunks++;
+                if (self::$chunks === 2) {
+                    throw new \coding_exception('Simulated failure');
+                }
+                parent::update_batch($logid, $payload);
+            }
+        };
+
+        try {
+            $runner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
+            $this->fail('The failure must reach the caller');
+        } catch (\coding_exception $e) {
+            $this->assertStringContainsString('Simulated failure', $e->getMessage());
+        }
+
+        $newlaw = $this->child((int) $target->id, 'Derecho');
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        $this->assertSame($newlaw, $this->category_of($law));
+        $this->assertSame((int) $ing->id, $this->category_of($calc));
+        $this->assertSame($categories + 2, $DB->count_records('course_categories'));
+        $logid = (int) $DB->get_field(journal::TABLE, 'id', ['action' => 'merge'], MUST_EXIST);
+        $payload = $this->payload($logid);
+        $this->assertSame([$law], array_column($payload['items'], 'id'));
+        $this->assertEqualsCanonicalizing([$newlaw, $newing], $payload['created']);
+
+        $undo = journal::undo($logid);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $derecho->id, $this->category_of($law));
+        $this->assertSame($categories, $DB->count_records('course_categories'));
     }
 }

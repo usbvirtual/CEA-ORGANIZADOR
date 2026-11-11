@@ -114,29 +114,44 @@ class cloner {
     }
 
     /**
+     * Index of the categories by parent and normalized name, built once per plan for resolve().
+     *
+     * When two siblings share a normalized name, the first in the given order wins, as resolve() did when it
+     * scanned the list.
+     *
+     * @param array $categories Map id => ['id' => int, 'parent' => int, 'name' => string].
+     * @return array Map parent id => normalized name => category id.
+     */
+    public static function index(array $categories): array {
+        $index = [];
+        foreach ($categories as $category) {
+            $parent = (int) $category['parent'];
+            $name = sorter::normalize((string) $category['name']);
+            if (!isset($index[$parent][$name])) {
+                $index[$parent][$name] = (int) $category['id'];
+            }
+        }
+        return $index;
+    }
+
+    /**
      * Finds how much of a relative path already exists under the period.
      *
      * @param array $categories Map id => ['id' => int, 'parent' => int, 'name' => string].
      * @param int $periodid
      * @param string[] $relative
+     * @param array|null $index As index() returns it for $categories; built here when null. Pass it when resolving
+     *      many paths, so the categories are not scanned again for each one.
      * @return array ['existing' => int, 'missing' => string[]]
      */
-    public static function resolve(array $categories, int $periodid, array $relative): array {
+    public static function resolve(array $categories, int $periodid, array $relative, ?array $index = null): array {
+        $index = $index ?? self::index($categories);
         $current = $periodid;
         $relative = array_values($relative);
-        foreach ($relative as $index => $name) {
-            $found = null;
-            foreach ($categories as $category) {
-                if (
-                    (int) $category['parent'] === $current
-                    && sorter::normalize((string) $category['name']) === sorter::normalize($name)
-                ) {
-                    $found = (int) $category['id'];
-                    break;
-                }
-            }
+        foreach ($relative as $position => $name) {
+            $found = $index[$current][sorter::normalize($name)] ?? null;
             if ($found === null) {
-                return ['existing' => $current, 'missing' => array_slice($relative, $index)];
+                return ['existing' => $current, 'missing' => array_slice($relative, $position)];
             }
             $current = $found;
         }

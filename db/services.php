@@ -169,6 +169,22 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_dedupe_preview' => [
+        'classname' => \tool_ceaorganizador\external\dedupe_preview::class,
+        'description' => 'Groups of repeated courses of a category and its subcategories, with its signature.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_dedupe_apply' => [
+        'classname' => \tool_ceaorganizador\external\dedupe_apply::class,
+        'description' => 'Moves the repeated courses of a preview that is still current to a hidden Repetidos folder.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
     'tool_ceaorganizador_delete_preview' => [
         'classname' => \tool_ceaorganizador\external\delete_preview::class,
         'description' => 'Which categories of a batch would be deleted (the empty ones) and which kept, with the reason.',

@@ -13,7 +13,9 @@ const strings = new Proxy({}, {
         mergetargetnow: 'Destino: {$a}',
         mergeseeddefault: 'Semillas',
         mergemove: 'Mover',
-        mergeskip: 'Omitir',
+        mergeskip: 'Dejar en el origen',
+        mergerepeatedto: 'A Repetidos: {$a}',
+        mergedonerepeated: 'A Repetidos: {$a}',
         historypage: 'Página {$a}',
     })[name] || String(name),
 });
@@ -35,6 +37,10 @@ const row = (courseid, fullname, extra = {}) => ({
     newcategories: [],
     duplicate: false,
     action: 'move',
+    group: '',
+    existing: false,
+    winner: false,
+    reasons: [],
     ...extra,
 });
 const previewOf = (rows, emptied = []) => ({ rows, emptied, hash: 'abc123' });
@@ -118,15 +124,22 @@ test('los orígenes anidados se envían solo por el externo', async () => {
     assert.deepEqual(calls.preview, [{ targetid: 5, sourceids: [1] }]);
 });
 
-test('la vista previa muestra Nueva con texto oculto y Repetido con interruptor; N cuenta los que se mueven', async () => {
+test('la vista previa muestra Nueva y los grupos de repetidos con su elección; N cuenta lo que se escribe', async () => {
     const { document, calls } = setup({
         sourceid: 1,
-        preview: previewOf([
-            row(10, 'Cálculo', { newcategories: ['Semillas / Ingeniería'] }),
-            row(11, 'Física', { duplicate: true, action: 'skip' }),
-            row(12, 'Álgebra'),
-        ]),
-        apply: { status: 'ok', logid: 7, moved: 2, skipped: 1, emptied: [] },
+        preview: {
+            ...previewOf([
+                row(10, 'Cálculo', { newcategories: ['Semillas / Ingeniería'] }),
+                row(11, 'Física', { duplicate: true, action: 'repeated', group: '11-13', reasons: ['key'] }),
+                row(13, 'Física 2026-1', {
+                    duplicate: true, action: 'move', group: '11-13', existing: true, winner: true, reasons: ['key'],
+                    from: 'Semillas / &lt;b&gt;Ingeniería&lt;/b&gt;',
+                }),
+                row(12, 'Álgebra'),
+            ]),
+            folder: { id: 0, path: 'Semillas / Repetidos' },
+        },
+        apply: { status: 'ok', logid: 7, moved: 2, repeated: 1, skipped: 1, emptied: [] },
     });
     pickTarget(document, 3);
     action(document, 'preview').click();
@@ -136,30 +149,46 @@ test('la vista previa muestra Nueva con texto oculto y Repetido con interruptor;
     assert.match(first.querySelector('.tool-ceaorganizador-etiqueta').textContent, /clonenew/);
     assert.match(first.querySelector('[data-region="newcategories"]').textContent, /Semillas \/ Ingeniería/);
     assert.equal(document.querySelector('tr[data-courseid="12"] .tool-ceaorganizador-etiqueta'), null);
-    assert.equal(action(document, 'apply').textContent, 'Unificar (2)');
-    const toggle = document.querySelector('tr[data-courseid="11"] [data-action="toggle"]');
-    assert.equal(toggle.textContent, 'Omitir');
-    assert.equal(document.querySelector('tr[data-courseid="10"] [data-action="toggle"]'), null);
-    toggle.click();
-    assert.equal(toggle.textContent, 'Mover');
+    assert.equal(document.querySelector('[data-region="folder"]').textContent, 'A Repetidos: Semillas / Repetidos');
+    assert.equal(document.querySelector('[data-region="folder"]').hidden, false);
+    // The target course that stays does not count; the repeated source course does.
     assert.equal(action(document, 'apply').textContent, 'Unificar (3)');
-    toggle.click();
+    const existing = document.querySelector('tr[data-courseid="13"]');
+    assert.equal(existing.dataset.group, '11-13');
+    assert.match(existing.textContent, /mergeexisting/);
+    assert.match(existing.textContent, /mergewinner/);
+    assert.match(existing.textContent, /Semillas \/ <b>Ingeniería<\/b>/);
+    assert.equal(existing.querySelector('b'), null);
+    // A target course can stay or go to Repetidos, never «stay in the source».
+    const existingChoice = existing.querySelector('[data-action="choice"]');
+    assert.deepEqual([...existingChoice.options].map((o) => o.value), ['move', 'repeated']);
+    const choice = document.querySelector('tr[data-courseid="11"] [data-action="choice"]');
+    assert.deepEqual([...choice.options].map((o) => o.value), ['move', 'repeated', 'skip']);
+    assert.equal(choice.value, 'repeated');
+    assert.equal(document.querySelector('tr[data-courseid="10"] [data-action="choice"]'), null);
+    const pick = (select, value) => {
+        select.value = value;
+        select.dispatchEvent(new document.defaultView.Event('change'));
+    };
+    pick(choice, 'skip');
     assert.equal(action(document, 'apply').textContent, 'Unificar (2)');
+    pick(existingChoice, 'repeated');
+    assert.equal(action(document, 'apply').textContent, 'Unificar (3)');
     action(document, 'apply').click();
     await flush();
-    // The skipped row travels as skip.
     assert.deepEqual(calls.apply[0], {
         targetid: 3,
         sourceids: [1],
         rows: [
             { courseid: 10, action: 'move' },
             { courseid: 11, action: 'skip' },
+            { courseid: 13, action: 'repeated' },
             { courseid: 12, action: 'move' },
         ],
         hash: 'abc123',
     });
     assert.equal(calls.reload, 1);
-    assert.equal(calls.toasts[0].message, '2 unificados');
+    assert.equal(calls.toasts[0].message, '2 unificados · A Repetidos: 1');
     calls.toasts[0].options.onAction();
     await flush();
     assert.deepEqual(calls.undo, [7]);

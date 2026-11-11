@@ -26,6 +26,11 @@ namespace tool_ceaorganizador\local;
 
 /**
  * Maps the courses of the source categories to mirrored paths under the target. It writes nothing.
+ *
+ * Repeated courses are found with the rules of duplicates, inside each resolved destination: the courses already
+ * there count, and so do the other source courses that go to the same destination. In each group the most recently
+ * modified course goes to (or stays in) the destination and the others go to the hidden «Repetidos» folder directly
+ * under the target; a target course that loses gets its own row. Destinations inside that folder are not compared.
  */
 class mergeplan {
     /** @var int Most courses a merge can have. */
@@ -37,11 +42,18 @@ class mergeplan {
     /**
      * Builds the preview of a merge.
      *
+     * Each row has 'action': 'move' (to the destination; for a course already in the target, it stays), 'repeated'
+     * (to the «Repetidos» folder) or 'skip' (left in the source). Rows of a group share 'group' (the sorted ids of the
+     * group joined by '-'), 'winner' marks the course that stays by default and 'reasons' the rules that matched.
+     * 'existing' marks a course that is already in the target.
+     *
      * @param int $targetid Category that receives the courses.
      * @param int[] $sourceids Categories whose courses are moved, at any depth.
      * @param bool $details Adds to each row, for mergerunner: 'fromid' (current category), 'anchor' (deepest
-     *      existing destination category) and 'missing' (raw names to create below it). The hash does not change.
-     * @return array ['rows' => array[], 'emptied' => array[], 'hash' => string]
+     *      existing destination category), 'missing' (raw names to create below it) and 'hidden' (the destination is
+     *      inside the «Repetidos» folder). The hash does not change.
+     * @return array ['rows' => array[], 'emptied' => array[], 'folder' => ['id' => int (0 when it will be created),
+     *      'path' => string], 'hash' => string]
      */
     public static function build(int $targetid, array $sourceids, bool $details = false): array {
         global $DB;
@@ -101,55 +113,249 @@ class mergeplan {
                 <=> [$paths[(int) $b->category], (int) $b->sortorder, (int) $b->id];
         });
 
+        $index = cloner::index($cats);
+        $folderkey = sorter::normalize(duplicates::FOLDER);
+        $folderid = $index[$targetid][$folderkey] ?? 0;
+        $folder = [
+            'id' => $folderid,
+            'path' => $folderid
+                ? cloneplan::path_of($folderid, $cats, $paths)
+                : cloneplan::path_of($targetid, $cats, $paths) . ' / ' . cloneplan::format(duplicates::FOLDER),
+        ];
+
+        // Resolved once per source category: every course of a category goes to the same place.
+        $bycategory = [];
         $destinations = [];
         $rows = [];
-        $slots = [];
+        $candidates = [];
         foreach ($courses as $course) {
             $category = (int) $course->category;
-            $relative = [];
-            for ($id = $category; $id !== $sourceof[$category]; $id = $cats[$id]['parent']) {
-                array_unshift($relative, (string) $cats[$id]['name']);
+            if (!isset($bycategory[$category])) {
+                $bycategory[$category] = self::destination(
+                    $category,
+                    $cats,
+                    $sourceof,
+                    $targetid,
+                    $index,
+                    $paths,
+                    $destinations
+                );
             }
-            $resolved = cloner::resolve($cats, $targetid, $relative);
-            $missing = $resolved['missing'];
-            // Courses that need the same missing path share one destination, so they report it the same way.
-            $key = $resolved['existing'] . '|' . implode('/', array_map([sorter::class, 'normalize'], $missing));
-            if (!isset($destinations[$key])) {
-                $dest = cloneplan::path_of($resolved['existing'], $cats, $paths);
-                $new = [];
-                foreach ($missing as $name) {
-                    $dest .= ' / ' . cloneplan::format($name);
-                    $new[] = $dest;
-                }
-                $destinations[$key] = ['to' => $dest, 'new' => $new];
-            }
+            $where = $bycategory[$category];
+            $missing = $where['resolved']['missing'];
             $rows[] = [
                 'courseid' => (int) $course->id,
                 'fullname' => cloneplan::format($course->fullname),
                 'from' => $paths[$category],
-                'to' => $destinations[$key]['to'],
-                'toid' => $missing ? 0 : $resolved['existing'],
-                'newcategories' => $destinations[$key]['new'],
+                'to' => $destinations[$where['key']]['to'],
+                'toid' => $missing ? 0 : $where['resolved']['existing'],
+                'newcategories' => $destinations[$where['key']]['new'],
                 'duplicate' => false,
                 'action' => 'move',
+                'group' => '',
+                'existing' => false,
+                'winner' => false,
+                'reasons' => [],
+                'fromid' => $category,
+                'anchor' => $where['resolved']['existing'],
+                'missing' => $missing,
+                'hidden' => $where['hidden'],
             ];
-            if ($details) {
-                $rows[count($rows) - 1] += ['fromid' => $category, 'anchor' => $resolved['existing'], 'missing' => $missing];
+            if (!$where['hidden']) {
+                $candidates[$where['key']][] = [
+                    'id' => (int) $course->id,
+                    'fullname' => $course->fullname,
+                    'shortname' => $course->shortname,
+                    'timemodified' => (int) $course->timemodified,
+                    'row' => count($rows) - 1,
+                ];
             }
-            $slots[] = [$key, sorter::normalize($course->fullname)];
         }
 
-        self::flag_duplicates($rows, $slots);
-        $emptied = self::emptied($cats, $children, $sourceids, $rows, $courses, $paths);
+        self::add_target_courses($candidates, $rows);
+        $rows = self::group_rows($rows, $candidates, $cats, $paths);
+        if (count($rows) > self::MAX_ROWS) {
+            throw new \moodle_exception('error_toomanymerge', 'tool_ceaorganizador', '', self::MAX_ROWS);
+        }
+        $emptied = self::emptied($cats, $children, $sourceids, $rows, $paths);
 
         $signature = [];
         foreach ($rows as $row) {
-            $signature[] = [$row['courseid'], $row['toid'], $row['to'], $row['duplicate']];
+            $signature[] = [$row['courseid'], $row['toid'], $row['to'], $row['action'], $row['group'], $row['existing']];
         }
         $sorted = $sourceids;
         sort($sorted);
-        $hash = sha1(json_encode([$targetid, $sorted, $signature]));
-        return ['rows' => $rows, 'emptied' => $emptied, 'hash' => $hash];
+        $hash = sha1(json_encode([$targetid, $sorted, $folder['id'], $signature]));
+        if (!$details) {
+            foreach ($rows as &$row) {
+                unset($row['fromid'], $row['anchor'], $row['missing'], $row['hidden']);
+            }
+            unset($row);
+        }
+        return ['rows' => $rows, 'emptied' => $emptied, 'folder' => $folder, 'hash' => $hash];
+    }
+
+    /**
+     * Where the courses of a source category go.
+     *
+     * @param int $category
+     * @param array $cats
+     * @param int[] $sourceof Source of every category under a source.
+     * @param int $targetid
+     * @param array $index As cloner::index() returns it for $cats.
+     * @param string[] $paths Memo of formatted paths.
+     * @param array $destinations Memo of destination paths by key, changed in place.
+     * @return array ['key' => string, 'resolved' => array, 'hidden' => bool]
+     */
+    private static function destination(
+        int $category,
+        array $cats,
+        array $sourceof,
+        int $targetid,
+        array $index,
+        array &$paths,
+        array &$destinations
+    ): array {
+        $relative = [];
+        for ($id = $category; $id !== $sourceof[$category]; $id = $cats[$id]['parent']) {
+            array_unshift($relative, (string) $cats[$id]['name']);
+        }
+        $resolved = cloner::resolve($cats, $targetid, $relative, $index);
+        $missing = $resolved['missing'];
+        // Courses that need the same missing path share one destination, so they report it the same way.
+        $key = $resolved['existing'] . '|' . implode('/', array_map([sorter::class, 'normalize'], $missing));
+        if (!isset($destinations[$key])) {
+            $dest = cloneplan::path_of($resolved['existing'], $cats, $paths);
+            $new = [];
+            foreach ($missing as $name) {
+                $dest .= ' / ' . cloneplan::format($name);
+                $new[] = $dest;
+            }
+            $destinations[$key] = ['to' => $dest, 'new' => $new];
+        }
+        // The folder of repeated courses is never compared, and what is created in it is hidden.
+        $hidden = $relative && sorter::normalize($relative[0]) === sorter::normalize(duplicates::FOLDER);
+        return ['key' => $key, 'resolved' => $resolved, 'hidden' => $hidden];
+    }
+
+    /**
+     * Adds to the candidates of each existing destination the courses that are already there.
+     *
+     * @param array $candidates Destination key => candidates, changed in place; a target course has 'row' => -1
+     *      and 'category'.
+     * @param array $rows Rows so far, to find the existing destination of each key.
+     */
+    private static function add_target_courses(array &$candidates, array $rows): void {
+        global $DB;
+        $keyof = [];
+        foreach ($candidates as $key => $list) {
+            $row = $rows[$list[0]['row']];
+            if ($row['toid'] > 0) {
+                $keyof[$row['toid']] = $key;
+            }
+        }
+        foreach (array_chunk(array_keys($keyof), self::CHUNK) as $chunk) {
+            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
+            $records = $DB->get_records_sql(
+                "SELECT id, category, fullname, shortname, timemodified
+                   FROM {course}
+                  WHERE category $insql
+               ORDER BY sortorder ASC, id ASC",
+                $params
+            );
+            foreach ($records as $record) {
+                $candidates[$keyof[(int) $record->category]][] = [
+                    'id' => (int) $record->id,
+                    'fullname' => $record->fullname,
+                    'shortname' => $record->shortname,
+                    'timemodified' => (int) $record->timemodified,
+                    'row' => -1,
+                    'category' => (int) $record->category,
+                ];
+            }
+        }
+    }
+
+    /**
+     * Marks the groups of repeated courses and adds a row for each target course in a group.
+     *
+     * The rows of a group are kept together, at the place of its first source row, with the target courses last.
+     *
+     * @param array $rows
+     * @param array $candidates
+     * @param array $cats
+     * @param string[] $paths Memo of formatted paths.
+     * @return array The rows, in their final order.
+     */
+    private static function group_rows(array $rows, array $candidates, array $cats, array &$paths): array {
+        $extra = [];
+        foreach ($candidates as $list) {
+            if (count($list) < 2) {
+                continue;
+            }
+            $byid = array_column($list, null, 'id');
+            foreach (duplicates::groups($list) as $group) {
+                $fromsources = array_filter($group['courses'], static function (array $member) use ($byid): bool {
+                    return $byid[$member['id']]['row'] >= 0;
+                });
+                // Repeated courses that are all in the target already are not the merge's business.
+                if (!$fromsources) {
+                    continue;
+                }
+                foreach ($group['courses'] as $member) {
+                    $candidate = $byid[$member['id']];
+                    $values = [
+                        'duplicate' => true,
+                        'action' => $member['keep'] ? 'move' : 'repeated',
+                        'group' => $group['key'],
+                        'winner' => $member['keep'],
+                        'reasons' => $member['reasons'],
+                    ];
+                    if ($candidate['row'] >= 0) {
+                        $rows[$candidate['row']] = $values + $rows[$candidate['row']];
+                        continue;
+                    }
+                    $category = $candidate['category'];
+                    $path = cloneplan::path_of($category, $cats, $paths);
+                    $extra[] = $values + [
+                        'courseid' => $candidate['id'],
+                        'fullname' => cloneplan::format($candidate['fullname']),
+                        'from' => $path,
+                        'to' => $path,
+                        'toid' => $category,
+                        'newcategories' => [],
+                        'existing' => true,
+                        'fromid' => $category,
+                        'anchor' => $category,
+                        'missing' => [],
+                        'hidden' => false,
+                    ];
+                }
+            }
+        }
+        // Each row sorts by the place of its group (its first source row), source rows first, then by its index.
+        $all = array_merge($rows, $extra);
+        $firstof = [];
+        $rank = [];
+        foreach ($all as $i => $row) {
+            $existing = $row['existing'] ? 1 : 0;
+            if ($row['group'] === '') {
+                $rank[$i] = [$i, $existing, $i];
+                continue;
+            }
+            // Every group has at least one source row, and source rows come before the extra ones.
+            $firstof[$row['group']] = $firstof[$row['group']] ?? $i;
+            $rank[$i] = [$firstof[$row['group']], $existing, $i];
+        }
+        $order = array_keys($all);
+        usort($order, static function (int $a, int $b) use ($rank): int {
+            return $rank[$a] <=> $rank[$b];
+        });
+        $result = [];
+        foreach ($order as $i) {
+            $result[] = $all[$i];
+        }
+        return $result;
     }
 
     /**
@@ -190,7 +396,9 @@ class mergeplan {
             [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
             $params['site'] = SITEID;
             $records = $DB->get_records_sql(
-                "SELECT id, category, sortorder, fullname FROM {course} WHERE category $insql AND id <> :site",
+                "SELECT id, category, sortorder, fullname, shortname, timemodified
+                   FROM {course}
+                  WHERE category $insql AND id <> :site",
                 $params
             );
             foreach ($records as $record) {
@@ -201,47 +409,12 @@ class mergeplan {
     }
 
     /**
-     * Marks the rows that repeat a course of the destination or an earlier row of the batch.
-     *
-     * @param array $rows Rows, changed in place.
-     * @param array $slots Per row: [destination key, normalized full name].
-     */
-    private static function flag_duplicates(array &$rows, array $slots): void {
-        global $DB;
-        $toids = [];
-        foreach ($rows as $row) {
-            if ($row['toid'] > 0) {
-                $toids[$row['toid']] = $row['toid'];
-            }
-        }
-        $held = [];
-        foreach (array_chunk(array_values($toids), self::CHUNK) as $chunk) {
-            [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
-            $records = $DB->get_records_sql("SELECT id, category, fullname FROM {course} WHERE category $insql", $params);
-            foreach ($records as $record) {
-                $held[(int) $record->category][sorter::normalize($record->fullname)][(int) $record->id] = true;
-            }
-        }
-        $seen = [];
-        foreach ($rows as $index => &$row) {
-            [$key, $name] = $slots[$index];
-            $others = $held[$row['toid']][$name] ?? [];
-            unset($others[$row['courseid']]);
-            $row['duplicate'] = ($row['toid'] > 0 && $others) || isset($seen[$key][$name]);
-            $seen[$key][$name] = true;
-            $row['action'] = $row['duplicate'] ? 'skip' : 'move';
-        }
-        unset($row);
-    }
-
-    /**
      * Source categories left with no courses and no subcategories after the default actions, deepest first.
      *
      * @param array $cats
      * @param array $children
      * @param int[] $sourceids
-     * @param array $rows
-     * @param \stdClass[] $courses Course records in row order.
+     * @param array $rows Rows with 'fromid' and 'existing'.
      * @param string[] $paths Memo of formatted paths.
      * @return array List of ['id' => int, 'path' => string].
      */
@@ -250,13 +423,12 @@ class mergeplan {
         array $children,
         array $sourceids,
         array $rows,
-        array $courses,
         array &$paths
     ): array {
         $staying = [];
-        foreach ($rows as $index => $row) {
-            if ($row['action'] === 'skip') {
-                $staying[(int) $courses[$index]->category] = true;
+        foreach ($rows as $row) {
+            if ($row['action'] === 'skip' && !$row['existing']) {
+                $staying[(int) $row['fromid']] = true;
             }
         }
         $depth = [];

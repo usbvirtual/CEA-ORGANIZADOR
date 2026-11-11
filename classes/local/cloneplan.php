@@ -87,6 +87,7 @@ class cloneplan {
         }
         $paths = [];
         $patterns = sorter::patterns();
+        $index = cloner::index($cats);
 
         $courses = self::expand($items, $children);
         if (count($courses) > self::MAX_ROWS) {
@@ -106,7 +107,7 @@ class cloneplan {
         $rows = [];
         foreach ($courses as $course) {
             \context_helper::preload_from_record($course);
-            $rows[] = self::row($course, $cats, $paths, $patterns, $periodid, $container, $label, $insideseeds, $copycaps);
+            $rows[] = self::row($course, $cats, $index, $paths, $patterns, $periodid, $container, $label, $insideseeds, $copycaps);
         }
         self::flag_errors($rows);
 
@@ -194,6 +195,7 @@ class cloneplan {
      *
      * @param \stdClass $course
      * @param array $cats
+     * @param array $index As cloner::index() returns it for $cats.
      * @param string[] $paths Memo of formatted paths.
      * @param array $patterns
      * @param int $periodid
@@ -206,6 +208,7 @@ class cloneplan {
     private static function row(
         \stdClass $course,
         array $cats,
+        array $index,
         array &$paths,
         array $patterns,
         int $periodid,
@@ -216,7 +219,7 @@ class cloneplan {
     ): array {
         // A course outside the seeds has an empty relative path: it goes to the period, or to the container.
         $mirror = cloner::mirror($cats, (int) $course->category, $patterns);
-        $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container));
+        $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container), $index);
         $newcategories = [];
         $destpath = self::path_of($resolved['existing'], $cats, $paths);
         foreach ($resolved['missing'] as $name) {

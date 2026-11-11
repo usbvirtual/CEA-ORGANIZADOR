@@ -25,34 +25,38 @@
 namespace tool_ceaorganizador\local;
 
 /**
- * Applies a merge preview that is still current, all or nothing.
+ * Applies a merge preview that is still current.
  *
- * Every capability is checked before any write. Categories, moves and the journal row are written in one
- * transaction, so a failure leaves nothing behind. It never deletes a course or a category.
+ * Every capability is checked before any write. The writes follow batchrunner: the categories (the «Repetidos»
+ * folder too, created hidden) and the journal row in one short transaction, then the moves by destination in
+ * chunks, each one recorded as it commits. It never deletes a course or a category.
  *
  * Undo (journal, action 'merge') moves every course back to its original category, but not to its original
- * position inside it: move_courses() keeps no order, so the courses come back first in the category. It then
- * deletes the created categories that hold nothing (see mover::delete_empty_category()).
+ * position inside it: move_courses() keeps no order, so the courses come back first in the category. It restores
+ * the visibility the move changed (the «Repetidos» folder is hidden) and then deletes the created categories that
+ * hold nothing (see mover::delete_empty_category()).
  */
-class mergerunner {
+class mergerunner extends batchrunner {
     /** @var string[] Accepted row actions. */
-    public const ROW_ACTIONS = ['move', 'skip'];
+    public const ROW_ACTIONS = ['move', 'repeated', 'skip'];
+
+    /** @var string Journal action. */
+    protected const ACTION = 'merge';
 
     /**
      * Runs a merge under the write lock.
      *
      * @param int $targetid
      * @param int[] $sourceids
-     * @param array $rows List of ['courseid' => int, 'action' => 'move'|'skip']; plan rows not listed keep their
-     *      default action.
+     * @param array $rows List of ['courseid' => int, 'action' => 'move'|'repeated'|'skip']; plan rows not listed keep
+     *      their default action. For a course already in the target, 'move' and 'skip' leave it where it is.
      * @param string $hash Hash of the preview the user saw.
-     * @return array ['status' => 'ok'|'stale', 'logid' => int, 'moved' => int, 'skipped' => int,
+     * @return array ['status' => 'ok'|'stale', 'logid' => int, 'moved' => int, 'repeated' => int, 'skipped' => int,
      *      'emptied' => [['id' => int, 'path' => string]]]; logid is 0 when nothing was recorded.
      * @throws \required_capability_exception When a category or course cannot be changed; nothing is written.
      * @throws \invalid_parameter_exception For an unknown course or action in $rows.
      */
     public static function run(int $targetid, array $sourceids, array $rows, string $hash): array {
-        global $DB;
         // Up to mergeplan::MAX_ROWS courses are moved in one request.
         \core_php_time_limit::raise();
         raise_memory_limit(MEMORY_EXTRA);
@@ -61,64 +65,61 @@ class mergerunner {
         try {
             $plan = mergeplan::build($targetid, $sourceids, true);
             if (!hash_equals($plan['hash'], $hash)) {
-                return ['status' => 'stale', 'logid' => 0, 'moved' => 0, 'skipped' => 0, 'emptied' => []];
+                return ['status' => 'stale', 'logid' => 0, 'moved' => 0, 'repeated' => 0, 'skipped' => 0, 'emptied' => []];
             }
             $planrows = self::actions($plan['rows'], $rows);
-            $todo = array_values(array_filter($planrows, static function (array $row): bool {
-                return $row['action'] === 'move';
-            }));
-            $skipped = count($planrows) - count($todo);
+            $folderid = (int) $plan['folder']['id'];
+            $todo = [];
+            $moved = 0;
+            $repeated = 0;
+            $skipped = 0;
+            foreach ($planrows as $row) {
+                if ($row['action'] === 'repeated') {
+                    // Straight into the hidden folder under the target, created when it is missing.
+                    $todo[] = [
+                        'anchor' => $folderid ?: $targetid,
+                        'missing' => $folderid ? [] : [duplicates::FOLDER],
+                        'hidden' => true,
+                    ] + $row;
+                    $repeated++;
+                } else if ($row['existing']) {
+                    // A course already in the target stays where it is.
+                    continue;
+                } else if ($row['action'] === 'skip') {
+                    $skipped++;
+                } else {
+                    $todo[] = $row;
+                    $moved++;
+                }
+            }
             if (!$todo) {
                 return [
                     'status' => 'ok',
                     'logid' => 0,
                     'moved' => 0,
+                    'repeated' => 0,
                     'skipped' => $skipped,
                     'emptied' => self::emptied($sourceids),
                 ];
             }
             self::check($targetid, $sourceids, $todo);
 
-            $transaction = $DB->start_delegated_transaction();
-            try {
-                [$todo, $created] = mover::create_categories($todo);
-                $groups = [];
-                $items = [];
-                foreach ($todo as $row) {
-                    $groups[(int) $row['destcategoryid']][] = (int) $row['courseid'];
-                    $items[] = [
-                        'id' => (int) $row['courseid'],
-                        'fromcategory' => (int) $row['fromid'],
-                        'tocategory' => (int) $row['destcategoryid'],
-                    ];
-                }
-                $visiblebefore = self::visibility(array_column($items, 'id'));
-                foreach ($groups as $categoryid => $ids) {
-                    mover::move_courses_into($ids, $categoryid);
-                }
-                // Moving into a hidden category hides the course: recorded so undo can show it again.
-                $visibleafter = self::visibility(array_column($items, 'id'));
-                foreach ($items as &$item) {
-                    $item['fromvisible'] = $visiblebefore[$item['id']];
-                    $item['tovisible'] = $visibleafter[$item['id']];
-                }
-                unset($item);
-                $payload = [
-                    'targetid' => $targetid,
-                    'sourceids' => array_map('intval', array_values($sourceids)),
-                    'created' => $created,
-                    'items' => $items,
-                ];
-                $logid = static::record_merge($targetid, $payload);
-                $transaction->allow_commit();
-            } catch (\Throwable $e) {
-                guard::rollback($transaction, $e);
-            }
+            $logid = static::write([
+                'targetid' => $targetid,
+                'sourceids' => array_map('intval', array_values($sourceids)),
+            ], $todo);
             $emptied = self::emptied($sourceids);
         } finally {
             $lock->release();
         }
-        return ['status' => 'ok', 'logid' => $logid, 'moved' => count($items), 'skipped' => $skipped, 'emptied' => $emptied];
+        return [
+            'status' => 'ok',
+            'logid' => $logid,
+            'moved' => $moved,
+            'repeated' => $repeated,
+            'skipped' => $skipped,
+            'emptied' => $emptied,
+        ];
     }
 
     /**
@@ -175,23 +176,6 @@ class mergerunner {
         foreach ($todo as $row) {
             mover::check_course((int) $row['courseid'], 'moodle/course:changecategory');
         }
-    }
-
-    /**
-     * Visibility of some courses.
-     *
-     * @param int[] $ids
-     * @return int[] Map id => 0|1.
-     */
-    private static function visibility(array $ids): array {
-        global $DB;
-        $result = [];
-        foreach (array_chunk($ids, 1000) as $chunk) {
-            foreach ($DB->get_records_list('course', 'id', $chunk, '', 'id, visible') as $course) {
-                $result[(int) $course->id] = (int) $course->visible;
-            }
-        }
-        return $result;
     }
 
     /**
@@ -255,27 +239,18 @@ class mergerunner {
     }
 
     /**
-     * Records the merge in the journal. Runs inside the transaction; protected so the tests can make it fail.
-     *
-     * @param int $targetid
-     * @param array $payload
-     * @return int Journal id.
-     */
-    protected static function record_merge(int $targetid, array $payload): int {
-        return journal::record('merge', self::summary($targetid, count($payload['items'])), $payload);
-    }
-
-    /**
      * Summary of the merge for the history, cut as journal::record() does.
      *
-     * @param int $targetid
-     * @param int $count Courses moved.
+     * @param array $payload With 'targetid' and the 'items' moved so far.
      * @return string
      */
-    private static function summary(int $targetid, int $count): string {
+    protected static function summary(array $payload): string {
         global $DB;
-        $target = (string) $DB->get_field('course_categories', 'name', ['id' => $targetid], MUST_EXIST);
-        $summary = get_string('summary_merge', 'tool_ceaorganizador', (object) ['target' => $target, 'count' => $count]);
+        $target = (string) $DB->get_field('course_categories', 'name', ['id' => (int) $payload['targetid']], MUST_EXIST);
+        $summary = get_string('summary_merge', 'tool_ceaorganizador', (object) [
+            'target' => $target,
+            'count' => count($payload['items'] ?? []),
+        ]);
         return \core_text::substr($summary, 0, journal::SUMMARY_MAX);
     }
 }

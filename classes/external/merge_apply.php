@@ -45,7 +45,7 @@ class merge_apply extends external_api {
             'rows' => new external_multiple_structure(
                 new external_single_structure([
                     'courseid' => new external_value(PARAM_INT, 'Course id'),
-                    'action' => new external_value(PARAM_ALPHA, 'move or skip'),
+                    'action' => new external_value(PARAM_ALPHA, 'move, repeated or skip'),
                 ]),
                 'Action of each course, as the user left it'
             ),
@@ -60,7 +60,8 @@ class merge_apply extends external_api {
      * @param int[] $sourceids
      * @param array $rows
      * @param string $hash
-     * @return array ['status' => string, 'logid' => int, 'moved' => int, 'skipped' => int, 'emptied' => array[]]
+     * @return array ['status' => string, 'logid' => int, 'moved' => int, 'repeated' => int, 'skipped' => int,
+     *      'emptied' => array[]]
      */
     public static function execute(int $targetid, array $sourceids, array $rows, string $hash): array {
         $params = self::validate_parameters(self::execute_parameters(), [
@@ -85,7 +86,8 @@ class merge_apply extends external_api {
         return new external_single_structure([
             'status' => new external_value(PARAM_ALPHA, 'ok, or stale when the preview is no longer current'),
             'logid' => new external_value(PARAM_INT, 'Journal id; 0 when nothing was recorded'),
-            'moved' => new external_value(PARAM_INT, 'Courses moved'),
+            'moved' => new external_value(PARAM_INT, 'Courses moved to their destination'),
+            'repeated' => new external_value(PARAM_INT, 'Courses moved to the Repetidos folder'),
             'skipped' => new external_value(PARAM_INT, 'Courses left where they were'),
             'emptied' => new external_multiple_structure(new external_single_structure([
                 'id' => new external_value(PARAM_INT, 'Category id'),

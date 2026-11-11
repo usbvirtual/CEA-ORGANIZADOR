@@ -32,7 +32,7 @@ use core_external\external_value;
 use tool_ceaorganizador\local\mergeplan;
 
 /**
- * Builds the list of courses to move, with their destinations and repeated names, and its signature. It writes nothing.
+ * Builds the list of courses to move, with their destinations and repeated courses, and its signature. It writes nothing.
  */
 class merge_preview extends external_api {
     /**
@@ -64,7 +64,7 @@ class merge_preview extends external_api {
      *
      * @param int $targetid
      * @param int[] $sourceids
-     * @return array ['rows' => array[], 'emptied' => array[], 'hash' => string]
+     * @return array ['rows' => array[], 'emptied' => array[], 'folder' => array, 'hash' => string]
      */
     public static function execute(int $targetid, array $sourceids): array {
         $params = self::validate_parameters(self::execute_parameters(), [
@@ -86,9 +86,13 @@ class merge_preview extends external_api {
                 'newcategories' => $row['newcategories'],
                 'duplicate' => $row['duplicate'],
                 'action' => $row['action'],
+                'group' => $row['group'],
+                'existing' => $row['existing'],
+                'winner' => $row['winner'],
+                'reasons' => $row['reasons'],
             ];
         }
-        return ['rows' => $rows, 'emptied' => $plan['emptied'], 'hash' => $plan['hash']];
+        return ['rows' => $rows, 'emptied' => $plan['emptied'], 'folder' => $plan['folder'], 'hash' => $plan['hash']];
     }
 
     /**
@@ -107,13 +111,24 @@ class merge_preview extends external_api {
                     new external_value(PARAM_TEXT, 'Path of a category to create, formatted'),
                     'Categories the course needs and that do not exist yet'
                 ),
-                'duplicate' => new external_value(PARAM_BOOL, 'The destination already has a course with that name'),
-                'action' => new external_value(PARAM_ALPHA, 'Default action: move or skip'),
+                'duplicate' => new external_value(PARAM_BOOL, 'The course is in a group of repeated courses'),
+                'action' => new external_value(PARAM_ALPHA, 'Default action: move, repeated or skip'),
+                'group' => new external_value(PARAM_RAW, 'Key of its group of repeated courses, or empty'),
+                'existing' => new external_value(PARAM_BOOL, 'The course is already in the target'),
+                'winner' => new external_value(PARAM_BOOL, 'Stays in the destination by default: the most recently modified'),
+                'reasons' => new external_multiple_structure(
+                    new external_value(PARAM_ALPHA, 'name, key or shortname'),
+                    'Rules that matched'
+                ),
             ])),
             'emptied' => new external_multiple_structure(new external_single_structure([
                 'id' => new external_value(PARAM_INT, 'Category id'),
                 'path' => new external_value(PARAM_TEXT, 'Path, formatted'),
             ]), 'Source categories left empty with the default actions'),
+            'folder' => new external_single_structure([
+                'id' => new external_value(PARAM_INT, 'Folder of repeated courses under the target; 0 when it will be created'),
+                'path' => new external_value(PARAM_TEXT, 'Path of the folder, formatted'),
+            ]),
             'hash' => new external_value(PARAM_ALPHANUM, 'Signature of the preview, to pass to merge_apply'),
         ]);
     }

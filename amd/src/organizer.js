@@ -42,6 +42,7 @@ import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 import {open as openDelete} from 'tool_ceaorganizador/deletepanel';
+import {open as openDedupe} from 'tool_ceaorganizador/dedupepanel';
 import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
 
 const SEARCH_DELAY = 250;
@@ -116,6 +117,22 @@ const REQUESTS = [
     {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
+    {key: 'dedupe', component: 'tool_ceaorganizador'},
+    {key: 'dedupeapply', component: 'tool_ceaorganizador'},
+    {key: 'dedupecategory', component: 'tool_ceaorganizador'},
+    {key: 'dedupecategorynow', component: 'tool_ceaorganizador'},
+    {key: 'dedupedone', component: 'tool_ceaorganizador'},
+    {key: 'dedupefolder', component: 'tool_ceaorganizador'},
+    {key: 'dedupegroups', component: 'tool_ceaorganizador'},
+    {key: 'dedupeinclude', component: 'tool_ceaorganizador'},
+    {key: 'dedupekeep', component: 'tool_ceaorganizador'},
+    {key: 'dedupemodified', component: 'tool_ceaorganizador'},
+    {key: 'dedupenote', component: 'tool_ceaorganizador'},
+    {key: 'dedupenothing', component: 'tool_ceaorganizador'},
+    {key: 'dedupereason_key', component: 'tool_ceaorganizador'},
+    {key: 'dedupereason_name', component: 'tool_ceaorganizador'},
+    {key: 'dedupereason_shortname', component: 'tool_ceaorganizador'},
+    {key: 'dedupestale', component: 'tool_ceaorganizador'},
     {key: 'deleteapply', component: 'tool_ceaorganizador'},
     {key: 'deletecategory', component: 'tool_ceaorganizador'},
     {key: 'deletedone', component: 'tool_ceaorganizador'},
@@ -156,12 +173,17 @@ const REQUESTS = [
     {key: 'mergecourse', component: 'tool_ceaorganizador'},
     {key: 'mergecreate', component: 'tool_ceaorganizador'},
     {key: 'mergedone', component: 'tool_ceaorganizador'},
+    {key: 'mergedonerepeated', component: 'tool_ceaorganizador'},
     {key: 'mergeduplicate', component: 'tool_ceaorganizador'},
     {key: 'mergeemptied', component: 'tool_ceaorganizador'},
+    {key: 'mergeexisting', component: 'tool_ceaorganizador'},
     {key: 'mergefrom', component: 'tool_ceaorganizador'},
+    {key: 'mergekeep', component: 'tool_ceaorganizador'},
     {key: 'mergemove', component: 'tool_ceaorganizador'},
     {key: 'mergenothing', component: 'tool_ceaorganizador'},
     {key: 'mergepreview', component: 'tool_ceaorganizador'},
+    {key: 'mergerepeated', component: 'tool_ceaorganizador'},
+    {key: 'mergerepeatedto', component: 'tool_ceaorganizador'},
     {key: 'mergeseeddefault', component: 'tool_ceaorganizador'},
     {key: 'mergeseedexists', component: 'tool_ceaorganizador'},
     {key: 'mergeseedname', component: 'tool_ceaorganizador'},
@@ -171,6 +193,7 @@ const REQUESTS = [
     {key: 'mergetarget', component: 'tool_ceaorganizador'},
     {key: 'mergetargetnow', component: 'tool_ceaorganizador'},
     {key: 'mergeto', component: 'tool_ceaorganizador'},
+    {key: 'mergewinner', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
     {key: 'moveto', component: 'tool_ceaorganizador'},
@@ -377,6 +400,8 @@ export const init = ({root}) => {
                 openSuggest({...panelOptions(trigger), categoryid: dragged.id});
             } else if (action === 'merge') {
                 openMerge({...mergeOptions(trigger), sourceid: dragged.id});
+            } else if (action === 'dedupe') {
+                openDedupe({...mergeOptions(trigger), categoryid: dragged.id});
             } else if (action === 'clone') {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
             } else if (action === 'delete') {
@@ -437,6 +462,13 @@ export const init = ({root}) => {
         mergeButton.dataset.action = 'merge';
         mergeButton.textContent = strings.merge;
         mergeButton.addEventListener('click', () => openMerge(mergeOptions(mergeButton)));
+        // «Quitar repetidos» asks for the category in its own panel.
+        const dedupeButton = document.createElement('button');
+        dedupeButton.type = 'button';
+        dedupeButton.className = 'btn btn-secondary btn-sm';
+        dedupeButton.dataset.action = 'dedupe';
+        dedupeButton.textContent = strings.dedupe;
+        dedupeButton.addEventListener('click', () => openDedupe(mergeOptions(dedupeButton)));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';
@@ -497,7 +529,7 @@ export const init = ({root}) => {
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
         bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, deleteButton, clearButton);
-        toolbar.append(historyButton, suggestButton, mergeButton, busyText, bar);
+        toolbar.append(historyButton, suggestButton, mergeButton, dedupeButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
         hint.textContent = strings.keyboardhint;

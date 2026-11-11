@@ -129,6 +129,7 @@ class undo extends external_api {
                 }
                 return;
             case 'merge':
+            case 'dedupe':
                 self::check_merge($payload);
                 return;
             case 'delete':

@@ -37,7 +37,17 @@ namespace tool_ceaorganizador\local;
  * - visibility: {items: [{id, name (raw full name), before: 0|1, after: 0|1}]}, only the courses that changed.
  * - merge: {targetid, sourceids, created: [category ids, in creation order], items: [{id, fromcategory, tocategory,
  *   fromvisible, tovisible}]}, only the courses moved; see mergerunner. Undo moves them back and deletes the
- *   created categories that are empty then; one that received other content is kept.
+ *   created categories that are empty then; one that received other content is kept. A merge also sends repeated
+ *   courses, and target courses that lose to a newer one, to the hidden «Repetidos» folder under the target: those
+ *   are items too, and the folder is in 'created' when the merge created it.
+ * - dedupe: {categoryid, created: [category ids], items: [{id, fromcategory, tocategory, fromvisible, tovisible}]};
+ *   see deduperunner. The same format and the same undo as merge: the repeated courses go back, their visibility is
+ *   restored when the move changed it, and the «Repetidos» folder is deleted only when the batch created it and it is
+ *   empty then.
+ *
+ * merge and dedupe are written in steps (see batchrunner): the row is recorded with the created categories and no
+ * items, and every chunk of moves appends its items in the same transaction as the moves. The row always describes
+ * exactly what was applied, so a batch that fails halfway can still be undone, in one transaction.
  * - delete: {items: [{id, name, idnumber, description, descriptionformat, parent, afterid, visible, visibleold,
  *   theme (only when set)}]}, in deletion order (deepest first); see deleterunner. Undo creates them again in the
  *   reverse order, with new ids: a parent deleted in the same batch is created first and its children go under
@@ -53,7 +63,7 @@ class journal {
     public const TABLE = 'tool_ceaorganizador_log';
 
     /** @var string[] Accepted actions. */
-    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility', 'merge', 'delete'];
+    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility', 'merge', 'delete', 'dedupe'];
 
     /** @var int Length of the summary column. */
     public const SUMMARY_MAX = 255;
@@ -82,6 +92,22 @@ class journal {
             'timecreated' => time(),
             'undoneby' => 0,
             'timeundone' => 0,
+        ]);
+    }
+
+    /**
+     * Rewrites the summary and the payload of a row that is being written in steps (merge and dedupe).
+     *
+     * @param int $id Row returned by record().
+     * @param string $summary Cut to 255 characters.
+     * @param array $payload The whole payload so far.
+     */
+    public static function update(int $id, string $summary, array $payload): void {
+        global $DB;
+        $DB->update_record(self::TABLE, (object) [
+            'id' => $id,
+            'summary' => \core_text::substr($summary, 0, self::SUMMARY_MAX),
+            'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
         ]);
     }
 
@@ -381,6 +407,7 @@ class journal {
             case 'visibility':
                 return self::conflicts_visibility($payload);
             case 'merge':
+            case 'dedupe':
                 return self::conflicts_merge($payload);
             case 'delete':
                 return self::conflicts_delete($payload);
@@ -847,6 +874,7 @@ class journal {
                 }
                 return;
             case 'merge':
+            case 'dedupe':
                 self::restore_merge($payload);
                 return;
             case 'delete':

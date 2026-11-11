@@ -116,24 +116,58 @@ Reúne en una sola categoría de semillas los cursos que están repartidos en va
 1. Elegir la categoría de destino. Si no existe, «Crear categoría de semillas» crea una de nivel superior con el nombre escrito (por defecto «Semillas»). Si ya hay una de nivel superior con el mismo nombre, sin importar tildes ni mayúsculas, se reutiliza y el panel lo avisa.
 2. Marcar las categorías de origen. No pueden ser el destino, contenerlo, estar dentro de él, ni estar una dentro de otra.
 3. Pulsar «Vista previa»: por cada curso se ve de dónde viene, a dónde va y qué categorías se crearían.
-4. Revisar la acción de cada fila («Mover» u «Omitir») y pulsar «Unificar (N)».
+4. Revisar los repetidos: en cada fila de un grupo se elige «Conservar», «A Repetidos» o «Dejar en el origen» (este último solo para cursos de origen). Pulsar «Unificar (N)».
 
 **Destino en espejo.** Cada curso va al destino con la misma ruta que tenía **debajo de su categoría de origen**; la categoría de origen no se reproduce. Por ejemplo, con origen `Semillas Sede Norte` y destino `Semillas`, un curso de `Semillas Sede Norte › Ingeniería › Sistemas` queda en `Semillas › Ingeniería › Sistemas`. Las categorías que no existan en el destino se crean; las que existen se reutilizan comparando el nombre sin importar tildes ni mayúsculas (`Ingenieria` e `INGENIERÍA` son la misma).
 
-**Repetido.** Si el destino ya tiene un curso con el mismo nombre completo (sin importar tildes ni mayúsculas) en esa categoría, o dos cursos del lote van al mismo lugar con el mismo nombre, la fila se marca «Repetido» y por defecto se **omite**. Nunca se borra ningún curso; si se quiere, se puede cambiar la acción de la fila a «Mover».
+**Repetidos.** Se comparan los cursos que van a la misma categoría de destino: los que ya están allí y los de los orígenes que llegan a ella (también entre orígenes distintos). Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
 
-**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en el destino, en cada origen, en la categoría actual de cada curso movido y en la categoría existente de la que cuelgan las categorías nuevas; y `moodle/course:changecategory` en cada curso movido. Si falta uno, no se cambia nada. Para crear la categoría de semillas hace falta además `moodle/category:manage` en el sistema.
+1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
+2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
+3. **Mismo nombre corto base**: sin «copia», sin periodo al final y sin contador «_1» o «-2», sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2` son el mismo). Si quedan menos de tres letras o dígitos, esta regla no se aplica.
+
+La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
+
+Los repetidos de la unificación van a una carpeta oculta «Repetidos» directamente bajo la categoría de destino (se crea si no existe; si ya hay una con ese nombre, sin importar tildes ni mayúsculas, se reutiliza). Un curso que ya estaba en el destino y pierde frente a uno más reciente del origen aparece como fila propia («Ya está en el destino») y también va a «Repetidos». Lo que ya está dentro de «Repetidos» nunca se compara.
+
+**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en el destino, en cada origen, en la categoría actual de cada curso movido (también la de un curso del destino que va a «Repetidos») y en la categoría existente de la que cuelgan las categorías nuevas; y `moodle/course:changecategory` en cada curso movido. Si falta uno, no se cambia nada. Para crear la categoría de semillas hace falta además `moodle/category:manage` en el sistema.
 
 **Deshacer.** Queda una entrada en el historial («Unificar en … · cursos: N») y se puede deshacer, con dos advertencias:
 
 - Los cursos vuelven a su categoría original, pero **no a su posición original** dentro de ella: quedan al principio.
 - Las categorías que la unificación creó se borran solo si están vacías, con la misma regla que «Borrar categorías» (sin cursos, subcategorías ni contenido o configuración propia). Si tienen algo, se conservan y hay que borrarlas a mano.
 
-Deshacer se rechaza, con los conflictos listados, si algún curso ya no está donde lo dejó la unificación o si su categoría original desapareció. Si mover a una categoría oculta ocultó un curso, deshacer lo vuelve a mostrar.
+Deshacer se rechaza, con los conflictos listados, si algún curso ya no está donde lo dejó la unificación o si su categoría original desapareció. Si mover a una categoría oculta (como «Repetidos») ocultó un curso, deshacer lo vuelve a mostrar. La carpeta «Repetidos» se borra al deshacer solo si la unificación la creó y quedó vacía.
+
+**Si falla a mitad.** Las categorías se crean en una transacción corta y los cursos se mueven después por destino, de a 100. Si una tanda falla, solo esa se revierte: lo que ya se movió queda registrado en el historial y se puede deshacer.
 
 **Categorías de origen vacías.** La unificación **no** las borra. Al terminar, el panel lista con enlaces las que quedaron sin cursos ni subcategorías, de la más profunda a la más superficial; se pueden borrar después con «Borrar categorías» o desde Moodle.
 
 **Límite.** Máximo **1000** cursos por unificación; si hay más, se rechaza. Se divide en varias unificaciones.
+
+### Quitar repetidos
+
+Busca cursos repetidos en una categoría y en **todas sus subcategorías** y mueve los sobrantes a una carpeta oculta «Repetidos». Cada categoría se compara solo consigo misma: «Cálculo I» en dos programas distintos son dos cursos distintos y no se tocan.
+
+**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar semillas») y en el menú «⋯» de cada categoría.
+
+**Reglas.** Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
+
+1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
+2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
+3. **Mismo nombre corto base**: sin «copia», sin periodo al final y sin contador «_1» o «-2», sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2` son el mismo). Si quedan menos de tres letras o dígitos, esta regla no se aplica.
+
+La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. En cada grupo se conserva por defecto el **modificado más recientemente** (en empate, el de id más alto); los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
+
+**Cómo se usa.** La vista previa muestra cada grupo con la ruta de su categoría (de dónde viene cada curso) y, por curso, su nombre corto, la fecha de modificación y la regla que lo agrupó. En cada grupo se elige con un botón de opción cuál se conserva y con la casilla «Incluir este grupo» si se toca; un grupo sin marcar no se mueve. El botón dice cuántos cursos se moverán: «Mover N repetidos a Repetidos».
+
+**Carpeta «Repetidos».** Una sola, directamente bajo la categoría elegida, creada **oculta** si no existe (si ya hay una con ese nombre, sin importar tildes ni mayúsculas, se reutiliza). Los cursos llegan a ella sin subcarpetas; la vista previa muestra su ruta de origen. Ninguna carpeta llamada «Repetidos», ni lo que tenga dentro, se analiza.
+
+**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en la categoría elegida, en la carpeta «Repetidos» si ya existe y en la categoría de cada curso movido; `moodle/course:changecategory` en cada curso movido. Si falta uno, no se cambia nada.
+
+**Deshacer.** Queda una entrada en el historial («Quitar repetidos en … · cursos: N»). Deshacer devuelve los cursos a su categoría, los vuelve a mostrar si la carpeta oculta los ocultó y borra la carpeta solo si este lote la creó y quedó vacía. Se rechaza, con los conflictos listados, si algún curso se movió después.
+
+**Límite.** Máximo **1000** cursos movidos por lote; si son más, se rechaza con ese número: excluir grupos o trabajar por subcategorías.
 
 ### Borrar categorías
 

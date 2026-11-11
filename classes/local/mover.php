@@ -370,7 +370,9 @@ class mover {
      * Names are matched by parent and normalized name, so rows that need the same path share its categories.
      * The caller has checked moodle/category:manage on every anchor and holds the transaction.
      *
-     * @param array $rows Rows with 'anchor' (int, existing category) and 'missing' (raw names to create below it).
+     * @param array $rows Rows with 'anchor' (int, existing category), 'missing' (raw names to create below it) and,
+     *      optionally, 'hidden' (true creates its missing categories hidden, as the «Repetidos» folder). A category
+     *      already created for an earlier row keeps the visibility it was created with.
      * @return array [rows with 'destcategoryid' set, int[] ids of the categories created, in creation order]
      */
     public static function create_categories(array $rows): array {
@@ -381,7 +383,11 @@ class mover {
             foreach ($row['missing'] as $name) {
                 $key = $parent . '|' . sorter::normalize($name);
                 if (!isset($cache[$key])) {
-                    $category = \core_course_category::create(['name' => $name, 'parent' => $parent]);
+                    $data = ['name' => $name, 'parent' => $parent];
+                    if (!empty($row['hidden'])) {
+                        $data['visible'] = 0;
+                    }
+                    $category = \core_course_category::create($data);
                     $cache[$key] = (int) $category->id;
                     $created[] = (int) $category->id;
                 }

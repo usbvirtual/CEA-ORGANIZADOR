@@ -293,10 +293,11 @@ class clonerunner {
             }
         }
         $patterns = sorter::patterns();
+        $index = cloner::index($cats);
         foreach ($rows as &$row) {
             // The same path as cloneplan::row().
             $mirror = cloner::mirror($cats, $coursecats[$row['courseid']] ?? 0, $patterns);
-            $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container));
+            $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container), $index);
             $row['anchor'] = $resolved['existing'];
             $row['missing'] = $resolved['missing'];
         }

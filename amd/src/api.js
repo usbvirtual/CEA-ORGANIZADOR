@@ -109,8 +109,8 @@ export const cloneApply = (params) => call('clone_apply', params);
 export const mergePreview = (params) => call('merge_preview', params);
 
 /**
- * @param {Object} params {targetid, sourceids, rows: [{courseid, action}], hash}.
- * @returns {Promise} {status, logid, moved, skipped, emptied}.
+ * @param {Object} params {targetid, sourceids, rows: [{courseid, action: move|repeated|skip}], hash}.
+ * @returns {Promise} {status, logid, moved, repeated, skipped, emptied}.
  */
 export const mergeApply = (params) => call('merge_apply', params);
 
@@ -121,6 +121,18 @@ export const mergeApply = (params) => call('merge_apply', params);
 export const createSeedroot = (params) => call('create_seedroot', params);
 
 export const cloneStatus = (batchid) => call('clone_status', {batchid});
+
+/**
+ * @param {Number} categoryid Category analysed, with all its subcategories.
+ * @returns {Promise} {groups: [{categoryid, path, key, courses}], folder: {id, path}, hash}.
+ */
+export const dedupePreview = (categoryid) => call('dedupe_preview', {categoryid});
+
+/**
+ * @param {Object} params {categoryid, groups: [{key, keep}], hash}; a group left out is not touched.
+ * @returns {Promise} {status, logid, moved}.
+ */
+export const dedupeApply = (params) => call('dedupe_apply', params);
 
 /**
  * @param {Number[]} courseids Courses only.

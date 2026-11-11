@@ -45,9 +45,11 @@ final class mergeplan_test extends \advanced_testcase {
      *
      * @param string $fullname
      * @param \core_course_category $category
+     * @param int $timemodified 0 keeps the time of creation.
      * @return int
      */
-    private function course(string $fullname, \core_course_category $category): int {
+    private function course(string $fullname, \core_course_category $category, int $timemodified = 0): int {
+        global $DB;
         static $n = 0;
         $n++;
         $course = $this->getDataGenerator()->create_course([
@@ -55,7 +57,26 @@ final class mergeplan_test extends \advanced_testcase {
             'shortname' => 'MP' . $n,
             'category' => $category->id,
         ]);
+        if ($timemodified > 0) {
+            $DB->set_field('course', 'timemodified', $timemodified, ['id' => $course->id]);
+        }
         return (int) $course->id;
+    }
+
+    /**
+     * Rows of a course that is already in the target (they have no source row).
+     *
+     * @param array $plan
+     * @return array Map course id => row.
+     */
+    private function existing_rows(array $plan): array {
+        $rows = [];
+        foreach ($plan['rows'] as $row) {
+            if ($row['existing']) {
+                $rows[$row['courseid']] = $row;
+            }
+        }
+        return $rows;
     }
 
     /**
@@ -131,25 +152,88 @@ final class mergeplan_test extends \advanced_testcase {
     }
 
     /**
-     * A course with the same normalized name in the destination is a duplicate and is skipped by default.
+     * A source course older than its repeat in the destination goes to Repetidos; the target course stays.
      */
-    public function test_duplicate_detection_default_skip(): void {
+    public function test_older_source_course_goes_to_repeated(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         $target = $this->cat('Semillas');
         $targeteng = $this->cat('Ingeniería', $target);
         $source = $this->cat('Facultades');
         $eng = $this->cat('Ingenieria', $source);
-        $this->course('Cálculo I', $targeteng);
-        $dup = $this->course('CALCULO I', $eng);
+        $kept = $this->course('Cálculo I', $targeteng, 2000);
+        $dup = $this->course('CALCULO I (copia)', $eng, 1000);
         $other = $this->course('Álgebra', $eng);
 
         $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
 
-        $this->assertTrue($this->row($plan, $dup)['duplicate']);
-        $this->assertSame('skip', $this->row($plan, $dup)['action']);
+        $row = $this->row($plan, $dup);
+        $this->assertTrue($row['duplicate']);
+        $this->assertSame('repeated', $row['action']);
+        $this->assertFalse($row['winner']);
+        $this->assertSame(['key'], $row['reasons']);
+        $existing = $this->existing_rows($plan);
+        $this->assertSame([$kept], array_keys($existing));
+        $this->assertSame('move', $existing[$kept]['action']);
+        $this->assertTrue($existing[$kept]['winner']);
+        $this->assertSame($row['group'], $existing[$kept]['group']);
+        $this->assertSame(min($kept, $dup) . '-' . max($kept, $dup), $row['group']);
         $this->assertFalse($this->row($plan, $other)['duplicate']);
         $this->assertSame('move', $this->row($plan, $other)['action']);
+        $this->assertSame('', $this->row($plan, $other)['group']);
+        $this->assertSame(['id' => 0, 'path' => 'Semillas / Repetidos'], $plan['folder']);
+    }
+
+    /**
+     * A target course that loses to a newer source course gets its own row, to Repetidos, next to its group.
+     */
+    public function test_existing_target_course_that_loses_goes_to_repeated(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $targeteng = $this->cat('Ingeniería', $target);
+        $source = $this->cat('Facultades');
+        $eng = $this->cat('Ingenieria', $source);
+        $old = $this->course('Cálculo I', $targeteng, 1000);
+        $new = $this->course('Cálculo I', $eng, 2000);
+        $other = $this->course('Álgebra', $eng);
+
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertSame('move', $this->row($plan, $new)['action']);
+        $this->assertTrue($this->row($plan, $new)['winner']);
+        $this->assertSame(['name'], $this->row($plan, $new)['reasons']);
+        $existing = $this->existing_rows($plan)[$old];
+        $this->assertSame('repeated', $existing['action']);
+        $this->assertSame('Semillas / Ingeniería', $existing['from']);
+        $this->assertSame((int) $targeteng->id, $existing['toid']);
+        $this->assertFalse($existing['winner']);
+        // The group stays together: the target course right after the source row of its group.
+        $order = array_column($plan['rows'], 'courseid');
+        $this->assertCount(3, $order);
+        $this->assertContains($other, $order);
+        $this->assertSame(array_search($new, $order, true) + 1, array_search($old, $order, true));
+    }
+
+    /**
+     * Courses repeated only among the target courses are left alone; an existing «Repetidos» folder is reused.
+     */
+    public function test_target_only_repeats_ignored_and_folder_reused(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $targeteng = $this->cat('Ingeniería', $target);
+        $folder = $this->cat('REPETIDOS', $target);
+        $this->course('Física', $targeteng);
+        $this->course('Física (copia)', $targeteng);
+        $source = $this->cat('Facultades');
+        $eng = $this->cat('Ingeniería', $source);
+        $chem = $this->course('Química', $eng);
+
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertSame([$chem], array_column($plan['rows'], 'courseid'));
+        $this->assertSame(['id' => (int) $folder->id, 'path' => 'Semillas / REPETIDOS'], $plan['folder']);
     }
 
     /**
@@ -172,7 +256,7 @@ final class mergeplan_test extends \advanced_testcase {
     }
 
     /**
-     * Two source courses with the same name landing in the same new category: the second is a duplicate.
+     * Two source courses repeated across sources and landing in the same new category: the newest wins.
      */
     public function test_batch_duplicate(): void {
         $this->resetAfterTest();
@@ -182,8 +266,8 @@ final class mergeplan_test extends \advanced_testcase {
         $second = $this->cat('Semillas viejas');
         $eng1 = $this->cat('Ingeniería', $first);
         $eng2 = $this->cat('INGENIERIA', $second);
-        $a = $this->course('Cálculo I', $eng1);
-        $b = $this->course('Calculo I', $eng2);
+        $a = $this->course('Cálculo I 2025-2', $eng1, 3000);
+        $b = $this->course('Calculo I', $eng2, 1000);
         $c = $this->course('Física', $eng2);
 
         $plan = mergeplan::build((int) $target->id, [(int) $first->id, (int) $second->id]);
@@ -193,10 +277,32 @@ final class mergeplan_test extends \advanced_testcase {
         $this->assertSame($rowa['to'], $rowb['to']);
         $this->assertSame($rowa['newcategories'], $rowb['newcategories']);
         $this->assertSame(['Semillas / Ingeniería'], $rowb['newcategories']);
-        $this->assertSame(1, count(array_filter([$rowa, $rowb], static fn($r) => $r['duplicate'])));
+        $this->assertTrue($rowa['duplicate']);
+        $this->assertTrue($rowb['duplicate']);
+        $this->assertSame($rowa['group'], $rowb['group']);
         $this->assertSame('move', $rowa['action']);
-        $this->assertSame('skip', $rowb['action']);
+        $this->assertSame('repeated', $rowb['action']);
         $this->assertSame('move', $this->row($plan, $c)['action']);
+        $this->assertSame([], $this->existing_rows($plan));
+    }
+
+    /**
+     * Courses with the same name in different destinations are not repeated.
+     */
+    public function test_only_same_destination_compared(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $source = $this->cat('Facultades');
+        $sys = $this->cat('Sistemas', $source);
+        $civil = $this->cat('Civil', $source);
+        $a = $this->course('Cálculo I', $sys);
+        $b = $this->course('Cálculo I', $civil);
+
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertFalse($this->row($plan, $a)['duplicate']);
+        $this->assertFalse($this->row($plan, $b)['duplicate']);
     }
 
     /**
@@ -264,9 +370,9 @@ final class mergeplan_test extends \advanced_testcase {
     }
 
     /**
-     * A category with a skipped course stays, and so do its ancestors.
+     * A repeated course leaves its source category too (to Repetidos), so that category is emptied as well.
      */
-    public function test_emptied_keeps_categories_with_skipped_courses(): void {
+    public function test_emptied_counts_repeated_courses_as_leaving(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
         $target = $this->cat('Semillas');
@@ -274,14 +380,17 @@ final class mergeplan_test extends \advanced_testcase {
         $source = $this->cat('Facultades');
         $prog = $this->cat('Programa', $source);
         $other = $this->cat('Otro', $source);
-        $this->course('Repetido', $targetprog);
-        $this->course('repetido', $prog);
+        $this->course('Repetido', $targetprog, 2000);
+        $repeated = $this->course('repetido', $prog, 1000);
         $this->course('Libre', $other);
 
         $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
 
-        $this->assertSame([(int) $other->id], array_column($plan['emptied'], 'id'));
-        $this->assertSame('Facultades / Otro', $plan['emptied'][0]['path']);
+        $this->assertSame('repeated', $this->row($plan, $repeated)['action']);
+        $this->assertSame(
+            [(int) $prog->id, (int) $other->id, (int) $source->id],
+            array_column($plan['emptied'], 'id')
+        );
     }
 
     /**
@@ -302,5 +411,26 @@ final class mergeplan_test extends \advanced_testcase {
         $this->cat('Ingeniería', $target);
         $three = mergeplan::build((int) $target->id, [(int) $source->id]);
         $this->assertNotSame($one['hash'], $three['hash']);
+    }
+
+    /**
+     * The hash covers the winner of each group: a course modified since the preview changes it.
+     */
+    public function test_hash_covers_winners(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $source = $this->cat('Facultades');
+        $a = $this->course('Cálculo I', $source, 1000);
+        $this->course('Cálculo I copia 1', $source, 2000);
+
+        $one = mergeplan::build((int) $target->id, [(int) $source->id]);
+        $this->assertSame('repeated', $this->row($one, $a)['action']);
+        $DB->set_field('course', 'timemodified', 3000, ['id' => $a]);
+        $two = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertSame('move', $this->row($two, $a)['action']);
+        $this->assertNotSame($one['hash'], $two['hash']);
     }
 }

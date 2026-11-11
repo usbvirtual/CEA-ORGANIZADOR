@@ -123,6 +123,22 @@ final class cloner_test extends \advanced_testcase {
     }
 
     /**
+     * The index gives the same answers as scanning: the first sibling with a normalized name wins.
+     */
+    public function test_resolve_with_index(): void {
+        $cats = [9 => ['id' => 9, 'parent' => 0, 'name' => '2027-01'],
+                 12 => ['id' => 12, 'parent' => 9, 'name' => 'Ingeniería'],
+                 11 => ['id' => 11, 'parent' => 9, 'name' => 'INGENIERIA'],
+                 13 => ['id' => 13, 'parent' => 12, 'name' => 'Sistemas']];
+        $index = cloner::index($cats);
+        $this->assertSame(12, $index[9]['ingenieria']);
+        foreach ([['ingenieria', 'sistemas'], ['Ingeniería', 'Otra'], [], ['Nada']] as $relative) {
+            $this->assertSame(cloner::resolve($cats, 9, $relative), cloner::resolve($cats, 9, $relative, $index));
+        }
+        $this->assertSame(['existing' => 13, 'missing' => []], cloner::resolve($cats, 9, ['ingenieria', 'sistemas'], $index));
+    }
+
+    /**
      * The seed root itself gives an empty path: its courses go to the period, or to the container.
      */
     public function test_mirror_of_the_root_itself(): void {

@@ -79,7 +79,8 @@ final class merge_external_test extends \advanced_testcase {
     }
 
     /**
-     * The preview is the plan: the repeated course is flagged and skipped, and the output survives the return definition.
+     * The preview is the plan: the repeated course goes to Repetidos, the target course it repeats has its own row,
+     * and the output survives the return definition.
      */
     public function test_preview(): void {
         $this->resetAfterTest();
@@ -88,14 +89,26 @@ final class merge_external_test extends \advanced_testcase {
 
         $result = $this->preview_of($source, $target);
 
-        $this->assertCount(2, $result['rows']);
+        $this->assertCount(3, $result['rows']);
         $this->assertNotEmpty($result['hash']);
         $bycourse = array_column($result['rows'], null, 'courseid');
         $this->assertFalse($bycourse[$a->id]['duplicate']);
         $this->assertSame('move', $bycourse[$a->id]['action']);
         $this->assertSame([], $bycourse[$a->id]['newcategories']);
         $this->assertTrue($bycourse[$b->id]['duplicate']);
-        $this->assertSame('skip', $bycourse[$b->id]['action']);
+        // Same time of creation: the tie goes to the highest id, the target course.
+        $this->assertSame('repeated', $bycourse[$b->id]['action']);
+        $this->assertSame(['name'], $bycourse[$b->id]['reasons']);
+        $this->assertFalse($bycourse[$b->id]['existing']);
+        $existing = array_values(array_filter($result['rows'], static function (array $row): bool {
+            return $row['existing'];
+        }));
+        $this->assertCount(1, $existing);
+        $this->assertSame('move', $existing[0]['action']);
+        $this->assertTrue($existing[0]['winner']);
+        $this->assertSame($bycourse[$b->id]['group'], $existing[0]['group']);
+        $this->assertSame('', $bycourse[$a->id]['group']);
+        $this->assertSame(['id' => 0, 'path' => 'Semillas / Repetidos'], $result['folder']);
         $this->assertArrayNotHasKey('toid', $bycourse[$a->id]);
         $this->assertSame('Facultades / Programa A', $bycourse[$a->id]['from']);
         $this->assertSame('Semillas / programa á', $bycourse[$a->id]['to']);
@@ -121,6 +134,7 @@ final class merge_external_test extends \advanced_testcase {
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(2, $result['moved']);
+        $this->assertSame(0, $result['repeated']);
         $this->assertSame(0, $result['skipped']);
         $this->assertGreaterThan(0, $result['logid']);
         $this->assertSame(1, $DB->count_records(journal::TABLE, ['action' => 'merge']));
@@ -164,12 +178,15 @@ final class merge_external_test extends \advanced_testcase {
 
         $result = $this->apply_to($source, $target, [], sha1('other'));
 
-        $this->assertSame(['status' => 'stale', 'logid' => 0, 'moved' => 0, 'skipped' => 0, 'emptied' => []], $result);
+        $this->assertSame(
+            ['status' => 'stale', 'logid' => 0, 'moved' => 0, 'repeated' => 0, 'skipped' => 0, 'emptied' => []],
+            $result
+        );
         $this->assertSame(0, $DB->count_records(journal::TABLE));
     }
 
     /**
-     * An action other than move or skip is rejected by the runner, and nothing is written.
+     * An action other than move, repeated or skip is rejected by the runner, and nothing is written.
      */
     public function test_apply_rejects_unknown_action(): void {
         $this->resetAfterTest();

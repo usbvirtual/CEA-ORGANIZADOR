@@ -15,8 +15,10 @@
 
 /**
  * Merge panel ("Unificar semillas"): a target category, one or more source categories, a preview of the
- * courses that move (with the repeated ones skipped by default) and the apply step, which lists the
- * categories that were left empty.
+ * courses that move and the apply step, which lists the categories that were left empty. Repeated courses come
+ * in groups: for each course of a group the user chooses to keep it (move it to, or leave it in, the destination),
+ * send it to the hidden «Repetidos» folder under the target, or leave it in the source; by default the most recent
+ * one is kept and the others go to «Repetidos».
  *
  * Everything merge_preview, merge_apply and createSeedroot return is formatted (entities): it is decoded
  * with options.decode and written with textContent. Links are built with createElement/setAttribute and the
@@ -155,7 +157,10 @@ export const open = ({
     const emptied = create('div', 'tool-ceaorganizador-aviso');
     emptied.dataset.region = 'emptied';
     emptied.hidden = true;
-    root.append(targetBox, sourceBox, actions, notice, tablewrap, emptied);
+    const folderLine = create('p', 'tool-ceaorganizador-ruta');
+    folderLine.dataset.region = 'folder';
+    folderLine.hidden = true;
+    root.append(targetBox, sourceBox, actions, notice, folderLine, tablewrap, emptied);
 
     let targetid = 0;
     const sources = new Set(sourceid > 0 ? [sourceid] : []);
@@ -196,7 +201,9 @@ export const open = ({
         return chosen.filter((id) => !chosen.some((other) => other !== id && model.isDescendant(other, id)));
     };
 
-    const pending = () => rows.filter((row) => row.action === 'move').length;
+    // Courses that the apply writes: a source course that does not stay in the source, or a target course that
+    // goes to «Repetidos» (one that is kept is already where it belongs).
+    const pending = () => rows.filter((row) => (row.existing ? row.action === 'repeated' : row.action !== 'skip')).length;
 
     const refresh = () => {
         const count = pending();
@@ -214,6 +221,7 @@ export const open = ({
         rows = [];
         tbody.textContent = '';
         tablewrap.hidden = true;
+        folderLine.hidden = true;
         refresh();
     };
 
@@ -270,11 +278,26 @@ export const open = ({
         invalidate();
     }
 
-    const toggleRow = (row, node) => {
-        row.action = row.action === 'move' ? 'skip' : 'move';
-        node.textContent = row.action === 'move' ? strings.mergemove : strings.mergeskip;
-        node.setAttribute('aria-pressed', row.action === 'move' ? 'false' : 'true');
-        refresh();
+    // The choice of a repeated course: keep it, send it to «Repetidos» or, for a source course, leave it there.
+    const choiceOf = (row) => {
+        const select = create('select', 'custom-select form-select');
+        select.dataset.action = 'choice';
+        select.setAttribute('aria-label', `${strings.mergeduplicate}: ${decode(row.fullname)}`);
+        const choices = [['move', strings.mergekeep], ['repeated', strings.mergerepeated]];
+        if (!row.existing) {
+            choices.push(['skip', strings.mergeskip]);
+        }
+        choices.forEach(([value, label]) => {
+            const option = create('option', '', label);
+            option.value = value;
+            select.appendChild(option);
+        });
+        select.value = row.action;
+        select.addEventListener('change', () => {
+            row.action = select.value;
+            refresh();
+        });
+        return select;
     };
 
     const drawRows = () => {
@@ -283,7 +306,14 @@ export const open = ({
             const tr = create('tr');
             tr.dataset.courseid = String(row.courseid);
             tr.dataset.duplicate = row.duplicate ? '1' : '0';
-            tr.appendChild(create('td', 'tool-ceaorganizador-nombre', decode(row.fullname)));
+            if (row.group) {
+                tr.dataset.group = row.group;
+            }
+            const name = create('td', 'tool-ceaorganizador-nombre', decode(row.fullname));
+            if (row.existing) {
+                name.appendChild(create('span', 'tool-ceaorganizador-etiqueta', strings.mergeexisting));
+            }
+            tr.appendChild(name);
             tr.appendChild(create('td', 'tool-ceaorganizador-ruta', decode(row.from)));
             const to = create('td');
             to.appendChild(create('div', 'tool-ceaorganizador-ruta', decode(row.to)));
@@ -301,11 +331,14 @@ export const open = ({
             const state = create('td');
             if (row.duplicate) {
                 state.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.mergeduplicate));
-                const toggle = button('toggle', row.action === 'move' ? strings.mergemove : strings.mergeskip);
-                toggle.setAttribute('aria-pressed', row.action === 'move' ? 'false' : 'true');
-                toggle.setAttribute('aria-label', `${strings.mergeduplicate}: ${decode(row.fullname)}`);
-                toggle.addEventListener('click', () => toggleRow(row, toggle));
-                state.appendChild(toggle);
+                if (row.winner) {
+                    state.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.mergewinner));
+                }
+                const reasons = (row.reasons || []).map((reason) => strings[`dedupereason_${reason}`] || reason);
+                if (reasons.length > 0) {
+                    state.appendChild(create('span', 'tool-ceaorganizador-ruta', ` ${reasons.join(', ')} `));
+                }
+                state.appendChild(choiceOf(row));
             } else {
                 state.textContent = strings.mergemove;
             }
@@ -316,6 +349,12 @@ export const open = ({
         if (rows.length === 0) {
             say(strings.mergenothing);
         }
+    };
+
+    const showFolder = (folder) => {
+        const any = rows.some((row) => row.duplicate);
+        folderLine.textContent = any && folder ? format(strings.mergerepeatedto, decode(folder.path)) : '';
+        folderLine.hidden = !any || !folder;
     };
 
     // One task at a time across the panel: the preview, the apply and the creation share the lock.
@@ -347,6 +386,7 @@ export const open = ({
                 hash = result.hash;
                 rows = result.rows.map((row) => ({...row}));
                 drawRows();
+                showFolder(result.folder);
             }
         } catch (error) {
             onError(error);
@@ -416,8 +456,13 @@ export const open = ({
         rows = [];
         tbody.textContent = '';
         tablewrap.hidden = true;
+        folderLine.hidden = true;
         if (result.logid > 0) {
-            toast.show(format(strings.mergedone, result.moved), {
+            let message = format(strings.mergedone, result.moved);
+            if (result.repeated > 0) {
+                message += ` · ${format(strings.mergedonerepeated, result.repeated)}`;
+            }
+            toast.show(message, {
                 actionLabel: strings.undo,
                 onAction: () => undoMerge(result.logid),
             });
