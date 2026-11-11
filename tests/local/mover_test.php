@@ -348,4 +348,28 @@ final class mover_test extends \advanced_testcase {
         $this->assertSame('Nuevo 2', $record->fullname);
         $this->assertSame('NUEVO', $record->shortname);
     }
+
+    /**
+     * A course is hidden and shown with the core function; the site course is refused.
+     */
+    public function test_set_course_visibility(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = (int) $this->getDataGenerator()->create_course(['category' => $this->misc()])->id;
+
+        mover::set_course_visibility($course, false);
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $course]));
+        $this->assertSame(0, (int) $DB->get_field('course', 'visibleold', ['id' => $course]));
+
+        mover::set_course_visibility($course, true);
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $course]));
+
+        try {
+            mover::set_course_visibility((int) SITEID, false);
+            $this->fail('The site course must be refused');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('invalidcourseid', $e->errorcode);
+        }
+    }
 }

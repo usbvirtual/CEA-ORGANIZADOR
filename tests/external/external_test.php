@@ -31,6 +31,7 @@ use tool_ceaorganizador\local\tree;
 #[\PHPUnit\Framework\Attributes\CoversClass(rename_apply::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(undo::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(history::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(set_visibility::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\sortplan::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\guard::class)]
 /**
@@ -51,6 +52,7 @@ use tool_ceaorganizador\local\tree;
  * @covers     \tool_ceaorganizador\external\rename_apply
  * @covers     \tool_ceaorganizador\external\undo
  * @covers     \tool_ceaorganizador\external\history
+ * @covers     \tool_ceaorganizador\external\set_visibility
  * @covers     \tool_ceaorganizador\local\sortplan
  * @covers     \tool_ceaorganizador\local\guard
  */
@@ -602,6 +604,185 @@ final class external_test extends \advanced_testcase {
         $this->assertSame('skipped', $result['results'][0]['status']);
         $this->assertSame(0, $result['logid']);
         $this->assertSame('U1', $DB->get_field('course', 'shortname', ['id' => $course]));
+    }
+
+    /**
+     * Hiding courses writes one journal entry with the changed courses, before and after.
+     */
+    public function test_set_visibility_hides_and_records(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $one = $this->course('Uno', 'U1', $category);
+        $two = $this->course('Dos', 'D2', $category);
+
+        $result = set_visibility::execute([$one, $two], false);
+
+        $this->assertSame(2, $result['changed']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertGreaterThan(0, $result['logid']);
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $one]));
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $two]));
+        $this->assertSame(0, (int) $DB->get_field('course', 'visibleold', ['id' => $one]));
+        $log = $DB->get_record('tool_ceaorganizador_log', ['id' => $result['logid']], '*', MUST_EXIST);
+        $this->assertSame('visibility', $log->action);
+        $this->assertSame(get_string('summary_hide', 'tool_ceaorganizador', 'Uno, Dos'), $log->summary);
+        $payload = json_decode($log->payload, true);
+        $this->assertSame([
+            ['id' => $one, 'name' => 'Uno', 'before' => 1, 'after' => 0],
+            ['id' => $two, 'name' => 'Dos', 'before' => 1, 'after' => 0],
+        ], $payload['items']);
+        $this->assertSame(1, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * Courses that already have the visibility are skipped and left out of the journal.
+     */
+    public function test_set_visibility_skips_unchanged(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $shown = $this->course('Uno', 'U1', $category);
+        $hidden = (int) $this->getDataGenerator()->create_course([
+            'fullname' => 'Dos',
+            'shortname' => 'D2',
+            'category' => $category,
+            'visible' => 0,
+        ])->id;
+
+        $result = set_visibility::execute([$shown, $hidden], false);
+
+        $this->assertSame(1, $result['changed']);
+        $this->assertSame(1, $result['skipped']);
+        $payload = json_decode($DB->get_field('tool_ceaorganizador_log', 'payload', ['id' => $result['logid']]), true);
+        $this->assertSame([$shown], array_column($payload['items'], 'id'));
+
+        // Nothing to change: no journal row.
+        $again = set_visibility::execute([$shown, $hidden], false);
+
+        $this->assertSame(['changed' => 0, 'skipped' => 2, 'logid' => 0], $again);
+        $this->assertSame(1, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * Without course:visibility on one course, nothing changes, not even on the other courses.
+     */
+    public function test_set_visibility_requires_course_visibility_cap(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $allowed = $this->course('Uno', 'U1', $category);
+        $denied = $this->course('Dos', 'D2', $category);
+        $user = $this->user_with(['moodle/category:manage']);
+        $this->grant($user->id, 'moodle/course:visibility', \context_course::instance($allowed));
+        $this->setUser($user);
+
+        $this->assert_refused(function () use ($allowed, $denied): void {
+            set_visibility::execute([$allowed, $denied], false);
+        });
+
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $allowed]));
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $denied]));
+        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
+    }
+
+    /**
+     * More than 500 courses, or the site course, are refused before anything is written.
+     */
+    public function test_set_visibility_rejects_over_500_and_site(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        try {
+            set_visibility::execute(range(2, 502), false);
+            $this->fail('More than 500 courses must be refused');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_toomany', $e->errorcode);
+        }
+        $this->expectException(\invalid_parameter_exception::class);
+        set_visibility::execute([SITEID], false);
+    }
+
+    /**
+     * Undoing a visibility change gives every course its visibility back.
+     */
+    public function test_undo_visibility_restores(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $one = $this->course('Uno', 'U1', $category);
+        $two = $this->course('Dos', 'D2', $category);
+        $result = set_visibility::execute([$one, $two], false);
+
+        $undo = external_api::clean_returnvalue(undo::execute_returns(), undo::execute($result['logid']));
+
+        $this->assertSame(['ok' => true, 'conflicts' => []], $undo);
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $one]));
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $two]));
+        $this->assertGreaterThan(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * When a course was shown again by hand, the undo writes nothing and names it.
+     */
+    public function test_undo_visibility_conflict(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $one = $this->course('Uno', 'U1', $category);
+        $two = $this->course('Curso Dos', 'D2', $category);
+        $result = set_visibility::execute([$one, $two], false);
+        course_change_visibility($two, true);
+
+        $undo = undo::execute($result['logid']);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertCount(1, $undo['conflicts']);
+        $this->assertStringContainsString('Curso Dos', $undo['conflicts'][0]);
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $one]));
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $two]));
+        $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * The undo of a visibility change needs course:visibility on every course, as the change did.
+     */
+    public function test_undo_visibility_requires_course_visibility_cap(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->course('Uno', 'U1', $this->category('K'));
+        $result = set_visibility::execute([$course], false);
+        $this->setUser($this->user_with(['moodle/category:manage']));
+
+        $this->assert_refused(function () use ($result): void {
+            undo::execute($result['logid']);
+        });
+
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $course]));
+        $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * set_visibility returns what its description declares, with and without changes.
+     */
+    public function test_set_visibility_clean_returnvalue(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $course = $this->course('Uno', 'U1', $this->category('K'));
+
+        $hidden = external_api::clean_returnvalue(set_visibility::execute_returns(), set_visibility::execute([$course], false));
+        $this->assertSame(1, $hidden['changed']);
+        $this->assertGreaterThan(0, $hidden['logid']);
+
+        $same = external_api::clean_returnvalue(set_visibility::execute_returns(), set_visibility::execute([$course], false));
+        $this->assertSame(['changed' => 0, 'skipped' => 1, 'logid' => 0], $same);
     }
 
     /**

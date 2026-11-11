@@ -123,6 +123,11 @@ class undo extends external_api {
                     }
                 }
                 return;
+            case 'visibility':
+                foreach ($payload['items'] ?? [] as $item) {
+                    self::check_course((int) $item['id'], 'moodle/course:visibility');
+                }
+                return;
         }
     }
 

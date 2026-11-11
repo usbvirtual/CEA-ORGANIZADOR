@@ -107,7 +107,7 @@ const moveCourseLocal = (ctx, id, category, afterid, known = null) => {
  * @param {Function} ctx.reload Reloads the tree from the server.
  * @param {Element} [ctx.container] Tree element, to animate and focus the moved node.
  * @param {Function} [ctx.decode] Turns a formatted string (the conflicts of an undo) into plain text.
- * @returns {{move: Function, moveInside: Function, moveToRoot: Function, undo: Function}}
+ * @returns {{move: Function, moveInside: Function, moveToRoot: Function, undo: Function, busy: Function}}
  */
 export const createMover = (ctx) => {
     // One request at a time: a second move would be computed on a state the server has not confirmed.
@@ -249,5 +249,5 @@ export const createMover = (ctx) => {
         return move(dragged, {parent: 0, afterid: 0}, {focus: true});
     };
 
-    return {move, moveInside, moveToRoot, undo: undoMove};
+    return {move, moveInside, moveToRoot, undo: undoMove, busy: () => busy};
 };

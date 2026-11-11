@@ -339,6 +339,30 @@ class mover {
     }
 
     /**
+     * Shows or hides a course, as the course management page does.
+     *
+     * course_change_visibility() sets visible and visibleold, then calls update_course(), which
+     * triggers course_updated and purges the caches; it checks no capability.
+     *
+     * @param int $id
+     * @param bool $visible
+     */
+    public static function set_course_visibility(int $id, bool $visible): void {
+        global $DB;
+        self::require_course_lib();
+        if ($id === (int) SITEID) {
+            throw new \moodle_exception('invalidcourseid', 'error');
+        }
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            course_change_visibility($id, $visible);
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            guard::rollback($transaction, $e);
+        }
+    }
+
+    /**
      * Requires the capability to manage a category (0 for top level, in the system context).
      *
      * @param int $id

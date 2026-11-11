@@ -34,6 +34,7 @@ namespace tool_ceaorganizador\local;
  * - rename: {items: [{type: category|course, id, before: {name} | {fullname, shortname}, after: {...}}]}
  * - clone: {periodid, label, startdate, enddate, categories: [created ids], items: [{source, newfullname,
  *   newshortname, destcategoryid, backupid, restoreid, newcourseid, error}]}; see clonerunner. It cannot be undone.
+ * - visibility: {items: [{id, name (raw full name), before: 0|1, after: 0|1}]}, only the courses that changed.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -44,7 +45,10 @@ class journal {
     public const TABLE = 'tool_ceaorganizador_log';
 
     /** @var string[] Accepted actions. */
-    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone'];
+    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility'];
+
+    /** @var int Length of the summary column. */
+    public const SUMMARY_MAX = 255;
 
     /** @var int Days the journal keeps a row. */
     public const RETENTION_DAYS = 90;
@@ -65,12 +69,54 @@ class journal {
         return (int) $DB->insert_record(self::TABLE, (object) [
             'userid' => (int) $USER->id,
             'action' => $action,
-            'summary' => \core_text::substr($summary, 0, 255),
+            'summary' => \core_text::substr($summary, 0, self::SUMMARY_MAX),
             'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             'timecreated' => time(),
             'undoneby' => 0,
             'timeundone' => 0,
         ]);
+    }
+
+    /**
+     * A list of names for a summary, never cut inside a name.
+     *
+     * Joins the names with ", " while they fit; the names left out are counted, as in
+     * "A, B y 3 más". When not even the first name fits, the list is an ellipsis and the count.
+     *
+     * @param string[] $names Raw names; the history formats them on output.
+     * @param int $max Characters available for the list.
+     * @return string
+     */
+    public static function list_summary(array $names, int $max = self::SUMMARY_MAX): string {
+        $names = array_values(array_map('strval', $names));
+        $total = count($names);
+        $all = implode(', ', $names);
+        if (\core_text::strlen($all) <= $max) {
+            return $all;
+        }
+        // Fewer and fewer names, until the names and the count of the rest fit.
+        for ($shown = $total - 1; $shown >= 0; $shown--) {
+            $list = $shown > 0 ? implode(', ', array_slice($names, 0, $shown)) : '…';
+            $text = get_string('summarymore', 'tool_ceaorganizador', (object) [
+                'list' => $list,
+                'count' => $total - $shown,
+            ]);
+            if ($shown === 0 || \core_text::strlen($text) <= $max) {
+                return $text;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Characters left for the {$a} of a summary string once its own text is counted.
+     *
+     * @param string $identifier String of this plugin with a {$a} placeholder.
+     * @return int
+     */
+    public static function summary_room(string $identifier): int {
+        $frame = get_string($identifier, 'tool_ceaorganizador', '');
+        return max(0, self::SUMMARY_MAX - \core_text::strlen($frame));
     }
 
     /**
@@ -324,6 +370,8 @@ class journal {
                 return self::conflicts_sort($payload);
             case 'rename':
                 return self::conflicts_rename($payload);
+            case 'visibility':
+                return self::conflicts_visibility($payload);
         }
         throw new \coding_exception('Unknown journal action: ' . $action);
     }
@@ -513,6 +561,32 @@ class journal {
     }
 
     /**
+     * Conflicts of a visibility change: every course must exist and still have the 'after' visibility.
+     *
+     * @param array $payload
+     * @return string[]
+     */
+    private static function conflicts_visibility(array $payload): array {
+        global $DB;
+        $ids = [0];
+        foreach ($payload['items'] ?? [] as $item) {
+            $ids[] = (int) $item['id'];
+        }
+        $courses = $DB->get_records_list('course', 'id', $ids, '', 'id, fullname, visible');
+        $conflicts = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $id = (int) $item['id'];
+            $course = $courses[$id] ?? null;
+            if (!$course || $id === (int) SITEID) {
+                $conflicts[] = self::conflict('missing', $id);
+            } else if ((int) $course->visible !== (int) $item['after']) {
+                $conflicts[] = self::conflict('visibility', self::course_name($course->fullname));
+            }
+        }
+        return $conflicts;
+    }
+
+    /**
      * Restores the state before the operation through the mover. Runs inside the undo transaction.
      *
      * @param string $action
@@ -556,6 +630,11 @@ class journal {
                         $shortname = isset($before['shortname']) ? (string) $before['shortname'] : null;
                         mover::rename_course((int) $item['id'], (string) $before['fullname'], $shortname);
                     }
+                }
+                return;
+            case 'visibility':
+                foreach ($payload['items'] ?? [] as $item) {
+                    mover::set_course_visibility((int) $item['id'], (bool) $item['before']);
                 }
                 return;
         }
@@ -610,8 +689,7 @@ class journal {
      * @param bool $visible
      */
     private static function restore_course_visibility(int $id, bool $visible): void {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/course/lib.php');
+        global $DB;
         $course = $DB->get_record('course', ['id' => $id], 'id, category, visible', MUST_EXIST);
         if ((bool) $course->visible === $visible) {
             return;
@@ -619,6 +697,6 @@ class journal {
         if ($visible && !$DB->get_field('course_categories', 'visible', ['id' => $course->category])) {
             return;
         }
-        course_change_visibility($id, $visible);
+        mover::set_course_visibility($id, $visible);
     }
 }

@@ -413,6 +413,74 @@ final class journal_test extends \advanced_testcase {
     }
 
     /**
+     * A list of names is never cut inside a name: the names left out are counted.
+     */
+    public function test_list_summary_keeps_whole_names(): void {
+        $this->resetAfterTest();
+
+        $this->assertSame('', journal::list_summary([]));
+        $this->assertSame('A, B', journal::list_summary(['A', 'B']));
+        $this->assertSame('A, B', journal::list_summary(['A', 'B'], 4));
+
+        $more = get_string('summarymore', 'tool_ceaorganizador', (object) ['list' => 'Alfa', 'count' => 2]);
+        $this->assertSame($more, journal::list_summary(['Alfa', 'Beta', 'Gama'], \core_text::strlen($more)));
+
+        // Many long names with entities and multi-language tags: whole names only, within the limit.
+        $name = '<span lang="es" class="multilang">Curso &amp; taller</span>' . str_repeat('x', 40);
+        $names = array_fill(0, 30, $name);
+        $text = journal::list_summary($names, 200);
+        $this->assertLessThanOrEqual(200, \core_text::strlen($text));
+        $kept = substr_count($text, $name);
+        $this->assertGreaterThan(0, $kept);
+        $expected = get_string('summarymore', 'tool_ceaorganizador', (object) [
+            'list' => implode(', ', array_fill(0, $kept, $name)),
+            'count' => 30 - $kept,
+        ]);
+        $this->assertSame($expected, $text);
+
+        // Not even one name fits: an ellipsis and the count, never a piece of a name.
+        $none = journal::list_summary([str_repeat('y', 300)], 50);
+        $this->assertStringNotContainsString('yy', $none);
+        $this->assertSame(get_string('summarymore', 'tool_ceaorganizador', (object) ['list' => '…', 'count' => 1]), $none);
+
+        // The text of the summary string around {$a} is left out of the room for the list.
+        $frame = \core_text::strlen(get_string('summary_hide', 'tool_ceaorganizador', ''));
+        $this->assertSame(journal::SUMMARY_MAX - $frame, journal::summary_room('summary_hide'));
+    }
+
+    /**
+     * Undoing a visibility entry restores every course; a course that no longer exists is a conflict.
+     */
+    public function test_undo_visibility_entry(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $category = (int) $generator->create_category(['name' => 'K'])->id;
+        $one = (int) $generator->create_course(['category' => $category, 'fullname' => 'Uno'])->id;
+        $two = (int) $generator->create_course(['category' => $category, 'fullname' => 'Dos', 'visible' => 0])->id;
+        mover::set_course_visibility($one, false);
+        mover::set_course_visibility($two, true);
+        $items = [
+            ['id' => $one, 'name' => 'Uno', 'before' => 1, 'after' => 0],
+            ['id' => $two, 'name' => 'Dos', 'before' => 0, 'after' => 1],
+        ];
+        $logid = journal::record('visibility', 'Visibilidad', ['items' => $items]);
+        $ghost = $one + $two + 1000;
+        $missing = journal::record('visibility', 'Visibilidad', ['items' => [
+            ['id' => $ghost, 'name' => 'X', 'before' => 1, 'after' => 0],
+        ]]);
+
+        $this->assertSame(['ok' => true, 'conflicts' => []], journal::undo($logid));
+        $this->assertSame(1, (int) $DB->get_field('course', 'visible', ['id' => $one]));
+        $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $two]));
+
+        $gone = journal::undo($missing);
+        $this->assertFalse($gone['ok']);
+        $this->assertSame([get_string('conflict_missing', 'tool_ceaorganizador', $ghost)], $gone['conflicts']);
+    }
+
+    /**
      * The history lists newest first, with the user name and the undone flag.
      */
     public function test_history_lists_newest_first(): void {

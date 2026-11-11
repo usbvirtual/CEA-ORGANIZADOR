@@ -38,6 +38,7 @@ import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
+import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
 
 const SEARCH_DELAY = 250;
 const MIN_COURSE_SEARCH = 3;
@@ -111,6 +112,8 @@ const REQUESTS = [
     {key: 'error_generic', component: 'tool_ceaorganizador'},
     {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
+    {key: 'hidecourse', component: 'tool_ceaorganizador'},
+    {key: 'hideselected', component: 'tool_ceaorganizador'},
     {key: 'history', component: 'tool_ceaorganizador'},
     {key: 'history_empty', component: 'tool_ceaorganizador'},
     {key: 'historypage', component: 'tool_ceaorganizador'},
@@ -157,11 +160,14 @@ const REQUESTS = [
     {key: 'selectitem', component: 'tool_ceaorganizador'},
     {key: 'selectresults', component: 'tool_ceaorganizador'},
     {key: 'shortname', component: 'tool_ceaorganizador'},
+    {key: 'showcourse', component: 'tool_ceaorganizador'},
+    {key: 'showselected', component: 'tool_ceaorganizador'},
     {key: 'sortselectedcount', component: 'tool_ceaorganizador'},
     {key: 'stale', component: 'tool_ceaorganizador'},
     {key: 'suffix', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
     {key: 'undoconflicts', component: 'tool_ceaorganizador'},
+    {key: 'visibilitychanged', component: 'tool_ceaorganizador'},
     {key: 'wholeword', component: 'tool_ceaorganizador'},
 ];
 
@@ -225,6 +231,16 @@ export const init = ({root}) => {
             });
         };
         state.onMoveTo = moveTo;
+        const visibility = createVisibility({
+            api,
+            state,
+            container: treeel,
+            strings,
+            toast,
+            undo: mover.undo,
+            onError: Notification.exception,
+            isBusy: mover.busy,
+        });
 
         // Dependencies shared by the panels; the model is read live.
         const panelOptions = (trigger) => ({
@@ -289,6 +305,8 @@ export const init = ({root}) => {
                 }
             } else if (action === 'clone') {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
+            } else if (action === 'hide' || action === 'show') {
+                visibility.apply([dragged.id], action === 'show', trigger);
             } else if (action === 'selectcontents') {
                 const pending = withLoading(trigger, () => loadSubtreeCourses(api, ctx.model, dragged.id));
                 if (pending) {
@@ -354,13 +372,25 @@ export const init = ({root}) => {
             const paths = categoryids.map((id) => ctx.model.pathOf(id).join(' / '));
             openSort({...panelOptions(sortButton), categoryids, paths});
         });
+        // Only courses are shown or hidden: the categories of the selection are left out.
+        const visibilityButton = (action, label, visible) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-secondary btn-sm';
+            button.dataset.action = action;
+            button.textContent = label;
+            button.addEventListener('click', () => visibility.apply(selectedCourseIds(selection.items()), visible, button));
+            return button;
+        };
+        const hideButton = visibilityButton('hideselection', strings.hideselected, false);
+        const showButton = visibilityButton('showselection', strings.showselected, true);
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-secondary btn-sm';
         clearButton.dataset.action = 'clearselection';
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
-        bar.append(barText, renameButton, cloneButton, sortButton, clearButton);
+        bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, clearButton);
         toolbar.append(historyButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
@@ -376,6 +406,9 @@ export const init = ({root}) => {
             barText.textContent = format(strings.selected, selection.count());
             // Only categories can be sorted: the button needs at least one in the selection.
             sortButton.disabled = selectedCategoryIds(selection.items()).length === 0;
+            const nocourses = selectedCourseIds(selection.items()).length === 0;
+            hideButton.disabled = nocourses;
+            showButton.disabled = nocourses;
         });
 
         const reviewButton = rootel.querySelector('[data-action="reviewsort"]');

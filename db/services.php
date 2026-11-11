@@ -129,4 +129,12 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_set_visibility' => [
+        'classname' => \tool_ceaorganizador\external\set_visibility::class,
+        'description' => 'Shows or hides courses, skipping the ones that already have that visibility.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
 ];

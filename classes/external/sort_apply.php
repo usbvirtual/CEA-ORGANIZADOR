@@ -136,7 +136,8 @@ class sort_apply extends external_api {
             foreach ($ids as $id) {
                 $names[] = (string) $DB->get_field('course_categories', 'name', ['id' => $id], MUST_EXIST);
             }
-            $name = implode(', ', $names);
+            // Whole names only: a cut could split a multi-language tag or an entity.
+            $name = journal::list_summary($names, journal::summary_room('summary_sort'));
         }
         return get_string('summary_sort', 'tool_ceaorganizador', $name);
     }

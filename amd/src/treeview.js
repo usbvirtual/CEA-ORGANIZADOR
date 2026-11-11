@@ -86,6 +86,58 @@ export const syncSelection = (container, selection) => {
     });
 };
 
+/**
+ * The "Hidden" label of a row.
+ *
+ * @param {Document} doc
+ * @param {String} text
+ * @returns {Element}
+ */
+const createHiddenLabel = (doc, text) => {
+    const label = doc.createElement('span');
+    label.className = 'tool-ceaorganizador-oculta badge badge-secondary bg-secondary';
+    label.textContent = text;
+    return label;
+};
+
+/**
+ * Shows or removes the "Hidden" label of the drawn rows of a course, without drawing the tree again.
+ *
+ * The label stays the description of the row (aria-describedby), and the node menu offers
+ * "Show" or "Hide" from the new state.
+ *
+ * @param {Element} container Tree element.
+ * @param {Number} id Course.
+ * @param {Boolean} visible
+ * @param {String} text The "Hidden" string.
+ */
+export const setCourseVisible = (container, id, visible, text) => {
+    const doc = container.ownerDocument;
+    container.querySelectorAll(`[role="treeitem"][data-type="course"][data-id="${Number(id)}"]`).forEach((li) => {
+        li.dataset.visible = visible ? '1' : '0';
+        const row = li.querySelector(':scope > .tool-ceaorganizador-fila');
+        const labelid = `tool-ceaorganizador-course-${Number(id)}-hidden`;
+        const old = row ? row.querySelector(':scope > .tool-ceaorganizador-oculta') : null;
+        const described = (li.getAttribute('aria-describedby') || '').split(' ')
+            .filter((token) => token !== '' && token !== labelid);
+        if (old) {
+            old.remove();
+        }
+        if (!visible && row) {
+            const label = createHiddenLabel(doc, text);
+            label.id = labelid;
+            const name = row.querySelector(':scope > .tool-ceaorganizador-nombre');
+            row.insertBefore(label, name ? name.nextSibling : null);
+            described.push(labelid);
+        }
+        if (described.length) {
+            li.setAttribute('aria-describedby', described.join(' '));
+        } else {
+            li.removeAttribute('aria-describedby');
+        }
+    });
+};
+
 const defaultStorage = (container) => {
     try {
         return container.ownerDocument.defaultView.localStorage;
@@ -107,7 +159,7 @@ const defaultStorage = (container) => {
  * @param {Function} [state.onError] Receives the errors of the web services.
  * @param {Object} [state.selection] Selection from selection.createSelection(); adds a checkbox per row.
  * @param {Function} [state.onAction] Called with (action, item, button) by the node menu: moveto, sort,
- *                   rename, clone or selectcontents. Adds the menu button.
+ *                   rename, clone, selectcontents, hide or show. Adds the menu button.
  * @param {String} [state.wwwroot] Site URL, for the "Open in Moodle" link of the menu.
  * @returns {{refresh: Function, toggle: Function}}
  */
@@ -220,15 +272,22 @@ export const render = (container, model, state) => {
                 ['selectcontents', strings.selectcontents]
             );
         } else {
-            entries.push(['rename', strings.rename]);
+            entries.push(['rename', strings.rename], ['visibility']);
         }
+        // A course offers "Show" or "Hide" from its state when the menu opens: it may change in place.
+        const resolve = ([action, label]) => {
+            if (action !== 'visibility') {
+                return [action, label];
+            }
+            return li.dataset.visible === '0' ? ['show', strings.showcourse] : ['hide', strings.hidecourse];
+        };
         const openMenu = () => {
             if (state.closeMenu) {
                 state.closeMenu(false);
             }
             menu = create('ul', 'tool-ceaorganizador-menu');
             menu.setAttribute('role', 'menu');
-            entries.forEach(([action, label]) => {
+            entries.map(resolve).forEach(([action, label]) => {
                 if (action === 'open' && state.wwwroot === undefined) {
                     return;
                 }
@@ -296,7 +355,7 @@ export const render = (container, model, state) => {
         .concat(state.onMoveTo ? ['M'] : [], state.selection ? ['S'] : [], state.onAction ? ['Shift+F10'] : [])
         .join(' ');
 
-    const hiddenLabel = () => create('span', 'tool-ceaorganizador-oculta badge badge-secondary bg-secondary', strings.hidden);
+    const hiddenLabel = () => createHiddenLabel(doc, strings.hidden);
 
     const isShown = (row) => !state.visible || state.visible.has(row.id);
 
@@ -323,6 +382,7 @@ export const render = (container, model, state) => {
             li.setAttribute('aria-keyshortcuts', shortcuts());
             li.dataset.id = String(course.id);
             li.dataset.type = 'course';
+            li.dataset.visible = course.visible ? '1' : '0';
             li.tabIndex = -1;
             const row = create('div', 'tool-ceaorganizador-fila');
             addCheckbox(li, row, 'course', course.id, decodeEntities(course.fullname));

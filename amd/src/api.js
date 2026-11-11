@@ -97,3 +97,10 @@ export const clonePreview = (params) => call('clone_preview', params);
 export const cloneApply = (params) => call('clone_apply', params);
 
 export const cloneStatus = (batchid) => call('clone_status', {batchid});
+
+/**
+ * @param {Number[]} courseids Courses only.
+ * @param {Boolean} visible True shows them, false hides them.
+ * @returns {Promise} {changed, skipped, logid}.
+ */
+export const setVisibility = (courseids, visible) => call('set_visibility', {courseids, visible});
