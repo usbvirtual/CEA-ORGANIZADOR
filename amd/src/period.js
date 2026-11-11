@@ -22,6 +22,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+import {normalize} from 'tool_ceaorganizador/treemodel';
+
 const PERIOD = /(?<!\d)(20\d\d)\s*[-–_/ ]\s*(0?[12]|ii|i)(?![\p{L}\d])/iu;
 // The same labels the server accepts (cloner::period_label): year 20xx, term 01 or 02.
 const LABEL = /^20\d\d-0[12]$/;
@@ -71,6 +73,43 @@ export const periodOptions = (rows, decode) => rows
     .map((row) => ({id: row.id, text: decode(row.path), period: parsePeriod(decode(row.name)), label: suggestLabel(decode(row.name))}))
     .filter((option) => option.period !== null)
     .sort((a, b) => (b.period[0] - a.period[0]) || (b.period[1] - a.period[1]) || a.text.localeCompare(b.text));
+
+/**
+ * Suggested folder under a period: the name of its only direct child that holds, below it, a category whose
+ * name starts with «facultad». Empty when no child or more than one child does.
+ *
+ * @param {Object[]} rows Rows with id, parent and name (formatted), as treemodel snapshot gives.
+ * @param {Number} periodid
+ * @param {Function} decode Turns a formatted string into plain text.
+ * @returns {String} Decoded name, or ''.
+ */
+export const suggestContainer = (rows, periodid, decode) => {
+    const kids = new Map();
+    rows.forEach((row) => {
+        if (!kids.has(row.parent)) {
+            kids.set(row.parent, []);
+        }
+        kids.get(row.parent).push(row);
+    });
+    const holdsFaculty = (id) => {
+        const stack = [...(kids.get(id) || [])];
+        const seen = new Set();
+        while (stack.length) {
+            const row = stack.pop();
+            if (seen.has(row.id)) {
+                continue;
+            }
+            seen.add(row.id);
+            if (normalize(decode(row.name)).trim().startsWith('facultad')) {
+                return true;
+            }
+            stack.push(...(kids.get(row.id) || []));
+        }
+        return false;
+    };
+    const found = (kids.get(periodid) || []).filter((child) => holdsFaculty(child.id));
+    return found.length === 1 ? decode(found[0].name).trim() : '';
+};
 
 /**
  * Unix seconds at local midnight of a YYYY-MM-DD value (input type date), or null.

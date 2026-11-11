@@ -84,15 +84,17 @@ final class clone_external_test extends \advanced_testcase {
      *
      * @param \core_course_category $root
      * @param \core_course_category $period
+     * @param string $container Folder under the period, or ''.
      * @return array
      */
-    private function preview(\core_course_category $root, \core_course_category $period): array {
+    private function preview(\core_course_category $root, \core_course_category $period, string $container = ''): array {
         $result = clone_preview::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
             '2027-01',
             self::START,
-            self::END
+            self::END,
+            $container
         );
         return external_api::clean_returnvalue(clone_preview::execute_returns(), $result);
     }
@@ -104,13 +106,15 @@ final class clone_external_test extends \advanced_testcase {
      * @param \core_course_category $period
      * @param array $preview
      * @param array|null $rows Rows sent; null sends every row of the preview with its names unchanged.
+     * @param string $container Folder under the period, or ''.
      * @return array
      */
     private function apply(
         \core_course_category $root,
         \core_course_category $period,
         array $preview,
-        ?array $rows = null
+        ?array $rows = null,
+        string $container = ''
     ): array {
         if ($rows === null) {
             $rows = [];
@@ -129,7 +133,8 @@ final class clone_external_test extends \advanced_testcase {
             self::START,
             self::END,
             $rows,
-            $preview['hash']
+            $preview['hash'],
+            $container
         );
         return external_api::clean_returnvalue(clone_apply::execute_returns(), $result);
     }
@@ -162,7 +167,8 @@ final class clone_external_test extends \advanced_testcase {
         $this->assertSame('Cálculo I 2027-01', $bycourse[$a->id]['newfullname']);
         $this->assertNull($bycourse[$a->id]['error']);
         $this->assertSame(0, $bycourse[$a->id]['destcategoryid']);
-        $this->assertCount(2, $bycourse[$a->id]['newcategories']);
+        // Without a container the program hangs from the period: only it is new.
+        $this->assertSame(['2027-01 / Programa A'], $bycourse[$a->id]['newcategories']);
         $this->assertSame('FIS1-2027-01', $bycourse[$b->id]['newshortname']);
     }
 
@@ -419,5 +425,44 @@ final class clone_external_test extends \advanced_testcase {
         }
         $this->assertSame(0, $DB->count_records(journal::TABLE));
         $this->assertCount(0, \core\task\manager::get_adhoc_tasks('\core\task\asynchronous_copy_task'));
+    }
+
+    /**
+     * The container travels through both services: the preview shows it and apply creates it once.
+     */
+    public function test_container_through_services(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        [$root, $period, $a] = $this->seeds();
+
+        $preview = $this->preview($root, $period, ' Facultades ');
+        $bycourse = array_column($preview['rows'], null, 'courseid');
+        $this->assertSame('2027-01 / Facultades / Programa A', $bycourse[$a->id]['destpath']);
+        $this->assertSame(['2027-01 / Facultades', '2027-01 / Facultades / Programa A'], $bycourse[$a->id]['newcategories']);
+        $this->assertNotSame($this->preview($root, $period)['hash'], $preview['hash']);
+
+        // Applying without the container is stale: the hash was made with it.
+        $this->assertSame('stale', $this->apply($root, $period, $preview)['status']);
+
+        $result = $this->apply($root, $period, $preview, null, 'Facultades');
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(2, $result['queued']);
+        $folder = (int) $DB->get_field('course_categories', 'id', ['parent' => $period->id, 'name' => 'Facultades'], MUST_EXIST);
+        $this->assertSame(1, $DB->count_records('course_categories', ['parent' => $period->id]));
+        $this->assertSame(2, $DB->count_records('course_categories', ['parent' => $folder]));
+        $this->assertTrue($DB->record_exists('course_categories', ['parent' => $folder, 'name' => 'Programa B']));
+    }
+
+    /**
+     * A container that is a period name is rejected by the service.
+     */
+    public function test_container_rejects_period_name(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        [$root, $period] = $this->seeds();
+
+        $this->expectException(\invalid_parameter_exception::class);
+        $this->preview($root, $period, '2027-01');
     }
 }

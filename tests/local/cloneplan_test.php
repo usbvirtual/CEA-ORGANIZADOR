@@ -39,10 +39,11 @@ final class cloneplan_test extends \advanced_testcase {
      *
      * @param array $items
      * @param int $periodid
+     * @param string $container Folder under the period, or ''.
      * @return array
      */
-    private function plan(array $items, int $periodid): array {
-        return cloneplan::build($items, $periodid, '2027-01', self::START, self::END);
+    private function plan(array $items, int $periodid, string $container = ''): array {
+        return cloneplan::build($items, $periodid, '2027-01', self::START, self::END, $container);
     }
 
     /**
@@ -62,7 +63,7 @@ final class cloneplan_test extends \advanced_testcase {
     }
 
     /**
-     * The destination mirrors the seed path and lists the categories that will be created.
+     * The destination mirrors the seed path under the container and lists the categories that will be created.
      */
     public function test_mirror_destination_and_new_categories(): void {
         $this->resetAfterTest();
@@ -79,7 +80,11 @@ final class cloneplan_test extends \advanced_testcase {
         $calc = $gen->create_course(['fullname' => 'Cálculo I 2026-02', 'shortname' => 'CALC1', 'category' => $prog->id]);
         $crim = $gen->create_course(['fullname' => 'Penal I', 'shortname' => 'PEN1', 'category' => $penal->id]);
 
-        $plan = $this->plan([['type' => 'course', 'id' => $calc->id], ['type' => 'course', 'id' => $crim->id]], $period->id);
+        $plan = $this->plan(
+            [['type' => 'course', 'id' => $calc->id], ['type' => 'course', 'id' => $crim->id]],
+            $period->id,
+            'Facultades'
+        );
 
         $this->assertSame(2, $plan['total']);
         $a = $this->row($plan, (int) $calc->id);
@@ -100,13 +105,13 @@ final class cloneplan_test extends \advanced_testcase {
 
         // When the whole path exists the destination is that category and nothing is created.
         $periodprog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $periodeng->id]);
-        $again = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id);
+        $again = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id, 'Facultades');
         $this->assertSame((int) $periodprog->id, $again['rows'][0]['destcategoryid']);
         $this->assertSame([], $again['rows'][0]['newcategories']);
     }
 
     /**
-     * A course whose copy already exists in the destination is skipped on a relaunch.
+     * A course whose copy already exists in the destination is skipped on a relaunch, also inside a container.
      */
     public function test_relaunch_skips_already_cloned(): void {
         $this->resetAfterTest();
@@ -120,8 +125,13 @@ final class cloneplan_test extends \advanced_testcase {
         $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $prog->id]);
         $gen->create_course(['fullname' => 'Cálculo I 2027-01', 'shortname' => 'CALC1-2027-01', 'category' => $periodprog->id]);
 
-        $plan = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id);
+        $plan = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id, 'Facultades');
+        $this->assertSame((int) $periodprog->id, $plan['rows'][0]['destcategoryid']);
         $this->assertSame('alreadycloned', $plan['rows'][0]['error']);
+
+        // Without the container the destination is another category: the name is taken, not already cloned.
+        $plain = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id);
+        $this->assertSame('shortnametaken', $plain['rows'][0]['error']);
     }
 
     /**
@@ -229,6 +239,12 @@ final class cloneplan_test extends \advanced_testcase {
         $later = cloneplan::build($items, $period->id, '2027-01', self::START, self::END + DAYSECS);
         $this->assertSame($base['hash'], $same['hash']);
         $this->assertNotSame($base['hash'], $later['hash']);
+
+        // The container is part of the signature; spaces around it are not.
+        $folder = cloneplan::build($items, $period->id, '2027-01', self::START, self::END, 'Facultades');
+        $spaced = cloneplan::build($items, $period->id, '2027-01', self::START, self::END, '  Facultades ');
+        $this->assertNotSame($base['hash'], $folder['hash']);
+        $this->assertSame($folder['hash'], $spaced['hash']);
     }
 
     /**
@@ -332,5 +348,81 @@ final class cloneplan_test extends \advanced_testcase {
         } catch (\moodle_exception $e) {
             $this->assertSame('error_toomanyclones', $e->errorcode);
         }
+    }
+
+    /**
+     * Without a container the mirrored path hangs directly from the period, without the seed root.
+     */
+    public function test_no_container_hangs_from_period(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $eng = $gen->create_category(['name' => 'Facultad de Ingeniería', 'parent' => $root->id]);
+        $prog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $eng->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $periodeng = $gen->create_category(['name' => 'Facultad de Ingenieria', 'parent' => $period->id]);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $prog->id]);
+
+        $row = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id)['rows'][0];
+        $this->assertSame('2027-01 / Facultad de Ingenieria / Programa Sistemas', $row['destpath']);
+        $this->assertSame(['2027-01 / Facultad de Ingenieria / Programa Sistemas'], $row['newcategories']);
+        $this->assertSame(0, $row['destcategoryid']);
+        $this->assertNull($row['error']);
+
+        // Once the program exists under the period's faculty, that is the destination.
+        $periodprog = $gen->create_category(['name' => 'Programa Sistemas', 'parent' => $periodeng->id]);
+        $row = $this->plan([['type' => 'course', 'id' => $calc->id]], $period->id)['rows'][0];
+        $this->assertSame((int) $periodprog->id, $row['destcategoryid']);
+        $this->assertSame([], $row['newcategories']);
+    }
+
+    /**
+     * A course directly in the seed root goes to the period itself, or to the container.
+     */
+    public function test_course_directly_in_seed_root(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $course = $gen->create_course(['fullname' => 'Inducción', 'shortname' => 'IND', 'category' => $root->id]);
+        $items = [['type' => 'course', 'id' => $course->id]];
+
+        $row = $this->plan($items, $period->id)['rows'][0];
+        $this->assertSame((int) $period->id, $row['destcategoryid']);
+        $this->assertSame('2027-01', $row['destpath']);
+        $this->assertSame([], $row['newcategories']);
+
+        $row = $this->plan($items, $period->id, 'Facultades')['rows'][0];
+        $this->assertSame(0, $row['destcategoryid']);
+        $this->assertSame('2027-01 / Facultades', $row['destpath']);
+        $this->assertSame(['2027-01 / Facultades'], $row['newcategories']);
+    }
+
+    /**
+     * A container that is a period name, or too long for a category, is rejected; blanks mean no container.
+     */
+    public function test_container_rejects_period_name(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $course = $gen->create_course(['fullname' => 'Inducción', 'shortname' => 'IND', 'category' => $root->id]);
+        $items = [['type' => 'course', 'id' => $course->id]];
+
+        foreach (['2027-01', ' 2026 II ', 'Periodo 2027-02', str_repeat('x', 255)] as $container) {
+            try {
+                $this->plan($items, $period->id, $container);
+                $this->fail('Expected invalid_parameter_exception');
+            } catch (\invalid_parameter_exception $e) {
+                $this->assertInstanceOf(\invalid_parameter_exception::class, $e);
+            }
+        }
+
+        $this->assertSame((int) $period->id, $this->plan($items, $period->id, '   ')['rows'][0]['destcategoryid']);
+        $longest = str_repeat('x', 254);
+        $this->assertSame('2027-01 / ' . $longest, $this->plan($items, $period->id, $longest)['rows'][0]['destpath']);
     }
 }

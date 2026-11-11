@@ -66,7 +66,7 @@ final class cloner_test extends \advanced_testcase {
     }
 
     /**
-     * The mirror path is found and then resolved against an existing period.
+     * The mirror path starts below the seed root and is then resolved against an existing period.
      */
     public function test_mirror_and_resolve(): void {
         $cats = [1 => ['id' => 1, 'parent' => 0, 'name' => 'Facultades'],
@@ -76,8 +76,17 @@ final class cloner_test extends \advanced_testcase {
                  10 => ['id' => 10, 'parent' => 9, 'name' => 'Facultades'],
                  11 => ['id' => 11, 'parent' => 10, 'name' => 'Facultad de Ingenieria']];
         $m = cloner::mirror($cats, 3, sorter::default_patterns_parsed());
-        $this->assertSame(['root' => 1, 'relative' => ['Facultades', 'Facultad de Ingeniería', 'Programa Sistemas']], $m);
-        $this->assertSame(['existing' => 11, 'missing' => ['Programa Sistemas']], cloner::resolve($cats, 9, $m['relative']));
+        $this->assertSame(['root' => 1, 'relative' => ['Facultad de Ingeniería', 'Programa Sistemas']], $m);
+        // Without a container the path hangs from the period, where «Facultad de Ingeniería» does not exist.
+        $this->assertSame(
+            ['existing' => 9, 'missing' => ['Facultad de Ingeniería', 'Programa Sistemas']],
+            cloner::resolve($cats, 9, cloner::destination($m['relative'], ''))
+        );
+        // With the container «Facultades» it finds the existing folders, accents aside.
+        $this->assertSame(
+            ['existing' => 11, 'missing' => ['Programa Sistemas']],
+            cloner::resolve($cats, 9, cloner::destination($m['relative'], 'Facultades'))
+        );
     }
 
     /**
@@ -114,10 +123,20 @@ final class cloner_test extends \advanced_testcase {
     }
 
     /**
-     * The seed root itself gives a path of one name.
+     * The seed root itself gives an empty path: its courses go to the period, or to the container.
      */
     public function test_mirror_of_the_root_itself(): void {
         $cats = [1 => ['id' => 1, 'parent' => 0, 'name' => 'Facultades']];
-        $this->assertSame(['root' => 1, 'relative' => ['Facultades']], cloner::mirror($cats, 1, sorter::default_patterns_parsed()));
+        $this->assertSame(['root' => 1, 'relative' => []], cloner::mirror($cats, 1, sorter::default_patterns_parsed()));
+    }
+
+    /**
+     * The container goes first, and only when there is one.
+     */
+    public function test_destination_with_and_without_container(): void {
+        $this->assertSame(['A', 'B'], cloner::destination(['A', 'B'], ''));
+        $this->assertSame(['Facultades', 'A', 'B'], cloner::destination([3 => 'A', 7 => 'B'], 'Facultades'));
+        $this->assertSame(['Facultades'], cloner::destination([], 'Facultades'));
+        $this->assertSame([], cloner::destination([], ''));
     }
 }

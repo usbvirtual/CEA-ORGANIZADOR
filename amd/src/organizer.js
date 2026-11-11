@@ -87,6 +87,8 @@ const REQUESTS = [
     {key: 'cloneerror_shortnameduplicate', component: 'tool_ceaorganizador'},
     {key: 'cloneerror_shortnametaken', component: 'tool_ceaorganizador'},
     {key: 'cloneerror_toolong', component: 'tool_ceaorganizador'},
+    {key: 'clonecontainer', component: 'tool_ceaorganizador'},
+    {key: 'clonecontainer_help', component: 'tool_ceaorganizador'},
     {key: 'clonecronnote', component: 'tool_ceaorganizador'},
     {key: 'clonedest', component: 'tool_ceaorganizador'},
     {key: 'clonedone', component: 'tool_ceaorganizador'},

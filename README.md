@@ -17,7 +17,7 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - **Ocultar y mostrar cursos** desde el menú del curso o, para varios (hasta 500), desde la barra de selección; se puede deshacer.
 - **Renombrar en lote** categorías y cursos (reemplazar, limpiar, prefijo o sufijo, tipo oración o título), con vista previa y edición manual.
 - **Selección** múltiple de categorías y cursos.
-- **Clonar semillas a un periodo** (hasta 100 cursos por lote): vista previa, destino en espejo bajo el periodo, copias en segundo plano con panel de avance; los clonados no se deshacen.
+- **Clonar semillas a un periodo** (hasta 100 cursos por lote): vista previa, destino en espejo bajo el periodo (sin la raíz de semillas y, si se quiere, dentro de una carpeta como «Facultades»), copias en segundo plano con panel de avance; los clonados no se deshacen.
 - **Historial y deshacer** (90 días); deshacer se rechaza si algo cambió después.
 
 ## Arquitectura

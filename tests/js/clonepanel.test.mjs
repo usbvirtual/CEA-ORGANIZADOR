@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { open } from 'tool_ceaorganizador/clonepanel';
-import { parsePeriod, suggestLabel, isValidLabel, periodOptions, dateToTimestamp } from 'tool_ceaorganizador/period';
+import { parsePeriod, suggestLabel, isValidLabel, periodOptions, dateToTimestamp, suggestContainer } from 'tool_ceaorganizador/period';
 import { decodeEntities } from 'tool_ceaorganizador/text';
 
 globalThis.DOMParser = new JSDOM('').window.DOMParser;
@@ -61,9 +61,9 @@ test('dateToTimestamp da segundos a medianoche local', () => {
 
 const model = {
     snapshot: () => [
-        { id: 1, name: 'Posgrado', path: 'Posgrado' },
-        { id: 20, name: '2026-02', path: 'Posgrado / 2026-02' },
-        { id: 21, name: '2027-01', path: 'Posgrado / 2027-01' },
+        { id: 1, parent: 0, name: 'Posgrado', path: 'Posgrado' },
+        { id: 20, parent: 1, name: '2026-02', path: 'Posgrado / 2026-02' },
+        { id: 21, parent: 1, name: '2027-01', path: 'Posgrado / 2027-01' },
     ],
 };
 
@@ -106,6 +106,7 @@ const setup = (previews, applies, overrides = {}) => {
         model,
         decode: decodeEntities,
         items: overrides.items || [{ type: 'category', id: 5 }],
+        ...(overrides.model ? { model: overrides.model } : {}),
         openProgress: (batchid) => calls.progress.push(batchid),
         trigger: document.getElementById('t'),
         doc: document,
@@ -154,6 +155,7 @@ test('el selector arranca en el periodo más reciente con la etiqueta sugerida y
         periodlabel: '2027-01',
         startdate: new Date(2027, 0, 25).getTime() / 1000,
         enddate: new Date(2027, 4, 30).getTime() / 1000,
+        container: '',
     });
 });
 
@@ -329,4 +331,178 @@ test('las categorías nuevas del tooltip también están en texto oculto para le
     const hidden = tr.querySelector('[data-region="newcategories"]');
     assert.equal(hidden.className, 'sr-only visually-hidden');
     assert.equal(hidden.textContent, ' Posgrado / 2027-01 / A & B; Posgrado / 2027-01 / A & B / C');
+});
+
+const rowsWith = (extra) => [
+    { id: 1, parent: 0, name: 'Pregrado', path: 'Pregrado' },
+    { id: 21, parent: 1, name: '2027-01', path: 'Pregrado / 2027-01' },
+    { id: 22, parent: 1, name: '2026-02', path: 'Pregrado / 2026-02' },
+    ...extra.map((entry) => ({ path: entry.name, ...entry })),
+];
+
+test('suggestContainer propone la única hija del periodo que contiene facultades, con tildes o mayúsculas', () => {
+    const one = rowsWith([
+        { id: 30, parent: 21, name: 'Facultades &amp; Escuelas' },
+        { id: 31, parent: 30, name: 'FACULTÁD de Ingeniería' },
+        { id: 32, parent: 21, name: 'Otros' },
+        { id: 33, parent: 32, name: 'Cursos libres' },
+    ]);
+    assert.equal(suggestContainer(one, 21, decodeEntities), 'Facultades & Escuelas');
+    // A faculty deeper down also counts.
+    const deep = rowsWith([
+        { id: 30, parent: 21, name: 'Pregrado' },
+        { id: 31, parent: 30, name: 'Sede Cali' },
+        { id: 32, parent: 31, name: 'Facultad de Derecho' },
+    ]);
+    assert.equal(suggestContainer(deep, 21, decodeEntities), 'Pregrado');
+});
+
+test('suggestContainer queda vacío con cero o con dos hijas que contienen facultades', () => {
+    const none = rowsWith([
+        { id: 30, parent: 21, name: 'Otros' },
+        { id: 31, parent: 30, name: 'Cursos libres' },
+        // A faculty directly under the period is not inside a folder.
+        { id: 32, parent: 21, name: 'Facultad de Ingeniería' },
+    ]);
+    assert.equal(suggestContainer(none, 21, decodeEntities), '');
+    const two = rowsWith([
+        { id: 30, parent: 21, name: 'Facultades' },
+        { id: 31, parent: 30, name: 'Facultad de Ingeniería' },
+        { id: 32, parent: 21, name: 'Antiguas' },
+        { id: 33, parent: 32, name: 'Facultad de Artes' },
+    ]);
+    assert.equal(suggestContainer(two, 21, decodeEntities), '');
+    // Faculties of another period do not count.
+    const elsewhere = rowsWith([
+        { id: 30, parent: 22, name: 'Facultades' },
+        { id: 31, parent: 30, name: 'Facultad de Ingeniería' },
+    ]);
+    assert.equal(suggestContainer(elsewhere, 21, decodeEntities), '');
+    assert.equal(suggestContainer(elsewhere, 22, decodeEntities), 'Facultades');
+});
+
+const folderModel = {
+    snapshot: () => rowsWith([
+        { id: 30, parent: 21, name: 'Facultades' },
+        { id: 31, parent: 30, name: 'Facultad de Ingeniería' },
+    ]),
+};
+
+test('la carpeta bajo el periodo arranca con la propuesta del periodo elegido y se envía en la vista previa y al aplicar', async () => {
+    const { document, calls } = setup([{ rows: [row(1)], total: 1, hash: 'h1' }], [ok], { model: folderModel });
+    assert.equal(field(document, 'period').value, '21');
+    assert.equal(field(document, 'container').value, 'Facultades');
+    assert.ok(field(document, 'container').getAttribute('aria-describedby'));
+    assert.equal(
+        document.getElementById(field(document, 'container').getAttribute('aria-describedby')).textContent,
+        'clonecontainer_help'
+    );
+
+    // Another period without such a folder clears the field.
+    const select = field(document, 'period');
+    select.value = '22';
+    select.dispatchEvent(new document.defaultView.Event('change'));
+    assert.equal(field(document, 'container').value, '');
+    select.value = '21';
+    select.dispatchEvent(new document.defaultView.Event('change'));
+    assert.equal(field(document, 'container').value, 'Facultades');
+
+    fill(document);
+    click(document, 'preview');
+    await flush();
+    assert.equal(calls.preview[0].container, 'Facultades');
+    click(document, 'apply');
+    await flush();
+    assert.equal(calls.apply[0].container, 'Facultades');
+    assert.equal(calls.apply[0].hash, 'h1');
+});
+
+test('cambiar la carpeta invalida la vista previa, se envía recortada y ya no se reemplaza al cambiar de periodo', async () => {
+    const { document, calls } = setup(
+        [{ rows: [row(1)], total: 1, hash: 'h1' }, { rows: [row(1)], total: 1, hash: 'h2' }],
+        [ok],
+        { model: folderModel }
+    );
+    fill(document);
+    click(document, 'preview');
+    await flush();
+    const apply = document.querySelector('[data-action="apply"]');
+    assert.equal(apply.disabled, false);
+
+    typeIn(document, field(document, 'container'), '  Escuelas ');
+    assert.equal(apply.disabled, true);
+    apply.click();
+    await flush();
+    assert.equal(calls.apply.length, 0);
+
+    const select = field(document, 'period');
+    select.value = '22';
+    select.dispatchEvent(new document.defaultView.Event('change'));
+    select.value = '21';
+    select.dispatchEvent(new document.defaultView.Event('change'));
+    assert.equal(field(document, 'container').value, '  Escuelas ');
+
+    click(document, 'preview');
+    await flush();
+    assert.equal(calls.preview[1].container, 'Escuelas');
+    click(document, 'apply');
+    await flush();
+    assert.equal(calls.apply[0].container, 'Escuelas');
+    assert.equal(calls.apply[0].hash, 'h2');
+});
+
+test('con el api real, el panel llega a clone_preview y clone_apply con los parámetros exactos, carpeta incluida', async () => {
+    const real = await import('tool_ceaorganizador/api');
+    const sent = [];
+    real.setTransport(async (methodname, args) => {
+        sent.push({ methodname, args });
+        if (methodname === 'tool_ceaorganizador_clone_preview') {
+            return { rows: [row(1)], total: 1, hash: 'h1' };
+        }
+        return ok;
+    });
+    try {
+        const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
+        const { document } = dom.window;
+        const progress = [];
+        open({
+            api: real,
+            strings,
+            toast: { show: () => {} },
+            onError: (error) => {
+                throw error;
+            },
+            model: folderModel,
+            decode: decodeEntities,
+            items: [{ type: 'category', id: 5 }],
+            openProgress: (batchid) => progress.push(batchid),
+            trigger: document.getElementById('t'),
+            doc: document,
+        });
+        fill(document);
+        click(document, 'preview');
+        await flush();
+        const plan = {
+            items: [{ type: 'category', id: 5 }],
+            periodid: 21,
+            periodlabel: '2027-01',
+            startdate: new Date(2027, 0, 25).getTime() / 1000,
+            enddate: new Date(2027, 4, 30).getTime() / 1000,
+            container: 'Facultades',
+        };
+        assert.deepEqual(sent[0], { methodname: 'tool_ceaorganizador_clone_preview', args: plan });
+        click(document, 'apply');
+        await flush();
+        assert.deepEqual(sent[1], {
+            methodname: 'tool_ceaorganizador_clone_apply',
+            args: {
+                ...plan,
+                rows: [{ courseid: 1, newfullname: 'Curso 1 2027-01', newshortname: 'C1-2027-01' }],
+                hash: 'h1',
+            },
+        });
+        assert.deepEqual(progress, [9]);
+    } finally {
+        real.setTransport();
+    }
 });

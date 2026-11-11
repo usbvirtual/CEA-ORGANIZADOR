@@ -57,6 +57,22 @@ class clone_preview extends external_api {
     }
 
     /**
+     * The optional folder under the period. It goes last in both services, after the required parameters.
+     *
+     * @return array Map name => parameter definition.
+     */
+    public static function container_parameter(): array {
+        return [
+            'container' => new external_value(
+                PARAM_TEXT,
+                'Folder under the period that receives the mirrored paths; empty hangs them from the period',
+                VALUE_DEFAULT,
+                ''
+            ),
+        ];
+    }
+
+    /**
      * Checks the item types, which PARAM_ALPHA would let through as any letters.
      *
      * @param array $items Items as validated.
@@ -80,7 +96,7 @@ class clone_preview extends external_api {
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
-        return new external_function_parameters(self::plan_parameters());
+        return new external_function_parameters(self::plan_parameters() + self::container_parameter());
     }
 
     /**
@@ -91,15 +107,24 @@ class clone_preview extends external_api {
      * @param string $periodlabel
      * @param int $startdate
      * @param int $enddate
+     * @param string $container
      * @return array ['rows' => array[], 'total' => int, 'hash' => string]
      */
-    public static function execute(array $items, int $periodid, string $periodlabel, int $startdate, int $enddate): array {
+    public static function execute(
+        array $items,
+        int $periodid,
+        string $periodlabel,
+        int $startdate,
+        int $enddate,
+        string $container = ''
+    ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'items' => $items,
             'periodid' => $periodid,
             'periodlabel' => $periodlabel,
             'startdate' => $startdate,
             'enddate' => $enddate,
+            'container' => $container,
         ]);
         $context = \context_system::instance();
         self::validate_context($context);
@@ -110,7 +135,8 @@ class clone_preview extends external_api {
             $params['periodid'],
             $params['periodlabel'],
             $params['startdate'],
-            $params['enddate']
+            $params['enddate'],
+            $params['container']
         );
     }
 

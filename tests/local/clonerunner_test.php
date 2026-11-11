@@ -43,12 +43,13 @@ final class clonerunner_test extends \advanced_testcase {
      * @param array $items
      * @param int $periodid
      * @param array|null $edits Rows sent, as clone_apply passes them; null sends every row of the preview unchanged.
+     * @param string $container Folder under the period, or ''.
      * @return array Result of clonerunner::run().
      */
-    private function run_batch(array $items, int $periodid, ?array $edits = null): array {
-        $plan = cloneplan::build($items, $periodid, '2027-01', self::START, self::END);
+    private function run_batch(array $items, int $periodid, ?array $edits = null, string $container = ''): array {
+        $plan = cloneplan::build($items, $periodid, '2027-01', self::START, self::END, $container);
         $edits = $edits ?? $this->all_rows($plan);
-        return clonerunner::run($items, $periodid, '2027-01', self::START, self::END, $edits, $plan['hash']);
+        return clonerunner::run($items, $periodid, '2027-01', self::START, self::END, $edits, $plan['hash'], $container);
     }
 
     /**
@@ -139,14 +140,13 @@ final class clonerunner_test extends \advanced_testcase {
         $this->assertGreaterThan(0, $result['batchid']);
         $this->assertCount(2, \core\task\manager::get_adhoc_tasks(self::TASK));
 
-        // The period root is created once and both programs hang from it.
-        $newroot = $this->child((int) $period->id, 'Facultades');
-        $newsis = $this->child($newroot, 'Programa Sistemas');
-        $newdos = $this->child($newroot, 'Programa Dos');
-        $this->assertGreaterThan(0, $newroot);
+        // Without a container both programs hang from the period; the seed root is not copied.
+        $newsis = $this->child((int) $period->id, 'Programa Sistemas');
+        $newdos = $this->child((int) $period->id, 'Programa Dos');
+        $this->assertSame(0, $this->child((int) $period->id, 'Facultades'));
         $this->assertGreaterThan(0, $newsis);
         $this->assertGreaterThan(0, $newdos);
-        $this->assertSame(1, $DB->count_records('course_categories', ['parent' => $period->id]));
+        $this->assertSame(2, $DB->count_records('course_categories', ['parent' => $period->id]));
 
         $log = $DB->get_record(journal::TABLE, ['id' => $result['batchid']], '*', MUST_EXIST);
         $this->assertSame('clone', $log->action);
@@ -161,7 +161,7 @@ final class clonerunner_test extends \advanced_testcase {
         $this->assertSame(self::END, $payload['enddate']);
         $created = $payload['categories'];
         sort($created);
-        $expected = [$newroot, $newsis, $newdos];
+        $expected = [$newsis, $newdos];
         sort($expected);
         $this->assertSame($expected, $created);
 
@@ -360,7 +360,7 @@ final class clonerunner_test extends \advanced_testcase {
         $this->assertSame(self::START, (int) $course->startdate);
         $this->assertSame(self::END, (int) $course->enddate);
         $this->assertSame('', (string) $course->idnumber);
-        $destination = $this->child($this->child((int) $period->id, 'Facultades'), 'Programa Sistemas');
+        $destination = $this->child((int) $period->id, 'Programa Sistemas');
         $this->assertSame($destination, (int) $course->category);
 
         $pages = get_fast_modinfo($newid)->get_instances_of('page');
@@ -536,7 +536,7 @@ final class clonerunner_test extends \advanced_testcase {
         $categories = $DB->count_records('course_categories');
         $courses = $DB->count_records('course');
         try {
-            $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id);
+            $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id, null, 'Facultades');
             $this->fail('Expected required_capability_exception');
         } catch (\required_capability_exception $e) {
             $this->assertSame(get_capability_string('moodle/category:manage'), $e->a);
@@ -549,5 +549,99 @@ final class clonerunner_test extends \advanced_testcase {
         $this->assertCount(0, \core\task\manager::get_adhoc_tasks(self::TASK));
         // The lock was released: another run can take it.
         guard::lock()->release();
+    }
+
+    /**
+     * A missing container is created once under the period, last among its siblings, and holds the mirrored paths.
+     */
+    public function test_container_creates_folder(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $eng = $gen->create_category(['name' => 'Facultad de Ingeniería', 'parent' => $root->id]);
+        $law = $gen->create_category(['name' => 'Facultad de Derecho', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $other = $gen->create_category(['name' => 'Otros', 'parent' => $period->id]);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $eng->id]);
+        $penal = $gen->create_course(['fullname' => 'Penal I', 'shortname' => 'PEN1', 'category' => $law->id]);
+        $intro = $gen->create_course(['fullname' => 'Inducción', 'shortname' => 'IND', 'category' => $root->id]);
+
+        $result = $this->run_batch([['type' => 'category', 'id' => $root->id]], (int) $period->id, null, 'Facultades');
+        $this->assertSame(3, $result['queued']);
+
+        $folder = $this->child((int) $period->id, 'Facultades');
+        $this->assertGreaterThan(0, $folder);
+        $children = array_map('intval', array_keys(
+            $DB->get_records('course_categories', ['parent' => $period->id], 'sortorder ASC', 'id')
+        ));
+        $this->assertSame([(int) $other->id, $folder], $children);
+        $neweng = $this->child($folder, 'Facultad de Ingeniería');
+        $newlaw = $this->child($folder, 'Facultad de Derecho');
+        $this->assertGreaterThan(0, $neweng);
+        $this->assertGreaterThan(0, $newlaw);
+
+        $payload = $this->payload((int) $result['batchid']);
+        $created = $payload['categories'];
+        sort($created);
+        $expected = [$folder, $neweng, $newlaw];
+        sort($expected);
+        $this->assertSame($expected, $created);
+        $bysource = array_column($payload['items'], null, 'source');
+        $this->assertSame($neweng, $bysource[$calc->id]['destcategoryid']);
+        $this->assertSame($newlaw, $bysource[$penal->id]['destcategoryid']);
+        // The course directly in the seed root goes to the container itself.
+        $this->assertSame($folder, $bysource[$intro->id]['destcategoryid']);
+    }
+
+    /**
+     * An existing folder that differs only in accents or case is reused: no duplicate.
+     */
+    public function test_container_existing_accent_insensitive(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $eng = $gen->create_category(['name' => 'Facultad de Ingeniería', 'parent' => $root->id]);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $existing = $gen->create_category(['name' => 'FACULTADES', 'parent' => $period->id]);
+        $periodeng = $gen->create_category(['name' => 'Facultad de Ingenieria', 'parent' => $existing->id]);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $eng->id]);
+        $categories = $DB->count_records('course_categories');
+
+        $items = [['type' => 'course', 'id' => $calc->id]];
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END, 'Facultades');
+        $this->assertSame((int) $periodeng->id, $plan['rows'][0]['destcategoryid']);
+        $this->assertSame([], $plan['rows'][0]['newcategories']);
+
+        $result = $this->run_batch($items, (int) $period->id, null, 'Facultades');
+        $this->assertSame(1, $result['queued']);
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(1, $DB->count_records('course_categories', ['parent' => $period->id]));
+        $payload = $this->payload((int) $result['batchid']);
+        $this->assertSame([], $payload['categories']);
+        $this->assertSame((int) $periodeng->id, $payload['items'][0]['destcategoryid']);
+    }
+
+    /**
+     * A preview made with one container is stale for a run with another one.
+     */
+    public function test_container_change_is_stale(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $root = $gen->create_category(['name' => 'Facultades']);
+        $period = $gen->create_category(['name' => '2027-01']);
+        $calc = $gen->create_course(['fullname' => 'Cálculo I', 'shortname' => 'CALC1', 'category' => $root->id]);
+        $items = [['type' => 'course', 'id' => $calc->id]];
+
+        $plan = cloneplan::build($items, (int) $period->id, '2027-01', self::START, self::END);
+        $edits = $this->all_rows($plan);
+        $result = clonerunner::run($items, (int) $period->id, '2027-01', self::START, self::END, $edits, $plan['hash'], 'Otra');
+        $this->assertSame(['status' => 'stale', 'batchid' => 0, 'queued' => 0, 'skipped' => 0], $result);
+        $this->assertSame(0, $DB->count_records('course_categories', ['parent' => $period->id]));
     }
 }

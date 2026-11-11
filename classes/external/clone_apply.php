@@ -36,7 +36,7 @@ use tool_ceaorganizador\local\clonerunner;
  */
 class clone_apply extends external_api {
     /**
-     * Parameters: the same as clone_preview, plus the edited names and the hash.
+     * Parameters: the same as clone_preview, plus the edited names and the hash; the container goes last.
      *
      * @return external_function_parameters
      */
@@ -51,7 +51,7 @@ class clone_apply extends external_api {
                 'Names as the user left them'
             ),
             'hash' => new external_value(PARAM_ALPHANUM, 'Hash returned by clone_preview'),
-        ]);
+        ] + clone_preview::container_parameter());
     }
 
     /**
@@ -64,6 +64,7 @@ class clone_apply extends external_api {
      * @param int $enddate
      * @param array $rows
      * @param string $hash
+     * @param string $container
      * @return array ['status' => string, 'batchid' => int, 'queued' => int, 'skipped' => int]
      */
     public static function execute(
@@ -73,7 +74,8 @@ class clone_apply extends external_api {
         int $startdate,
         int $enddate,
         array $rows,
-        string $hash
+        string $hash,
+        string $container = ''
     ): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'items' => $items,
@@ -83,6 +85,7 @@ class clone_apply extends external_api {
             'enddate' => $enddate,
             'rows' => $rows,
             'hash' => $hash,
+            'container' => $container,
         ]);
         $context = \context_system::instance();
         self::validate_context($context);
@@ -102,7 +105,8 @@ class clone_apply extends external_api {
             $params['startdate'],
             $params['enddate'],
             $edits,
-            $params['hash']
+            $params['hash'],
+            $params['container']
         );
     }
 

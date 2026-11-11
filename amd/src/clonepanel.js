@@ -28,7 +28,7 @@
 
 import {openDialog} from 'tool_ceaorganizador/dialog';
 import {format} from 'tool_ceaorganizador/treeview';
-import {periodOptions, isValidLabel, dateToTimestamp} from 'tool_ceaorganizador/period';
+import {periodOptions, isValidLabel, dateToTimestamp, suggestContainer} from 'tool_ceaorganizador/period';
 import {open as defaultProgress} from 'tool_ceaorganizador/cloneprogress';
 
 const ERROR_CODES = [
@@ -90,7 +90,8 @@ export const open = ({
     const dialog = openDialog({doc, title: strings.clonetoperiod, trigger, className: 'tool-ceaorganizador-dialogo-ancho'});
     const root = dialog.element;
 
-    const options = periodOptions(model.snapshot(), decode);
+    const snapshot = model.snapshot();
+    const options = periodOptions(snapshot, decode);
     const select = create('select', 'custom-select form-select');
     options.forEach((entry) => {
         const node = create('option', '', entry.text);
@@ -105,10 +106,20 @@ export const open = ({
     start.type = 'date';
     const end = create('input', 'form-control');
     end.type = 'date';
+    const container = create('input', 'form-control');
+    container.type = 'text';
+    container.maxLength = 254;
+    const containerHelp = create('small', 'form-text text-muted', strings.clonecontainer_help);
+    containerHelp.id = `tool-ceaorganizador-clone-container-${Date.now()}`;
+    container.setAttribute('aria-describedby', containerHelp.id);
+    // The help sits outside the label, so it describes the field without becoming part of its name.
+    const containerField = create('div', 'tool-ceaorganizador-campo');
+    containerField.append(field('container', strings.clonecontainer, container), containerHelp);
     const form = create('div', 'tool-ceaorganizador-formulario');
     form.append(
         field('period', strings.cloneperiod, select),
         field('label', strings.clonelabel, label),
+        containerField,
         field('start', strings.clonestart, start),
         field('end', strings.cloneend, end)
     );
@@ -149,10 +160,14 @@ export const open = ({
     }
 
     let labelEdited = false;
+    let containerEdited = false;
     const suggest = () => {
         const chosen = options.find((entry) => String(entry.id) === select.value);
         if (!labelEdited) {
             label.value = chosen ? chosen.label : '';
+        }
+        if (!containerEdited) {
+            container.value = chosen ? suggestContainer(snapshot, chosen.id, decode) : '';
         }
     };
     suggest();
@@ -278,7 +293,7 @@ export const open = ({
         if (startdate === null || enddate === null || enddate <= startdate) {
             return {error: strings.cloneerror_dates};
         }
-        return {periodid, periodlabel, startdate, enddate};
+        return {periodid, periodlabel, startdate, enddate, container: container.value.trim()};
     };
 
     // Loads the preview of `wanted`, the values of a form already validated.
@@ -327,6 +342,10 @@ export const open = ({
     });
     label.addEventListener('input', () => {
         labelEdited = true;
+        invalidate();
+    });
+    container.addEventListener('input', () => {
+        containerEdited = true;
         invalidate();
     });
     start.addEventListener('input', invalidate);

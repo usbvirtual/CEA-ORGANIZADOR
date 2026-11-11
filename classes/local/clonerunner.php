@@ -49,6 +49,7 @@ class clonerunner {
      * @param array $edits Map courseid => ['newfullname' => string, 'newshortname' => string], raw names. The rows
      *      are authoritative: a plan row whose course is not here is not cloned ('notselected').
      * @param string $hash Hash of the preview the user saw.
+     * @param string $container Folder under the period, as cloneplan::build(); it is created like any other missing level.
      * @return array ['status' => 'ok'|'stale', 'batchid' => int, 'queued' => int, 'skipped' => int]; batchid is the
      *      journal id, 0 when nothing was recorded.
      * @throws \required_capability_exception When a destination cannot receive courses or categories; nothing is written.
@@ -60,7 +61,8 @@ class clonerunner {
         int $startdate,
         int $enddate,
         array $edits,
-        string $hash
+        string $hash,
+        string $container = ''
     ): array {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
@@ -71,12 +73,12 @@ class clonerunner {
 
         $lock = guard::lock();
         try {
-            $plan = cloneplan::build($items, $periodid, $label, $startdate, $enddate);
+            $plan = cloneplan::build($items, $periodid, $label, $startdate, $enddate, $container);
             if (!hash_equals($plan['hash'], $hash)) {
                 return ['status' => 'stale', 'batchid' => 0, 'queued' => 0, 'skipped' => 0];
             }
             $rows = self::apply_edits($plan['rows'], $edits);
-            $rows = self::targets($rows, $periodid);
+            $rows = self::targets($rows, $periodid, cloneplan::container($container));
             $todo = array_values(array_filter($rows, static function (array $row): bool {
                 return $row['error'] === null;
             }));
@@ -274,9 +276,10 @@ class clonerunner {
      *
      * @param array $rows
      * @param int $periodid
+     * @param string $container Checked folder under the period, or ''.
      * @return array Rows with 'anchor' (int) and 'missing' (string[]).
      */
-    private static function targets(array $rows, int $periodid): array {
+    private static function targets(array $rows, int $periodid, string $container): array {
         global $DB;
         $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name');
         $cats = [];
@@ -291,15 +294,11 @@ class clonerunner {
         }
         $patterns = sorter::patterns();
         foreach ($rows as &$row) {
+            // The same path as cloneplan::row().
             $mirror = cloner::mirror($cats, $coursecats[$row['courseid']] ?? 0, $patterns);
-            if ($mirror['root'] === null) {
-                $row['anchor'] = $periodid;
-                $row['missing'] = [];
-            } else {
-                $resolved = cloner::resolve($cats, $periodid, $mirror['relative']);
-                $row['anchor'] = $resolved['existing'];
-                $row['missing'] = $resolved['missing'];
-            }
+            $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container));
+            $row['anchor'] = $resolved['existing'];
+            $row['missing'] = $resolved['missing'];
         }
         unset($row);
         return $rows;

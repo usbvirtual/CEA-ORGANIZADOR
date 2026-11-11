@@ -70,10 +70,13 @@ class cloner {
     /**
      * Path of a category under its seed root.
      *
+     * The root itself is not part of the path: a course in «Facultades › Facultad de Ingeniería › Sistemas»
+     * gives ['Facultad de Ingeniería', 'Sistemas'], and a course directly in the root gives [].
+     *
      * @param array $categories Map id => ['id' => int, 'parent' => int, 'name' => string].
      * @param int $categoryid
      * @param array $patterns As returned by sorter::patterns().
-     * @return array ['root' => int|null, 'relative' => string[]]; names go from the root down, both included.
+     * @return array ['root' => int|null, 'relative' => string[]]; names go from the root's child down to the category.
      */
     public static function mirror(array $categories, int $categoryid, array $patterns): array {
         $none = ['root' => null, 'relative' => []];
@@ -95,7 +98,19 @@ class cloner {
         if (sorter::classify($names[0], true, $patterns) !== 'semilla') {
             return $none;
         }
-        return ['root' => $id, 'relative' => $names];
+        return ['root' => $id, 'relative' => array_slice($names, 1)];
+    }
+
+    /**
+     * Path of a copy under the period: the container, when there is one, then the mirrored path.
+     *
+     * @param string[] $relative As mirror() returns it; [] for a course outside the seeds or in the root itself.
+     * @param string $container Trimmed name of the folder under the period, or ''.
+     * @return string[]
+     */
+    public static function destination(array $relative, string $container): array {
+        $relative = array_values($relative);
+        return $container === '' ? $relative : array_merge([$container], $relative);
     }
 
     /**

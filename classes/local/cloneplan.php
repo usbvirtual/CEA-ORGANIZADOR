@@ -46,9 +46,18 @@ class cloneplan {
      * @param string $label Period text such as "2027-01".
      * @param int $startdate Start date of the copies.
      * @param int $enddate End date of the copies.
+     * @param string $container Folder under the period that receives the mirrored paths; '' hangs them from the period.
+     *      It is created when missing and matched by normalised name, like every other level.
      * @return array ['rows' => array[], 'total' => int, 'hash' => string]
      */
-    public static function build(array $items, int $periodid, string $label, int $startdate, int $enddate): array {
+    public static function build(
+        array $items,
+        int $periodid,
+        string $label,
+        int $startdate,
+        int $enddate,
+        string $container = ''
+    ): array {
         global $DB;
 
         if (!$DB->record_exists('course_categories', ['id' => $periodid])) {
@@ -60,6 +69,7 @@ class cloneplan {
         if ($startdate <= 0 || $enddate <= $startdate) {
             throw new \invalid_parameter_exception('Invalid dates');
         }
+        $container = self::container($container);
         foreach ($items as $item) {
             // Category 0 would expand to every course of the site.
             if ((int) ($item['id'] ?? 0) <= 0) {
@@ -90,13 +100,12 @@ class cloneplan {
         });
 
         $insideseeds = cloner::mirror($cats, $periodid, $patterns)['root'] !== null;
-        $periodpath = self::path_of($periodid, $cats, $paths);
         $copycaps = \core_course\management\helper::get_course_copy_capabilities();
 
         $rows = [];
         foreach ($courses as $course) {
             \context_helper::preload_from_record($course);
-            $rows[] = self::row($course, $cats, $paths, $patterns, $periodid, $periodpath, $label, $insideseeds, $copycaps);
+            $rows[] = self::row($course, $cats, $paths, $patterns, $periodid, $container, $label, $insideseeds, $copycaps);
         }
         self::flag_errors($rows);
 
@@ -104,8 +113,27 @@ class cloneplan {
         foreach ($rows as $row) {
             $signature[] = [$row['courseid'], $row['destpath'], $row['newshortname'], $row['error']];
         }
-        $hash = sha1(json_encode([$periodid, $startdate, $enddate, $label, $signature]));
+        $hash = sha1(json_encode([$periodid, $startdate, $enddate, $label, $container, $signature]));
         return ['rows' => $rows, 'total' => count($rows), 'hash' => $hash];
+    }
+
+    /**
+     * Checks the folder under the period and returns it trimmed.
+     *
+     * @param string $container
+     * @return string '' when there is no folder.
+     * @throws \invalid_parameter_exception When it is too long for a category name or is itself a period name.
+     */
+    public static function container(string $container): string {
+        $container = trim($container);
+        if (\core_text::strlen($container) > renamer::MAXLEN) {
+            throw new \invalid_parameter_exception('Container name too long');
+        }
+        // A folder named like a period (2027-01) would read as a second period inside the first.
+        if ($container !== '' && cloner::period_label($container) !== null) {
+            throw new \invalid_parameter_exception('Container cannot be a period');
+        }
+        return $container;
     }
 
     /**
@@ -168,7 +196,7 @@ class cloneplan {
      * @param string[] $paths Memo of formatted paths.
      * @param array $patterns
      * @param int $periodid
-     * @param string $periodpath
+     * @param string $container Checked folder under the period, or ''.
      * @param string $label
      * @param bool $insideseeds
      * @param string[] $copycaps
@@ -180,25 +208,21 @@ class cloneplan {
         array &$paths,
         array $patterns,
         int $periodid,
-        string $periodpath,
+        string $container,
         string $label,
         bool $insideseeds,
         array $copycaps
     ): array {
+        // A course outside the seeds has an empty relative path: it goes to the period, or to the container.
         $mirror = cloner::mirror($cats, (int) $course->category, $patterns);
+        $resolved = cloner::resolve($cats, $periodid, cloner::destination($mirror['relative'], $container));
         $newcategories = [];
-        if ($mirror['root'] === null) {
-            $destid = $periodid;
-            $destpath = $periodpath;
-        } else {
-            $resolved = cloner::resolve($cats, $periodid, $mirror['relative']);
-            $destpath = self::path_of($resolved['existing'], $cats, $paths);
-            foreach ($resolved['missing'] as $name) {
-                $destpath .= ' / ' . self::format($name);
-                $newcategories[] = $destpath;
-            }
-            $destid = $resolved['missing'] ? 0 : $resolved['existing'];
+        $destpath = self::path_of($resolved['existing'], $cats, $paths);
+        foreach ($resolved['missing'] as $name) {
+            $destpath .= ' / ' . self::format($name);
+            $newcategories[] = $destpath;
         }
+        $destid = $resolved['missing'] ? 0 : $resolved['existing'];
 
         $newfullname = cloner::new_fullname($course->fullname, $label);
         $newshortname = cloner::new_shortname($course->shortname, $label);

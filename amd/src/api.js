@@ -91,7 +91,7 @@ export const undo = (logid) => call('undo', {logid});
 export const history = (page) => call('history', {page});
 
 /**
- * @param {Object} params {items, periodid, periodlabel, startdate, enddate}.
+ * @param {Object} params {items, periodid, periodlabel, startdate, enddate, container}.
  * @returns {Promise}
  */
 export const clonePreview = (params) => call('clone_preview', params);

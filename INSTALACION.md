@@ -88,13 +88,15 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 **Cómo se usa.**
 
 1. Elegir las semillas: una categoría (menú de su nodo) o una selección. Para clonar un solo curso, seleccionarlo y usar «Clonar a periodo…» en la barra de selección.
-2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`) y las fechas de inicio y de fin.
+2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`), revisar la «Carpeta bajo el periodo» (opcional, ver abajo) y poner las fechas de inicio y de fin.
 3. Pulsar «Vista previa»: muestra, por cada curso, la semilla, el destino, el nombre de la copia y el estado («Nueva», o el motivo por el que se omite).
 4. Pulsar «Clonar cursos (N)». Solo se clonan las filas que el panel envía: una fila con un nombre vacío o con un motivo de omisión no se envía y no se clona. Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido». Si una consulta falla, se reintenta a los 15, 30 y 60 segundos antes de mostrar el error. Para volver a ver el avance más tarde, abrir el historial y pulsar «Ver avance» en la entrada del clonado.
 
 **Qué se copia.** Solo el contenido: actividades, recursos, secciones, bancos de preguntas y ajustes del curso. **No** se copian usuarios, matrículas, calificaciones ni entregas. Los cursos nuevos se crean **ocultos**; hay que mostrarlos cuando estén listos.
 
-**Destino en espejo.** Cada copia se ubica bajo el periodo elegido con la misma ruta que tiene la semilla, empezando en su raíz de semillas. Por ejemplo, un curso semilla de la categoría `Facultades › Ingeniería › Programa Sistemas` clonado al periodo `2027-01` queda en `2027-01 › Facultades › Ingeniería › Programa Sistemas`. La raíz de semillas (aquí «Facultades») se reproduce como primer nivel bajo el periodo. Si el curso no está bajo una raíz de semillas, la copia va directamente a la categoría del periodo. Las categorías intermedias que no existan en el periodo se crean (al final entre sus hermanas); las que ya existen se reutilizan. El destino no puede estar dentro de las semillas.
+**Destino en espejo.** Cada copia se ubica bajo el periodo elegido con la misma ruta que tiene la semilla **debajo** de su raíz de semillas; la raíz no se reproduce. Por ejemplo, un curso semilla de la categoría `Semillas › Ingeniería › Programa Sistemas` clonado al periodo `2027-01` queda en `2027-01 › Ingeniería › Programa Sistemas`. Un curso que está directamente en la raíz de semillas, o que no está bajo ninguna, va a la categoría del periodo (o a la carpeta, si se indicó). Las categorías intermedias que no existan en el periodo se crean (al final entre sus hermanas); las que ya existen se reutilizan. El destino no puede estar dentro de las semillas.
+
+**Carpeta bajo el periodo.** Campo opcional del panel. Si se escribe un nombre, por ejemplo `Facultades`, las rutas cuelgan de esa subcategoría del periodo: `2027-01 › Facultades › Ingeniería › Programa Sistemas`. Si no existe, se crea; si ya existe una con el mismo nombre (sin importar tildes ni mayúsculas, por ejemplo «FACULTADES»), se reutiliza. Al elegir el periodo, el panel propone como carpeta la única subcategoría del periodo que contiene categorías cuyo nombre empieza por «Facultad»; si no hay ninguna o hay varias, el campo queda vacío. No puede ser un nombre de periodo (por ejemplo `2027-01`).
 
 **Nombres.**
 
