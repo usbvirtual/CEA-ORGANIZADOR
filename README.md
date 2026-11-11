@@ -1,6 +1,6 @@
 # CEA-ORGANIZADOR
 
-Plugin de Moodle (`tool_ceaorganizador`) del Centro de Innovación Pedagógica y Educación Digital (CEA), USB Cali. Permite organizar el árbol de categorías y cursos de un sitio: mover, ordenar automáticamente, renombrar por lotes y deshacer. Aparece en *Administración del sitio › Cursos › Organizador de categorías (CEA)*. Requiere Moodle 4.2 o superior.
+Plugin de Moodle (`tool_ceaorganizador`) del Centro de Innovación Pedagógica y Educación Digital (CEA), USB Cali. Permite organizar el árbol de categorías y cursos de un sitio: mover, ordenar automáticamente, renombrar por lotes, clonar semillas a un periodo y deshacer. Aparece en *Administración del sitio › Cursos › Organizador de categorías (CEA)*. Requiere Moodle 4.2 o superior.
 
 Instalación: ver [INSTALACION.md](INSTALACION.md). Guía para desarrollo: [CLAUDE.md](CLAUDE.md).
 
@@ -15,6 +15,7 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - **Auto ordenar** con vista previa y recomendación cuando una categoría está desordenada. Los periodos se detectan solos por el nombre («2026-02», «2026 II») y van del más reciente al más antiguo; solo los patrones de semilla y de facultad se configuran en los ajustes.
 - **Renombrar en lote** categorías y cursos (reemplazar, limpiar, prefijo o sufijo, tipo oración o título), con vista previa y edición manual.
 - **Selección** múltiple de categorías y cursos.
+- **Clonar semillas a un periodo** (hasta 100 cursos por lote): vista previa, destino en espejo bajo el periodo, copias en segundo plano con panel de avance; los clonados no se deshacen.
 - **Historial y deshacer** (90 días); deshacer se rechaza si algo cambió después.
 
 ## Arquitectura
@@ -22,8 +23,9 @@ Para los administradores de las plataformas de la USB (eCampus, Mcampus, Campus 
 - `classes/local/sorter.php` y `renamer.php` son puros: reciben y devuelven datos, sin base de datos.
 - `mover.php` y `journal.php` son la única puerta de escritura; usan la API del núcleo para que se disparen eventos y se limpien cachés.
 - `guard.php` reúne el candado y el rollback; los permisos nativos se comprueban en `mover::check_category` y `mover::check_course` y en los servicios web; `tree.php` y `sortplan.php` leen el árbol y arman el plan de orden con su firma.
-- `classes/external/*.php`: diez servicios web, uno por clase, sobre `\core_external` (de ahí Moodle 4.2+).
-- `amd/src/`: `organizer` (arranque), `api`, `treemodel` y `treeview`, `dragdrop`, `dropzones` y `keyboard`, `movepicker` y `mover`, `sortpanel`, `renamepanel` e `historypanel`, `selection`, `toast`, `dialog` y `text`. Se compilan a `amd/build`.
+- `cloner.php` (nombres con periodo y destino en espejo; puro), `cloneplan.php` (vista previa con su firma y los errores por fila) y `clonerunner.php` (crea las categorías, encola las copias y registra el lote) forman el clonado.
+- `classes/external/*.php`: diez servicios web de organización y tres del clonado (`clone_preview`, `clone_apply`, `clone_status`), uno por clase, sobre `\core_external` (de ahí Moodle 4.2+).
+- `amd/src/`: `organizer` (arranque), `api`, `treemodel` y `treeview`, `dragdrop`, `dropzones` y `keyboard`, `movepicker` y `mover`, `sortpanel`, `renamepanel` e `historypanel`, `selection`, `clonepanel` y `cloneprogress` (clonado y avance), `toast`, `dialog` y `text`. Se compilan a `amd/build`.
 
 ## Desarrollo
 

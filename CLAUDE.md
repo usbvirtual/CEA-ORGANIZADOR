@@ -39,6 +39,12 @@ Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y leccione
 - Los módulos JS que necesitan `core/*` lo reciben inyectado (`api.setTransport`, proveedor de cadenas) para que `node:test` corra sin Moodle. Sin librerías externas: el arrastre usa eventos de puntero propios.
 - El candado (`guard::lock()`) vive en la capa `external`, no en `mover`. El renombrado se limita a 500 elementos por lote.
 - El orden de cursos de una categoría se rechaza si supera `maxcoursesincategory` (`error_toomanycourses`).
+- `clonerunner` llama a `create_copy` después del commit de las categorías, una transacción delegada por copia (un fallo no deja un esqueleto ni revierte las demás).
+- Las copias en curso cuentan como ya tomadas (ventana de 30 días, `cloneplan::INFLIGHT_DAYS`): relanzar el lote antes de que corra el cron no duplica.
+- La acción `clone` no tiene deshacer (`error_cannotundoclone`): deshacerla borraría cursos.
+- El estado de una copia sale de `backup_controllers` (restauración por `restoreid`, con respaldo por `backupid` si el respaldo falló) y, sin controladores, de la existencia del curso.
+- El lote de clonado es de 100 cursos (`cloneplan::MAX_ROWS`), para que la petición sea corta.
+- En el destino se exige también `moodle/restore:restorecourse`, más estricto que el núcleo: sin él la restauración dejaría un curso «Copiando…» vacío tras el cron.
 
 ---
 

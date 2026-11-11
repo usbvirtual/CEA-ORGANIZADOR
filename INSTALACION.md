@@ -65,6 +65,48 @@ Con el foco en el árbol: flechas para navegar; **Espacio** toma el elemento y l
 
 Cada movimiento, orden y renombrado queda en el historial, y aparece un aviso «Deshacer» durante 8 segundos. El historial se conserva 90 días; una tarea programada borra lo más viejo. Deshacer devuelve el estado anterior, incluida la visibilidad si el movimiento la cambió. **Se rechaza si algo cambió después de la operación** (por ejemplo, otra persona movió o renombró el elemento) y se indica qué cambió; en ese caso no se modifica nada.
 
+### Clonar semillas a un periodo
+
+Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno.
+
+**Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea programada `\core\task\asynchronous_copy_task`. Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
+
+**Dónde está.** En el menú del nodo de una categoría o curso y en la barra de selección, la opción «Clonar a periodo…».
+
+**Cómo se usa.**
+
+1. Elegir las semillas (un curso, una categoría o una selección).
+2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-PP, por ejemplo `2027-01`) y las fechas de inicio y de fin.
+3. Pulsar «Vista previa»: muestra, por cada curso, la semilla, el destino, el nombre de la copia y el estado («Nueva», o el motivo por el que se omite).
+4. Pulsar «Clonar N cursos». Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido».
+
+**Qué se copia.** Solo el contenido: actividades, recursos, secciones, bancos de preguntas y ajustes del curso. **No** se copian usuarios, matrículas, calificaciones ni entregas. Los cursos nuevos se crean **ocultos**; hay que mostrarlos cuando estén listos.
+
+**Destino en espejo.** Cada copia se ubica bajo el periodo elegido con la misma ruta que tiene la semilla, empezando en su raíz de semillas. Por ejemplo, un curso semilla de la categoría `Facultades › Ingeniería › Programa Sistemas` clonado al periodo `2027-01` queda en `2027-01 › Facultades › Ingeniería › Programa Sistemas`. La raíz de semillas (aquí «Facultades») se reproduce como primer nivel bajo el periodo. Si el curso no está bajo una raíz de semillas, la copia va directamente a la categoría del periodo. Las categorías intermedias que no existan en el periodo se crean (al final entre sus hermanas); las que ya existen se reutilizan. El destino no puede estar dentro de las semillas.
+
+**Nombres.**
+
+- Nombre completo: el periodo que ya tenga se reemplaza por la etiqueta; si no tiene, se agrega después de un espacio (`Cálculo I` pasa a `Cálculo I 2027-01`).
+- Nombre corto: igual, pero con guion (`CALC1` pasa a `CALC1-2027-01`).
+- Límite de Moodle: 254 caracteres; un nombre más largo se marca «El nombre es demasiado largo.» y no se clona.
+- Si el nombre corto ya existe en el sitio o se repite en el lote, la fila se omite.
+
+**Fechas.** Moodle desplaza las fechas de las actividades según la nueva fecha de inicio del curso.
+
+**Límite y relanzar.** Máximo **100 cursos por lote**; si hay más, el servidor lo rechaza. Relanzar el mismo lote es seguro: las copias ya hechas o en cola (de los últimos 30 días) se omiten y aparecen como «Ya está clonado en este periodo.».
+
+**No se puede deshacer.** El historial muestra el lote («Clonado a 2027-01 · N cursos»), pero «Deshacer» no aplica a los clonados. Para quitar copias que sobren, borrarlas desde la gestión de cursos de Moodle (*Administración del sitio › Cursos › Gestionar cursos y categorías*). Las categorías que se crearon quedan; se pueden borrar igual.
+
+**Permisos.** Además de `tool/ceaorganizador:manage`, se comprueban:
+
+- En la semilla: `moodle/backup:backupcourse`, `moodle/restore:restorecourse` y `moodle/course:create`.
+- En la categoría de destino: `moodle/course:create` y `moodle/restore:restorecourse` (más estricto que el núcleo, que lo exige en el curso de destino).
+- En el padre de cada categoría nueva: `moodle/category:manage`.
+
+Si falta alguno, no se clona nada.
+
+**Si una copia falla.** El panel la marca «Fallido» y las demás siguen. Moodle puede dejar un curso provisional «Copiando curso…» en la categoría de destino; hay que borrarlo a mano. Después se puede relanzar el lote: solo se reintentan las que fallaron.
+
 ### Pruebas seguras
 
 Probar primero en una categoría de prueba, nunca sobre periodos activos. Usar las vistas previas de «Auto ordenar» y «Renombrar» antes de confirmar, y comprobar que «Deshacer» funciona con una operación pequeña antes de organizar una sede completa.
