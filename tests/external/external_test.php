@@ -241,6 +241,97 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * Several categories are sorted with one preview, one apply, one journal row and one undo.
+     */
+    public function test_sort_apply_many_records_one_entry(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $this->setAdminUser();
+        $first = $this->category('P1');
+        $c1 = $this->category('C', $first);
+        $a1 = $this->category('A', $first);
+        $second = $this->category('P2');
+        $y2 = $this->category('Y', $second);
+        $x2 = $this->category('X', $second);
+
+        $preview = sort_preview::execute(0, 'categories', false, [$first, $second]);
+        $preview = external_api::clean_returnvalue(sort_preview::execute_returns(), $preview);
+        $this->assertCount(2, $preview['changes']);
+
+        $result = sort_apply::execute(0, 'categories', false, $preview['hash'], [$first, $second]);
+        $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertGreaterThan(0, $result['logid']);
+        $this->assertSame([$a1, $c1], tree::sibling_categories($first));
+        $this->assertSame([$x2, $y2], tree::sibling_categories($second));
+        $this->assertSame(1, $DB->count_records('tool_ceaorganizador_log', ['action' => 'sort']));
+
+        $undo = undo::execute($result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame([$c1, $a1], tree::sibling_categories($first));
+        $this->assertSame([$y2, $x2], tree::sibling_categories($second));
+    }
+
+    /**
+     * A category mixed with a list, a long list or a list holding the top level is refused.
+     */
+    public function test_sort_apply_rejects_both_params(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->category('P');
+        $other = $this->category('Q');
+        $preview = sort_preview::execute($parent, 'categories', false);
+
+        try {
+            sort_apply::execute($parent, 'categories', false, $preview['hash'], [$other]);
+            $this->fail('categoryid and categoryids must not be combined');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertStringContainsString('cannot be combined', $e->getMessage());
+        }
+        try {
+            sort_preview::execute($parent, 'categories', false, [$other]);
+            $this->fail('categoryid and categoryids must not be combined');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertStringContainsString('cannot be combined', $e->getMessage());
+        }
+        try {
+            sort_preview::execute(0, 'categories', false, range(1, 201));
+            $this->fail('Too many categories must be refused');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertStringContainsString('Too many', $e->getMessage());
+        }
+        try {
+            sort_preview::execute(0, 'categories', false, [$other, 0]);
+            $this->fail('The top level inside a list must be refused');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertStringContainsString('Invalid category id', $e->getMessage());
+        }
+    }
+
+    /**
+     * Both services return values that pass the declared structure when they receive categoryids.
+     */
+    public function test_sort_many_clean_returnvalue(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->category('P');
+        $this->category('C', $parent);
+        $this->category('A', $parent);
+
+        $preview = sort_preview::execute(0, 'both', true, [$parent]);
+        $preview = external_api::clean_returnvalue(sort_preview::execute_returns(), $preview);
+        $this->assertCount(1, $preview['changes']);
+
+        $result = sort_apply::execute(0, 'both', true, $preview['hash'], [$parent]);
+        $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
+        $this->assertSame('ok', $result['status']);
+        $this->assertGreaterThan(0, $result['logid']);
+    }
+
+    /**
      * Two courses of the batch that would end with the same short name are both flagged.
      */
     public function test_rename_preview_flags_duplicate_shortnames_in_batch(): void {

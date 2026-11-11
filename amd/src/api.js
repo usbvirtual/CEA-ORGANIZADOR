@@ -56,13 +56,14 @@ export const moveCategory = (id, newparent, afterid) => call('move_category', {i
 export const moveCourse = (id, categoryid, afterid) => call('move_course', {id, categoryid, afterid});
 
 /**
- * @param {Object} params Plan parameters of sort_preview, as the web service defines them.
+ * @param {Object} params Plan parameters of sort_preview, as the web service defines them; categoryids
+ *                        (with categoryid 0) sorts several categories at once.
  * @returns {Promise}
  */
 export const sortPreview = (params) => call('sort_preview', params);
 
 /**
- * @param {Object} params Plan parameters of sort_apply plus the hash of the preview.
+ * @param {Object} params Plan parameters of sort_apply plus the hash of the preview; categoryids as in sortPreview.
  * @returns {Promise}
  */
 export const sortApply = (params) => call('sort_apply', params);

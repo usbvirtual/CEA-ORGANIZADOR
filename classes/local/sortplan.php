@@ -44,23 +44,46 @@ class sortplan {
     /**
      * Builds the plan of a category, or of the top level when the id is 0.
      *
-     * The 'categories' kind orders the children of a parent (the top level is a
-     * parent with id 0); the 'courses' kind orders the courses of a category.
-     * Only the lists whose proposed order differs are included. The hash covers
-     * ids only, so a change of formatting cannot make a preview look stale.
-     *
      * @param int $categoryid 0 for the top level.
      * @param string $scope categories, courses or both.
      * @param bool $recursive Also every category below.
      * @return array ['changes' => [['kind', 'parentid', 'parentpath', 'before' => [['id', 'name']], 'after']], 'hash']
      */
     public static function build(int $categoryid, string $scope, bool $recursive): array {
+        return self::build_many([$categoryid], $scope, $recursive);
+    }
+
+    /**
+     * Builds the plan of several categories at once.
+     *
+     * The 'categories' kind orders the children of a parent (the top level is a
+     * parent with id 0); the 'courses' kind orders the courses of a category.
+     * Only the lists whose proposed order differs are included. Repeated ids are
+     * dropped and, when recursive, so is every id below another selected one; the
+     * plans are joined without repeating a (kind, parent) pair. The hash covers
+     * ids only, so a change of formatting cannot make a preview look stale.
+     *
+     * @param int[] $categoryids Categories to sort; 0 (the top level) is accepted only alone.
+     * @param string $scope categories, courses or both.
+     * @param bool $recursive Also every category below.
+     * @return array ['changes' => [['kind', 'parentid', 'parentpath', 'before' => [['id', 'name']], 'after']], 'hash']
+     */
+    public static function build_many(array $categoryids, string $scope, bool $recursive): array {
         global $DB;
         if (!in_array($scope, self::SCOPES, true)) {
             throw new \coding_exception('Unknown sort scope: ' . $scope);
         }
-        if ($categoryid !== 0) {
-            $DB->get_record('course_categories', ['id' => $categoryid], 'id', MUST_EXIST);
+        $roots = array_values(array_unique(array_map('intval', $categoryids)));
+        if (!$roots) {
+            throw new \coding_exception('No category to sort');
+        }
+        if (in_array(0, $roots, true) && count($roots) > 1) {
+            throw new \coding_exception('The top level can only be sorted alone');
+        }
+        foreach ($roots as $id) {
+            if ($id !== 0) {
+                $DB->get_record('course_categories', ['id' => $id], 'id', MUST_EXIST);
+            }
         }
         $withcategories = $scope !== 'courses';
         $withcourses = $scope !== 'categories';
@@ -68,24 +91,28 @@ class sortplan {
         $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name');
         $byparent = [];
         $names = [];
+        $parents = [];
         foreach ($records as $record) {
             $byparent[(int) $record->parent][] = (int) $record->id;
             $names[(int) $record->id] = self::format($record->name);
-        }
-        $parents = [];
-        foreach ($records as $record) {
             $parents[(int) $record->id] = (int) $record->parent;
         }
 
-        $courses = $withcourses ? self::courses($categoryid, $recursive) : [];
+        if ($recursive && count($roots) > 1) {
+            $roots = self::without_descendants($roots, $parents);
+        }
+
+        $courses = $withcourses ? self::courses($roots, $recursive) : [];
         $patterns = sorter::patterns();
         $changes = [];
-        $pending = [$categoryid];
+        $seen = [];
+        $pending = $roots;
         while ($pending) {
             $id = array_shift($pending);
             $children = $byparent[$id] ?? [];
             $path = self::path($id, $parents, $names);
-            if ($withcategories && $children) {
+            if ($withcategories && $children && !isset($seen['categories:' . $id])) {
+                $seen['categories:' . $id] = true;
                 $items = [];
                 foreach ($children as $child) {
                     $items[] = ['id' => $child, 'name' => $names[$child]];
@@ -95,7 +122,8 @@ class sortplan {
                     $changes[] = self::change('categories', $id, $path, $items, $after);
                 }
             }
-            if ($withcourses && $id !== 0 && !empty($courses[$id])) {
+            if ($withcourses && $id !== 0 && !empty($courses[$id]) && !isset($seen['courses:' . $id])) {
+                $seen['courses:' . $id] = true;
                 $after = sorter::propose_courses($courses[$id]);
                 if (sorter::differs(array_column($courses[$id], 'id'), $after)) {
                     $changes[] = self::change('courses', $id, $path, $courses[$id], $after);
@@ -110,12 +138,38 @@ class sortplan {
     }
 
     /**
+     * Drops every id that is below another one of the list.
+     *
+     * @param int[] $ids Distinct ids.
+     * @param int[] $parents Parent of each category id.
+     * @return int[]
+     */
+    private static function without_descendants(array $ids, array $parents): array {
+        $selected = array_flip($ids);
+        return array_values(array_filter($ids, function (int $id) use ($selected, $parents): bool {
+            $current = $parents[$id] ?? 0;
+            // The depth guard protects against a broken parent chain.
+            for ($depth = 0; $current !== 0 && $depth < 100; $depth++) {
+                if (isset($selected[$current])) {
+                    return false;
+                }
+                $current = $parents[$current] ?? 0;
+            }
+            return true;
+        }));
+    }
+
+    /**
      * Signature of a list of changes, over ids only.
+     *
+     * The changes are taken in a fixed order (kind, then parent), so the signature
+     * does not depend on the order of the selection.
      *
      * @param array $changes As in build().
      * @return string
      */
     public static function hash(array $changes): string {
+        usort($changes, fn(array $x, array $y): int => [$x['kind'], (int) $x['parentid']] <=> [$y['kind'], (int) $y['parentid']]);
         $ids = [];
         foreach ($changes as $change) {
             $ids[] = [
@@ -180,17 +234,18 @@ class sortplan {
     /**
      * Courses grouped by category, in their current order, with formatted names.
      *
-     * @param int $categoryid 0 for the whole site.
-     * @param bool $recursive False loads only the courses of the category itself.
+     * @param int[] $categoryids Selected categories; 0 for the whole site.
+     * @param bool $recursive False loads only the courses of the categories themselves.
      * @return array[] Lists of ['id' => int, 'name' => string] by category id.
      */
-    private static function courses(int $categoryid, bool $recursive): array {
+    private static function courses(array $categoryids, bool $recursive): array {
         global $DB;
         $where = 'id <> :site';
         $params = ['site' => SITEID];
         if (!$recursive) {
-            $where .= ' AND category = :category';
-            $params['category'] = $categoryid;
+            [$insql, $inparams] = $DB->get_in_or_equal($categoryids, SQL_PARAMS_NAMED, 'cat');
+            $where .= ' AND category ' . $insql;
+            $params += $inparams;
         }
         $records = $DB->get_records_select('course', $where, $params, 'category, sortorder, id', 'id, category, fullname');
         $bycategory = [];

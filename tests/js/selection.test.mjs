@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createModel } from 'tool_ceaorganizador/treemodel';
-import { createSelection, loadSubtreeCourses, loadAllPages, exclusive } from 'tool_ceaorganizador/selection';
+import { createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCategoryIds } from 'tool_ceaorganizador/selection';
 
 const row = (id, parent, name, sortorder) => ({ id, parent, name, sortorder });
 const model = () => createModel([
@@ -157,4 +157,14 @@ test('exclusive libera el candado cuando la tarea falla', async () => {
     await assert.rejects(run(), /fallo/);
     assert.equal(run.running(), false);
     await assert.rejects(run(), /fallo/);
+});
+
+test('selectedCategoryIds deja solo las categorías: sin ellas el botón de ordenar queda deshabilitado', () => {
+    const selection = createSelection();
+    selection.toggle('course', 7);
+    assert.deepEqual(selectedCategoryIds(selection.items()), []);
+    selection.toggle('category', 4);
+    selection.toggle('course', 8);
+    selection.toggle('category', 2);
+    assert.deepEqual(selectedCategoryIds(selection.items()), [4, 2]);
 });

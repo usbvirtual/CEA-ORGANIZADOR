@@ -33,7 +33,7 @@ import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
 import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
 import {open as openPicker} from 'tool_ceaorganizador/movepicker';
-import {createSelection, loadSubtreeCourses, loadAllPages, exclusive} from 'tool_ceaorganizador/selection';
+import {createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCategoryIds} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
@@ -60,6 +60,7 @@ const REQUESTS = [
     {key: 'autosortscope_both', component: 'tool_ceaorganizador'},
     {key: 'autosortscope_categories', component: 'tool_ceaorganizador'},
     {key: 'autosortscope_courses', component: 'tool_ceaorganizador'},
+    {key: 'autosortselected', component: 'tool_ceaorganizador'},
     {key: 'batchsplit', component: 'tool_ceaorganizador'},
     {key: 'before', component: 'tool_ceaorganizador'},
     {key: 'case_none', component: 'tool_ceaorganizador'},
@@ -156,6 +157,7 @@ const REQUESTS = [
     {key: 'selectitem', component: 'tool_ceaorganizador'},
     {key: 'selectresults', component: 'tool_ceaorganizador'},
     {key: 'shortname', component: 'tool_ceaorganizador'},
+    {key: 'sortselectedcount', component: 'tool_ceaorganizador'},
     {key: 'stale', component: 'tool_ceaorganizador'},
     {key: 'suffix', component: 'tool_ceaorganizador'},
     {key: 'undo', component: 'tool_ceaorganizador'},
@@ -342,13 +344,23 @@ export const init = ({root}) => {
             model: ctx.model,
             items: selection.items(),
         }));
+        const sortButton = document.createElement('button');
+        sortButton.type = 'button';
+        sortButton.className = 'btn btn-primary btn-sm';
+        sortButton.dataset.action = 'sortselection';
+        sortButton.textContent = strings.autosortselected;
+        sortButton.addEventListener('click', () => {
+            const categoryids = selectedCategoryIds(selection.items());
+            const paths = categoryids.map((id) => ctx.model.pathOf(id).join(' / '));
+            openSort({...panelOptions(sortButton), categoryids, paths});
+        });
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-secondary btn-sm';
         clearButton.dataset.action = 'clearselection';
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
-        bar.append(barText, renameButton, cloneButton, clearButton);
+        bar.append(barText, renameButton, cloneButton, sortButton, clearButton);
         toolbar.append(historyButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
@@ -362,6 +374,8 @@ export const init = ({root}) => {
             });
             bar.hidden = selection.count() === 0;
             barText.textContent = format(strings.selected, selection.count());
+            // Only categories can be sorted: the button needs at least one in the selection.
+            sortButton.disabled = selectedCategoryIds(selection.items()).length === 0;
         });
 
         const reviewButton = rootel.querySelector('[data-action="reviewsort"]');

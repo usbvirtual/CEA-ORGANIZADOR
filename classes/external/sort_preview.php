@@ -35,6 +35,9 @@ use tool_ceaorganizador\local\sortplan;
  * The lists an automatic sort would change, before and after, with the signature for sort_apply.
  */
 class sort_preview extends external_api {
+    /** @var int Most categories of one request. */
+    public const MAX_CATEGORIES = 200;
+
     /**
      * Parameters: category, scope and recursion; shared with sort_apply.
      *
@@ -46,6 +49,46 @@ class sort_preview extends external_api {
             'scope' => new external_value(PARAM_ALPHA, 'categories, courses or both'),
             'recursive' => new external_value(PARAM_BOOL, 'Also every category below', VALUE_DEFAULT, false),
         ];
+    }
+
+    /**
+     * The optional list of categories, shared with sort_apply.
+     *
+     * @return external_multiple_structure
+     */
+    public static function categoryids_parameter(): external_multiple_structure {
+        return new external_multiple_structure(
+            new external_value(PARAM_INT, 'Category id'),
+            'Several categories to sort; when present it replaces categoryid',
+            VALUE_DEFAULT,
+            []
+        );
+    }
+
+    /**
+     * The categories to sort: the list when it has elements, otherwise the single category.
+     *
+     * @param int $categoryid
+     * @param int[] $categoryids
+     * @return int[]
+     * @throws \invalid_parameter_exception
+     */
+    public static function resolve_categories(int $categoryid, array $categoryids): array {
+        if (!$categoryids) {
+            return [max(0, $categoryid)];
+        }
+        if ($categoryid !== 0) {
+            throw new \invalid_parameter_exception('categoryid and categoryids cannot be combined');
+        }
+        if (count($categoryids) > self::MAX_CATEGORIES) {
+            throw new \invalid_parameter_exception('Too many categories (maximum ' . self::MAX_CATEGORIES . ')');
+        }
+        foreach ($categoryids as $id) {
+            if ((int) $id <= 0) {
+                throw new \invalid_parameter_exception('Invalid category id: ' . $id);
+            }
+        }
+        return array_values(array_unique(array_map('intval', $categoryids)));
     }
 
     /**
@@ -66,7 +109,9 @@ class sort_preview extends external_api {
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
-        return new external_function_parameters(self::plan_parameters());
+        return new external_function_parameters(self::plan_parameters() + [
+            'categoryids' => self::categoryids_parameter(),
+        ]);
     }
 
     /**
@@ -75,20 +120,23 @@ class sort_preview extends external_api {
      * @param int $categoryid
      * @param string $scope
      * @param bool $recursive
+     * @param int[] $categoryids Several categories; replaces categoryid when not empty.
      * @return array ['changes' => array, 'hash' => string]
      */
-    public static function execute(int $categoryid, string $scope, bool $recursive = false): array {
+    public static function execute(int $categoryid, string $scope, bool $recursive = false, array $categoryids = []): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'categoryid' => $categoryid,
             'scope' => $scope,
             'recursive' => $recursive,
+            'categoryids' => $categoryids,
         ]);
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
         self::validate_scope($params['scope']);
+        $ids = self::resolve_categories($params['categoryid'], $params['categoryids']);
 
-        return sortplan::build(max(0, $params['categoryid']), $params['scope'], $params['recursive']);
+        return sortplan::build_many($ids, $params['scope'], $params['recursive']);
     }
 
     /**

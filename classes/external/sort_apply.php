@@ -45,6 +45,7 @@ class sort_apply extends external_api {
     public static function execute_parameters(): external_function_parameters {
         return new external_function_parameters(sort_preview::plan_parameters() + [
             'hash' => new external_value(PARAM_ALPHANUM, 'Hash returned by sort_preview'),
+            'categoryids' => sort_preview::categoryids_parameter(),
         ]);
     }
 
@@ -55,9 +56,10 @@ class sort_apply extends external_api {
      * @param string $scope
      * @param bool $recursive
      * @param string $hash
+     * @param int[] $categoryids Several categories; replaces categoryid when not empty.
      * @return array ['status' => 'ok'|'stale', 'logid' => int]; logid is 0 when nothing was recorded.
      */
-    public static function execute(int $categoryid, string $scope, bool $recursive, string $hash): array {
+    public static function execute(int $categoryid, string $scope, bool $recursive, string $hash, array $categoryids = []): array {
         global $DB;
         // A recursive sort of a large tree can take a while.
         \core_php_time_limit::raise();
@@ -67,16 +69,17 @@ class sort_apply extends external_api {
             'scope' => $scope,
             'recursive' => $recursive,
             'hash' => $hash,
+            'categoryids' => $categoryids,
         ]);
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
         sort_preview::validate_scope($params['scope']);
-        $categoryid = max(0, $params['categoryid']);
+        $ids = sort_preview::resolve_categories($params['categoryid'], $params['categoryids']);
 
         $lock = guard::lock();
         try {
-            $plan = sortplan::build($categoryid, $params['scope'], $params['recursive']);
+            $plan = sortplan::build_many($ids, $params['scope'], $params['recursive']);
             if (!hash_equals($plan['hash'], $params['hash'])) {
                 return ['status' => 'stale', 'logid' => 0];
             }
@@ -107,7 +110,7 @@ class sort_apply extends external_api {
                     mover::apply_category_order($entry['parentid'], $entry['after'], false);
                 }
                 \core_course_category::resort_categories_cleanup(true);
-                $logid = journal::record('sort', self::summary($categoryid), $payload);
+                $logid = journal::record('sort', self::summary($ids), $payload);
                 $transaction->allow_commit();
             } catch (\Throwable $e) {
                 guard::rollback($transaction, $e);
@@ -121,14 +124,20 @@ class sort_apply extends external_api {
     /**
      * Summary for the history, with the raw name; the history formats it on output.
      *
-     * @param int $categoryid
+     * @param int[] $ids Sorted categories; with several, their names are listed.
      * @return string
      */
-    private static function summary(int $categoryid): string {
+    private static function summary(array $ids): string {
         global $DB;
-        $name = $categoryid === 0
-            ? get_string('top')
-            : (string) $DB->get_field('course_categories', 'name', ['id' => $categoryid], MUST_EXIST);
+        if ($ids === [0]) {
+            $name = get_string('top');
+        } else {
+            $names = [];
+            foreach ($ids as $id) {
+                $names[] = (string) $DB->get_field('course_categories', 'name', ['id' => $id], MUST_EXIST);
+            }
+            $name = implode(', ', $names);
+        }
         return get_string('summary_sort', 'tool_ceaorganizador', $name);
     }
 

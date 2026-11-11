@@ -24,6 +24,14 @@
 const keyOf = (type, id) => `${type}:${id}`;
 
 /**
+ * Ids of the categories among the items of a selection, in their order.
+ *
+ * @param {Object[]} items Items {type, id}, as selection.items() gives them.
+ * @returns {Number[]}
+ */
+export const selectedCategoryIds = (items) => items.filter((item) => item.type === 'category').map((item) => item.id);
+
+/**
  * Loads every page of get_courses for one category (0 for the whole site) and one search.
  *
  * @param {Object} api Object with getCourses(categoryid, search, page); pages are zero-based.

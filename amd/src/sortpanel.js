@@ -38,7 +38,9 @@ let counter = 0;
  * @param {Function} options.onError Receives the exceptions of the web services.
  * @param {Function} options.undo Undoes a journal entry.
  * @param {Function} options.reload Reloads the tree and the summary from the server.
- * @param {Number} options.categoryid Category to sort, 0 for the whole site.
+ * @param {Number} [options.categoryid] Category to sort, 0 for the whole site; ignored with categoryids.
+ * @param {Number[]} [options.categoryids] Several categories to sort at once, with one preview and one undo.
+ * @param {String[]} [options.paths] Formatted paths of those categories, for the subtitle.
  * @param {String} [options.path] Formatted path of the category, for the subtitle.
  * @param {Boolean} [options.recursive] Initial state of the checkbox; true for the whole site.
  * @param {Function} [options.decode] Turns a formatted string into plain text.
@@ -47,7 +49,7 @@ let counter = 0;
  * @returns {{close: Function, element: Element, load: Function}}
  */
 export const open = ({
-    api, strings, toast, onError, undo, reload, categoryid, path = '', recursive, decode = (text) => text, trigger,
+    api, strings, toast, onError, undo, reload, categoryid = 0, categoryids = [], paths = [], path = '', recursive, decode = (text) => text, trigger,
     doc = document,
 }) => {
     const create = (tag, className, text) => {
@@ -63,7 +65,13 @@ export const open = ({
 
     const dialog = openDialog({doc, title: strings.autosort, trigger, className: 'tool-ceaorganizador-dialogo-ancho'});
     const root = dialog.element;
-    if (path) {
+    const many = categoryids.length > 0;
+    if (many) {
+        const count = create('p', 'tool-ceaorganizador-ruta', String(strings.sortselectedcount).replace('{$a}', categoryids.length));
+        count.dataset.region = 'selectedcount';
+        count.title = paths.map((entry) => decode(entry)).join(' | ');
+        root.appendChild(count);
+    } else if (path) {
         root.appendChild(create('p', 'tool-ceaorganizador-ruta', decode(path)));
     }
 
@@ -88,7 +96,7 @@ export const open = ({
     deep.type = 'checkbox';
     deep.id = `tool-ceaorganizador-sort-${counter}-recursive`;
     deep.dataset.field = 'recursive';
-    deep.checked = recursive === undefined ? categoryid === 0 : Boolean(recursive);
+    deep.checked = recursive === undefined ? (!many && categoryid === 0) : Boolean(recursive);
     const deepLabel = create('label', 'custom-control-label form-check-label', strings.autosortrecursive);
     deepLabel.htmlFor = deep.id;
     check.append(deep, deepLabel);
@@ -121,7 +129,9 @@ export const open = ({
         notice.hidden = text === '';
     };
 
-    const params = () => ({categoryid, scope: scope.value, recursive: deep.checked});
+    const params = () => (many
+        ? {categoryid: 0, categoryids, scope: scope.value, recursive: deep.checked}
+        : {categoryid, scope: scope.value, recursive: deep.checked});
 
     const column = (heading, list) => {
         const box = create('div', 'tool-ceaorganizador-columna');

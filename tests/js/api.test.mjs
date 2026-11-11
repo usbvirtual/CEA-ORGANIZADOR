@@ -14,6 +14,7 @@ test('cada método envía la función web y los parámetros exactos', async () =
     await api.moveCourse(9, 4, 0);
     await api.sortPreview({ categoryid: 1 });
     await api.sortApply({ categoryid: 1, hash: 'abc' });
+    await api.sortPreview({ categoryid: 0, categoryids: [4, 5], scope: 'both' });
     await api.renamePreview({ items: [], ops: '[]' });
     await api.renameApply({ changes: [] });
     await api.undo(7);
@@ -25,6 +26,7 @@ test('cada método envía la función web y los parámetros exactos', async () =
         ['tool_ceaorganizador_move_course', { id: 9, categoryid: 4, afterid: 0 }],
         ['tool_ceaorganizador_sort_preview', { categoryid: 1 }],
         ['tool_ceaorganizador_sort_apply', { categoryid: 1, hash: 'abc' }],
+        ['tool_ceaorganizador_sort_preview', { categoryid: 0, categoryids: [4, 5], scope: 'both' }],
         ['tool_ceaorganizador_rename_preview', { items: [], ops: '[]' }],
         ['tool_ceaorganizador_rename_apply', { changes: [] }],
         ['tool_ceaorganizador_undo', { logid: 7 }],
