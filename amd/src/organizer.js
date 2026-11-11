@@ -41,6 +41,7 @@ import {open as openMerge} from 'tool_ceaorganizador/mergepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
+import {open as openDelete} from 'tool_ceaorganizador/deletepanel';
 import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
 
 const SEARCH_DELAY = 250;
@@ -115,6 +116,21 @@ const REQUESTS = [
     {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
+    {key: 'deleteapply', component: 'tool_ceaorganizador'},
+    {key: 'deletecategory', component: 'tool_ceaorganizador'},
+    {key: 'deletedone', component: 'tool_ceaorganizador'},
+    {key: 'deletenote', component: 'tool_ceaorganizador'},
+    {key: 'deletenothing', component: 'tool_ceaorganizador'},
+    {key: 'deletereason_haschildren', component: 'tool_ceaorganizador'},
+    {key: 'deletereason_hascontent', component: 'tool_ceaorganizador'},
+    {key: 'deletereason_hascourses', component: 'tool_ceaorganizador'},
+    {key: 'deletereason_nopermission', component: 'tool_ceaorganizador'},
+    {key: 'deletereason_notfound', component: 'tool_ceaorganizador'},
+    {key: 'deleteselected', component: 'tool_ceaorganizador'},
+    {key: 'deleteskipped', component: 'tool_ceaorganizador'},
+    {key: 'deleteskippedcount', component: 'tool_ceaorganizador'},
+    {key: 'deletetitle', component: 'tool_ceaorganizador'},
+    {key: 'deletewill', component: 'tool_ceaorganizador'},
     {key: 'dropafter', component: 'tool_ceaorganizador'},
     {key: 'dropbefore', component: 'tool_ceaorganizador'},
     {key: 'dropcancelled', component: 'tool_ceaorganizador'},
@@ -300,6 +316,12 @@ export const init = ({root}) => {
             getModel: () => ctx.model,
             wwwroot: Config.wwwroot,
         });
+        // Deleting: only categories are sent; the deleted ones leave the selection.
+        const deleteOptions = (trigger, ids) => ({
+            ...panelOptions(trigger),
+            ids,
+            onApplied: () => selection.clear(),
+        });
         // Every course of the category and of its subcategories, not only the ones drawn.
         const contentsOf = async(id) => {
             const own = createSelection();
@@ -356,6 +378,8 @@ export const init = ({root}) => {
                 openMerge({...mergeOptions(trigger), sourceid: dragged.id});
             } else if (action === 'clone') {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
+            } else if (action === 'delete') {
+                openDelete(deleteOptions(trigger, [dragged.id]));
             } else if (action === 'hide' || action === 'show') {
                 visibility.apply([dragged.id], action === 'show', trigger);
             } else if (action === 'selectcontents') {
@@ -454,6 +478,15 @@ export const init = ({root}) => {
             button.addEventListener('click', () => visibility.apply(selectedCourseIds(selection.items()), visible, button));
             return button;
         };
+        // Only categories are deleted: the courses of the selection are left out.
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'btn btn-secondary btn-sm';
+        deleteButton.dataset.action = 'deleteselection';
+        deleteButton.textContent = strings.deleteselected;
+        deleteButton.addEventListener('click', () => {
+            openDelete(deleteOptions(deleteButton, selectedCategoryIds(selection.items())));
+        });
         const hideButton = visibilityButton('hideselection', strings.hideselected, false);
         const showButton = visibilityButton('showselection', strings.showselected, true);
         const clearButton = document.createElement('button');
@@ -462,7 +495,7 @@ export const init = ({root}) => {
         clearButton.dataset.action = 'clearselection';
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
-        bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, clearButton);
+        bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, deleteButton, clearButton);
         toolbar.append(historyButton, suggestButton, mergeButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
@@ -476,8 +509,10 @@ export const init = ({root}) => {
             });
             bar.hidden = selection.count() === 0;
             barText.textContent = format(strings.selected, selection.count());
-            // Only categories can be sorted: the button needs at least one in the selection.
-            sortButton.disabled = selectedCategoryIds(selection.items()).length === 0;
+            // Only categories can be sorted or deleted: those buttons need at least one in the selection.
+            const nocategories = selectedCategoryIds(selection.items()).length === 0;
+            sortButton.disabled = nocategories;
+            deleteButton.disabled = nocategories;
             const nocourses = selectedCourseIds(selection.items()).length === 0;
             hideButton.disabled = nocourses;
             showButton.disabled = nocourses;

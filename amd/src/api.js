@@ -128,3 +128,15 @@ export const cloneStatus = (batchid) => call('clone_status', {batchid});
  * @returns {Promise} {changed, skipped, logid}.
  */
 export const setVisibility = (courseids, visible) => call('set_visibility', {courseids, visible});
+
+/**
+ * @param {Number[]} ids Categories only.
+ * @returns {Promise} {delete: [{id, path}], skipped: [{id, name, path, reason}]}.
+ */
+export const deletePreview = (ids) => call('delete_preview', {ids});
+
+/**
+ * @param {Number[]} ids Categories only.
+ * @returns {Promise} {status, logid, deleted, skipped: [{id, name, reason}]}.
+ */
+export const deleteApply = (ids) => call('delete_apply', {ids});

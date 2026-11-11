@@ -29,6 +29,8 @@ namespace tool_ceaorganizador\local;
  *
  * The methods do not check capabilities; callers use check_category() and
  * check_course() first, so the same methods serve the undo of the journal.
+ * category_content() is the single rule of what an empty category is: delete_empty_category()
+ * and the deletion of categories (deleterunner) both rely on it.
  */
 class mover {
     /**
@@ -450,37 +452,77 @@ class mover {
     /**
      * Whether a category holds anything delete_full() would destroy.
      *
-     * Any question category in its context counts, even an empty «top» one: from Moodle 5.0 delete_full() no
-     * longer deletes question categories and would leave the row orphaned. The cost is that, rarely, an empty
-     * category is kept and must be deleted by hand.
-     *
      * @param int $id
      * @return bool
      */
     private static function category_has_content(int $id): bool {
+        return self::category_content($id) !== '';
+    }
+
+    /**
+     * Why deleting a category would lose something, or '' when it is empty.
+     *
+     * Empty means no courses, no subcategories and no content of its own: recycle bin items, content bank
+     * items, events, grade letters or question categories. Any question category in its context counts, even
+     * an empty «top» one: from Moodle 5.0 delete_full() no longer deletes question categories and would leave
+     * the row orphaned. The cost is that, rarely, an empty category is kept and must be deleted by hand.
+     *
+     * @param int $id
+     * @param int[] $gone Subcategories that do not count, because the caller deletes them first.
+     * @return string '', 'hascourses', 'haschildren' or 'hascontent'.
+     */
+    public static function category_content(int $id, array $gone = []): string {
         global $DB;
-        if ($DB->record_exists('course', ['category' => $id]) || $DB->record_exists('course_categories', ['parent' => $id])) {
-            return true;
+        if ($DB->record_exists('course', ['category' => $id])) {
+            return 'hascourses';
+        }
+        $children = $DB->get_fieldset_select('course_categories', 'id', 'parent = :parent', ['parent' => $id]);
+        $children = array_map('intval', $children);
+        if (array_diff($children, array_map('intval', $gone))) {
+            return 'haschildren';
         }
         $manager = $DB->get_manager();
         if (
             $manager->table_exists('tool_recyclebin_category')
             && $DB->record_exists('tool_recyclebin_category', ['categoryid' => $id])
         ) {
-            return true;
+            return 'hascontent';
         }
         if ($DB->record_exists('event', ['categoryid' => $id])) {
-            return true;
+            return 'hascontent';
         }
         $contextid = $DB->get_field('context', 'id', ['contextlevel' => CONTEXT_COURSECAT, 'instanceid' => $id]);
         if ($contextid === false) {
-            return false;
+            return '';
         }
         $contextid = (int) $contextid;
         // Any question category counts, an empty «top» too: questions hang from these categories.
-        return $DB->record_exists('contentbank_content', ['contextid' => $contextid])
+        $owned = $DB->record_exists('contentbank_content', ['contextid' => $contextid])
             || $DB->record_exists('grade_letters', ['contextid' => $contextid])
             || $DB->record_exists('question_categories', ['contextid' => $contextid]);
+        return $owned ? 'hascontent' : '';
+    }
+
+    /**
+     * Creates a category with the core API; it is appended last among its siblings.
+     *
+     * The caller has checked moodle/category:manage on the parent. A visible value of 0 creates it hidden;
+     * otherwise it inherits the visibility of the parent, as in the core.
+     *
+     * @param array $data Fields for core_course_category::create(): name, idnumber, description,
+     *      descriptionformat, parent, visible and, when the site allows category themes, theme.
+     * @return int Id of the new category.
+     */
+    public static function create_category(array $data): int {
+        global $DB;
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            $category = \core_course_category::create($data);
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            guard::rollback($transaction, $e);
+        }
+        return (int) $category->id;
     }
 
     /**

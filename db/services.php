@@ -169,4 +169,20 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_delete_preview' => [
+        'classname' => \tool_ceaorganizador\external\delete_preview::class,
+        'description' => 'Which categories of a batch would be deleted (the empty ones) and which kept, with the reason.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_delete_apply' => [
+        'classname' => \tool_ceaorganizador\external\delete_apply::class,
+        'description' => 'Deletes the empty categories of a batch and keeps the others, with the reason.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
 ];

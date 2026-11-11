@@ -38,6 +38,11 @@ namespace tool_ceaorganizador\local;
  * - merge: {targetid, sourceids, created: [category ids, in creation order], items: [{id, fromcategory, tocategory,
  *   fromvisible, tovisible}]}, only the courses moved; see mergerunner. Undo moves them back and deletes the
  *   created categories that are empty then; one that received other content is kept.
+ * - delete: {items: [{id, name, idnumber, description, descriptionformat, parent, afterid, visible, visibleold,
+ *   theme (only when set)}]}, in deletion order (deepest first); see deleterunner. Undo creates them again in the
+ *   reverse order, with new ids: a parent deleted in the same batch is created first and its children go under
+ *   the new id. Each one goes back right after its old previous sibling when that one is still there; otherwise
+ *   it stays last.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -48,7 +53,7 @@ class journal {
     public const TABLE = 'tool_ceaorganizador_log';
 
     /** @var string[] Accepted actions. */
-    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility', 'merge'];
+    public const ACTIONS = ['move_category', 'move_course', 'sort', 'rename', 'clone', 'visibility', 'merge', 'delete'];
 
     /** @var int Length of the summary column. */
     public const SUMMARY_MAX = 255;
@@ -377,6 +382,8 @@ class journal {
                 return self::conflicts_visibility($payload);
             case 'merge':
                 return self::conflicts_merge($payload);
+            case 'delete':
+                return self::conflicts_delete($payload);
         }
         throw new \coding_exception('Unknown journal action: ' . $action);
     }
@@ -674,6 +681,82 @@ class journal {
     }
 
     /**
+     * Conflicts of a deletion: the old parent must still exist, unless the same batch deleted it, and the old
+     * idnumber must be free.
+     *
+     * @param array $payload
+     * @return string[]
+     */
+    private static function conflicts_delete(array $payload): array {
+        global $DB;
+        $batch = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $batch[(int) $item['id']] = true;
+        }
+        $conflicts = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $name = format_string((string) $item['name'], true, ['context' => \context_system::instance()]);
+            $parent = (int) $item['parent'];
+            if ($parent !== 0 && !isset($batch[$parent]) && !$DB->record_exists('course_categories', ['id' => $parent])) {
+                $conflicts[] = self::conflict('parentmissing', $name);
+            }
+            // Compared as core_course_category::create() does, which would refuse it.
+            $idnumber = (string) ($item['idnumber'] ?? '');
+            if ($idnumber !== '' && $DB->record_exists('course_categories', ['idnumber' => $idnumber])) {
+                $conflicts[] = self::conflict('idnumbertaken', $name);
+            }
+        }
+        return $conflicts;
+    }
+
+    /**
+     * Undoes a deletion: creates the categories again, shallowest first, each in its old place when it can.
+     *
+     * The items are in deletion order, deepest first, so the reverse order creates every parent before its
+     * children and every previous sibling before the category that followed it. The new ids are mapped from the
+     * old ones. A category hidden only because its parent was hidden is created visible under the hidden parent,
+     * so it shows again with the parent, as before.
+     *
+     * @param array $payload
+     */
+    private static function restore_delete(array $payload): void {
+        global $DB;
+        $map = [];
+        foreach (array_reverse($payload['items'] ?? []) as $item) {
+            $oldparent = (int) $item['parent'];
+            $parent = $map[$oldparent] ?? $oldparent;
+            $visible = (int) ($item['visible'] ?? 1);
+            if (
+                !$visible
+                && !empty($item['visibleold'])
+                && $parent !== 0
+                && !$DB->get_field('course_categories', 'visible', ['id' => $parent])
+            ) {
+                $visible = 1;
+            }
+            $data = [
+                'name' => (string) $item['name'],
+                'idnumber' => (string) ($item['idnumber'] ?? ''),
+                'description' => (string) ($item['description'] ?? ''),
+                'descriptionformat' => (int) ($item['descriptionformat'] ?? FORMAT_MOODLE),
+                'parent' => $parent,
+                'visible' => $visible,
+            ];
+            if ((string) ($item['theme'] ?? '') !== '') {
+                $data['theme'] = (string) $item['theme'];
+            }
+            $id = mover::create_category($data);
+            $map[(int) $item['id']] = $id;
+            $afterid = (int) ($item['afterid'] ?? 0);
+            $afterid = $map[$afterid] ?? $afterid;
+            // Created last; it goes back after its old previous sibling, or first, when that place still exists.
+            if ($afterid === 0 || in_array($afterid, tree::sibling_categories($parent), true)) {
+                mover::move_category($id, $parent, $afterid);
+            }
+        }
+    }
+
+    /**
      * Restores the state before the operation through the mover. Runs inside the undo transaction.
      *
      * @param string $action
@@ -726,6 +809,9 @@ class journal {
                 return;
             case 'merge':
                 self::restore_merge($payload);
+                return;
+            case 'delete':
+                self::restore_delete($payload);
                 return;
         }
         throw new \coding_exception('Unknown journal action: ' . $action);

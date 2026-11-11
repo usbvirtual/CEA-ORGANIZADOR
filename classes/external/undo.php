@@ -131,6 +131,29 @@ class undo extends external_api {
             case 'merge':
                 self::check_merge($payload);
                 return;
+            case 'delete':
+                self::check_delete($payload);
+                return;
+        }
+    }
+
+    /**
+     * Native capabilities of undoing a deletion: creating each category needs moodle/category:manage on its
+     * parent, as in the core. A parent deleted in the same batch is created by the undo itself, under a parent
+     * that is checked; the top level is checked in the system context.
+     *
+     * @param array $payload
+     */
+    private static function check_delete(array $payload): void {
+        $batch = [];
+        foreach ($payload['items'] ?? [] as $item) {
+            $batch[(int) $item['id']] = true;
+        }
+        foreach ($payload['items'] ?? [] as $item) {
+            $parent = (int) $item['parent'];
+            if (!isset($batch[$parent])) {
+                self::check_category($parent);
+            }
         }
     }
 

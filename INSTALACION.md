@@ -131,9 +131,25 @@ Reúne en una sola categoría de semillas los cursos que están repartidos en va
 
 Deshacer se rechaza, con los conflictos listados, si algún curso ya no está donde lo dejó la unificación o si su categoría original desapareció. Si mover a una categoría oculta ocultó un curso, deshacer lo vuelve a mostrar.
 
-**Categorías de origen vacías.** La herramienta **no** las borra. Al terminar, el panel lista con enlaces las que quedaron sin cursos ni subcategorías, de la más profunda a la más superficial, para borrarlas desde Moodle.
+**Categorías de origen vacías.** La unificación **no** las borra. Al terminar, el panel lista con enlaces las que quedaron sin cursos ni subcategorías, de la más profunda a la más superficial; se pueden borrar después con «Borrar categorías» o desde Moodle.
 
 **Límite.** Máximo **1000** cursos por unificación; si hay más, se rechaza. Se divide en varias unificaciones.
+
+### Borrar categorías
+
+Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni contenido.
+
+**Dónde está.** «Borrar» en el menú «⋯» de una categoría, y «Borrar seleccionadas» en la barra de selección (actúa solo sobre las categorías seleccionadas; los cursos seleccionados se ignoran).
+
+**Qué es vacía.** Sin cursos, sin subcategorías y sin contenido propio: elementos de la papelera de reciclaje, del banco de contenidos, eventos, letras de calificación ni categorías de preguntas (cualquiera, incluso una «top» vacía). Si se seleccionan una categoría y todas sus subcategorías vacías, se borran juntas, de la más profunda a la más superficial.
+
+**Confirmación.** Antes de borrar, el diálogo lista lo que se borrará y lo que se conservará, con el motivo: tiene cursos, tiene subcategorías, tiene contenido propio, no tienes permiso o ya no existe. Las que se conservan nunca se borran.
+
+**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en la categoría y en su categoría padre (en el sistema si es de nivel superior), como exige Moodle. Sin ese permiso la categoría se conserva.
+
+**Deshacer.** Queda una entrada en el historial («Borrar: …») y se puede deshacer: las categorías se vuelven a crear con su nombre, número de ID, descripción, visibilidad, tema (si lo tenían) y, en lo posible, su posición entre las hermanas. **Se crean con ids nuevos**: los enlaces o informes que usaban el id anterior no las encuentran. No se recuperan las asignaciones de roles ni los permisos definidos en la categoría, ni los archivos incrustados en la descripción; las cohortes de la categoría ya habían pasado a la categoría padre al borrarla. Deshacer se rechaza, sin cambiar nada, si la categoría padre original ya no existe o si otra categoría usa ahora su número de ID.
+
+**Límite.** Máximo **500** categorías por lote.
 
 ### Clonar semillas a un periodo
 

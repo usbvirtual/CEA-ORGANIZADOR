@@ -53,6 +53,13 @@ Este plugin sigue la skill `creating-cea-moodle-plugins` (estándares y leccione
 - La acción `clone` no tiene deshacer (`error_cannotundoclone`): deshacerla borraría cursos.
 - El estado de una copia sale de `backup_controllers` (restauración por `restoreid`, con respaldo por `backupid` si el respaldo falló) y, sin controladores, de la existencia del curso.
 - El lote de clonado es de 100 cursos (`cloneplan::MAX_ROWS`), para que la petición sea corta.
+- «Borrar categorías» solo borra categorías vacías según `mover::category_content` (la misma regla que `delete_empty_category`; no se duplica). Las demás se omiten con un motivo (`hascourses`, `haschildren`, `hascontent`, `nopermission`, `notfound`), nunca se borran.
+- `deleterunner` procesa de la más profunda a la más superficial y comprueba otra vez cada una justo antes de borrarla: un padre seleccionado cuyas hijas seleccionadas y vacías se borran en el mismo lote se borra también. La vista previa simula lo mismo con la lista de hijas que se irán (`$gone`).
+- El permiso de borrar sigue a `core_course_category::can_delete()`: `moodle/category:manage` en la categoría y en su padre (sistema para el nivel superior). Sin él se omite (`nopermission`), no se rechaza el lote.
+- `delete_apply` toma el candado en la capa external; `deleterunner::run` es una transacción delegada: si falla el registro (`record_delete`, gancho de prueba), se revierte todo.
+- El diario `delete` guarda cada categoría en orden de borrado (la más profunda primero) con nombre crudo, idnumber, descripción y formato, padre, `afterid` (hermana anterior), `visible`, `visibleold` y tema si lo tiene. Deshacer recorre al revés: crea padres antes que hijas (mapa id viejo → id nuevo) y cada una antes de la que la seguía, así `afterid` siempre existe; si la hermana anterior ya no está, la categoría queda al final.
+- Deshacer un borrado crea categorías con **ids nuevos** (lo dicen la interfaz y la documentación). Una categoría oculta solo porque su padre estaba oculto (`visible` 0, `visibleold` 1) se crea visible bajo el padre oculto, para que vuelva a verse con él. No se recuperan roles, permisos ni archivos de la descripción.
+- Conflictos de deshacer un borrado: el padre original (que no estaba en el lote) ya no existe, o el idnumber lo usa otra categoría. `undo::check_delete` exige `moodle/category:manage` en cada padre original que no estaba en el lote.
 - En el destino se exige también `moodle/restore:restorecourse`, más estricto que el núcleo: sin él la restauración dejaría un curso «Copiando…» vacío tras el cron.
 
 ---
