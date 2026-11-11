@@ -82,3 +82,17 @@ export const renameApply = (params) => call('rename_apply', params);
 export const undo = (logid) => call('undo', {logid});
 
 export const history = (page) => call('history', {page});
+
+/**
+ * @param {Object} params {items, periodid, periodlabel, startdate, enddate}.
+ * @returns {Promise}
+ */
+export const clonePreview = (params) => call('clone_preview', params);
+
+/**
+ * @param {Object} params Plan parameters of clone_preview plus {rows, hash}.
+ * @returns {Promise}
+ */
+export const cloneApply = (params) => call('clone_apply', params);
+
+export const cloneStatus = (batchid) => call('clone_status', {batchid});

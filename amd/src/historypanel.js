@@ -129,7 +129,10 @@ export const open = ({api, strings, onError, undo, reload, decode = (text) => te
             const when = new Date(row.timecreated * 1000).toLocaleString();
             const who = row.userfullname ? `${decode(row.userfullname)} · ` : '';
             li.appendChild(create('div', 'tool-ceaorganizador-ruta', `${who}${when}`));
-            if (row.undone) {
+            if (row.action === 'clone') {
+                // A cloning batch cannot be undone: the new courses are deleted from Moodle.
+                li.dataset.kind = 'clone';
+            } else if (row.undone) {
                 li.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.historyundone));
             } else {
                 const undoButton = create('button', 'btn btn-secondary btn-sm', strings.undo);

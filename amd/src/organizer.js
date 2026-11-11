@@ -36,6 +36,7 @@ import {open as openPicker} from 'tool_ceaorganizador/movepicker';
 import {createSelection, loadSubtreeCourses, loadAllPages, exclusive} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
+import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 
 const SEARCH_DELAY = 250;
@@ -68,6 +69,38 @@ const REQUESTS = [
     {key: 'casesensitive', component: 'tool_ceaorganizador'},
     {key: 'clearselection', component: 'tool_ceaorganizador'},
     {key: 'close', component: 'tool_ceaorganizador'},
+    {key: 'cloneapply', component: 'tool_ceaorganizador'},
+    {key: 'cloneend', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_alreadycloned', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_dates', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_destinsideseeds', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_empty', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_label', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_nopermission', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_noperiod', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_queuefailed', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_shortnameduplicate', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_shortnametaken', component: 'tool_ceaorganizador'},
+    {key: 'cloneerror_toolong', component: 'tool_ceaorganizador'},
+    {key: 'clonecronnote', component: 'tool_ceaorganizador'},
+    {key: 'clonedest', component: 'tool_ceaorganizador'},
+    {key: 'clonedone', component: 'tool_ceaorganizador'},
+    {key: 'clonefailed', component: 'tool_ceaorganizador'},
+    {key: 'clonelabel', component: 'tool_ceaorganizador'},
+    {key: 'clonenames', component: 'tool_ceaorganizador'},
+    {key: 'clonenew', component: 'tool_ceaorganizador'},
+    {key: 'clonenoperiods', component: 'tool_ceaorganizador'},
+    {key: 'clonenothing', component: 'tool_ceaorganizador'},
+    {key: 'clonepending', component: 'tool_ceaorganizador'},
+    {key: 'cloneperiod', component: 'tool_ceaorganizador'},
+    {key: 'clonepreview', component: 'tool_ceaorganizador'},
+    {key: 'cloneprogress', component: 'tool_ceaorganizador'},
+    {key: 'clonesource', component: 'tool_ceaorganizador'},
+    {key: 'clonestart', component: 'tool_ceaorganizador'},
+    {key: 'clonestate', component: 'tool_ceaorganizador'},
+    {key: 'clonetoperiod', component: 'tool_ceaorganizador'},
+    {key: 'clonetotal', component: 'tool_ceaorganizador'},
+    {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
     {key: 'dropafter', component: 'tool_ceaorganizador'},
@@ -252,6 +285,8 @@ export const init = ({root}) => {
                 if (pending) {
                     pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
                 }
+            } else if (action === 'clone') {
+                openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
             } else if (action === 'selectcontents') {
                 const pending = withLoading(trigger, () => loadSubtreeCourses(api, ctx.model, dragged.id));
                 if (pending) {
@@ -297,13 +332,23 @@ export const init = ({root}) => {
         renameButton.dataset.action = 'renameselection';
         renameButton.textContent = strings.rename;
         renameButton.addEventListener('click', () => openRename({...panelOptions(renameButton), items: selection.items()}));
+        const cloneButton = document.createElement('button');
+        cloneButton.type = 'button';
+        cloneButton.className = 'btn btn-primary btn-sm';
+        cloneButton.dataset.action = 'cloneselection';
+        cloneButton.textContent = strings.clonetoperiod;
+        cloneButton.addEventListener('click', () => openClone({
+            ...panelOptions(cloneButton),
+            model: ctx.model,
+            items: selection.items(),
+        }));
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-secondary btn-sm';
         clearButton.dataset.action = 'clearselection';
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
-        bar.append(barText, renameButton, clearButton);
+        bar.append(barText, renameButton, cloneButton, clearButton);
         toolbar.append(historyButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';

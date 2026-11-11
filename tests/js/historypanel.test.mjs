@@ -40,3 +40,34 @@ test('los conflictos de un deshacer se decodifican y se escriben como texto', as
     assert.deepEqual(items, ['«A & B» cambió', '<b>x</b>']);
     assert.equal(region.querySelector('b'), null);
 });
+
+test('una entrada de clonado no tiene botón Deshacer', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
+    const { document } = dom.window;
+    globalThis.DOMParser = dom.window.DOMParser;
+    const api = {
+        history: async () => ({
+            rows: [
+                { id: 4, action: 'clone', summary: 'Clonado a 2027-01 · 3 cursos', userfullname: '', timecreated: 1, undone: false },
+                { id: 3, action: 'sort', summary: 'Auto ordenar', userfullname: '', timecreated: 1, undone: false },
+            ],
+            total: 2,
+            perpage: 20,
+        }),
+    };
+    open({
+        api,
+        strings,
+        onError: (error) => {
+            throw error;
+        },
+        undo: async () => null,
+        reload: async () => {},
+        decode: decodeEntities,
+        trigger: document.getElementById('t'),
+        doc: document,
+    });
+    await flush();
+    assert.equal(document.querySelector('[data-id="4"] [data-action="undo"]'), null);
+    assert.ok(document.querySelector('[data-id="3"] [data-action="undo"]'));
+});
