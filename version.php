@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'tool_ceaorganizador';
-$plugin->version   = 2026111303;      // AAAAMMDDXX: subir en cada entrega; nunca bajar.
+$plugin->version   = 2026111304;      // AAAAMMDDXX: subir en cada entrega; nunca bajar.
 $plugin->requires  = 2024100700;      // Moodle 4.5.
 $plugin->supported = [405, 503];      // Solo lo que cubre la matriz de CI.
 $plugin->maturity  = MATURITY_BETA;   // MATURITY_STABLE cuando pase CI y la prueba en eCampus.

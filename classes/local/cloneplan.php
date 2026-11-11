@@ -325,7 +325,7 @@ class cloneplan {
      * @param string $name
      * @return string
      */
-    private static function format(string $name): string {
+    public static function format(string $name): string {
         return format_string($name, true, ['context' => \context_system::instance()]);
     }
 
@@ -337,7 +337,7 @@ class cloneplan {
      * @param string[] $paths Memo, filled in place.
      * @return string
      */
-    private static function path_of(int $id, array $cats, array &$paths): string {
+    public static function path_of(int $id, array $cats, array &$paths): string {
         if (isset($paths[$id])) {
             return $paths[$id];
         }

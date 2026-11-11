@@ -112,6 +112,7 @@ $string['error_ordermismatch'] = 'The order sent does not match the current cont
 $string['error_toomany'] = 'At most 500 items per batch.';
 $string['error_toomanyclones'] = 'At most {$a} courses per cloning batch.';
 $string['error_toomanycourses'] = 'The category has more courses than Moodle can sort ({$a}); adjust maxcoursesincategory.';
+$string['error_toomanymerge'] = 'At most {$a} courses per merge.';
 $string['glossary'] = 'Institutional glossary';
 $string['glossary_desc'] = 'One rule per line, in the form wrong => right. The replacement matches whole words and ignores case. Example: Cien => Ciencias.';
 $string['grabbed'] = 'Picked up: {$a}. Use the arrow keys to choose the destination, Enter to drop, Esc to cancel.';

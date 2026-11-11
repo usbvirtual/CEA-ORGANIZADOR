@@ -112,6 +112,7 @@ $string['error_ordermismatch'] = 'El orden enviado no coincide con el contenido 
 $string['error_toomany'] = 'Máximo 500 elementos por lote.';
 $string['error_toomanyclones'] = 'Máximo {$a} cursos por lote de clonado.';
 $string['error_toomanycourses'] = 'La categoría tiene más cursos de los que Moodle permite ordenar ({$a}); ajusta maxcoursesincategory.';
+$string['error_toomanymerge'] = 'Máximo {$a} cursos por unificación.';
 $string['glossary'] = 'Glosario institucional';
 $string['glossary_desc'] = 'Una regla por línea, con la forma incorrecto => correcto. El reemplazo es por palabra completa y no distingue mayúsculas. Ejemplo: Cien => Ciencias.';
 $string['grabbed'] = 'Tomado: {$a}. Usa las flechas para elegir el destino, Enter para soltar, Esc para cancelar.';
