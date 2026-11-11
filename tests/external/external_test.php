@@ -34,6 +34,7 @@ use tool_ceaorganizador\local\tree;
 #[\PHPUnit\Framework\Attributes\CoversClass(set_visibility::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\sortplan::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\guard::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\mergerunner::class)]
 /**
  * Tests for the web services, against the test database.
  *
@@ -55,6 +56,7 @@ use tool_ceaorganizador\local\tree;
  * @covers     \tool_ceaorganizador\external\set_visibility
  * @covers     \tool_ceaorganizador\local\sortplan
  * @covers     \tool_ceaorganizador\local\guard
+ * @covers     \tool_ceaorganizador\local\mergerunner
  */
 final class external_test extends \advanced_testcase {
     /**
@@ -767,6 +769,69 @@ final class external_test extends \advanced_testcase {
 
         $this->assertSame(0, (int) $DB->get_field('course', 'visible', ['id' => $course]));
         $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $result['logid']]));
+    }
+
+    /**
+     * Merges a source into a target as the admin, through the runner.
+     *
+     * @param int $target
+     * @param int $source
+     * @return int Journal id.
+     */
+    private function merged(int $target, int $source): int {
+        $plan = \tool_ceaorganizador\local\mergeplan::build($target, [$source]);
+        $result = \tool_ceaorganizador\local\mergerunner::run($target, [$source], [], $plan['hash']);
+        $this->assertGreaterThan(0, $result['logid']);
+        return (int) $result['logid'];
+    }
+
+    /**
+     * The undo of a merge needs course:changecategory on every course, as the merge did.
+     */
+    public function test_undo_merge_requires_changecategory(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->category('Facultades');
+        $course = $this->course('Uno', 'U1', $source);
+        $target = $this->category('Semillas');
+        $logid = $this->merged($target, $source);
+        $this->setUser($this->user_with(['moodle/category:manage']));
+
+        $this->assert_refused(function () use ($logid): void {
+            undo::execute($logid);
+        });
+
+        $this->assertSame($target, (int) $DB->get_field('course', 'category', ['id' => $course]));
+        $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
+    }
+
+    /**
+     * The undo of a merge needs category:manage on the parent of every created category, here the target.
+     */
+    public function test_undo_merge_requires_manage_on_created_parent(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->category('Facultades');
+        $ing = $this->category('Ingeniería', $source);
+        $course = $this->course('Uno', 'U1', $ing);
+        $target = $this->category('Semillas');
+        $logid = $this->merged($target, $source);
+        $created = (int) $DB->get_field('course_categories', 'id', ['parent' => $target, 'name' => 'Ingeniería']);
+        // Manages where the course was and where it is, but not the target the created category hangs from.
+        $user = $this->user_with(['moodle/course:changecategory']);
+        $this->grant((int) $user->id, 'moodle/category:manage', \context_coursecat::instance($source));
+        $this->grant((int) $user->id, 'moodle/category:manage', \context_coursecat::instance($created));
+        $this->setUser($user);
+
+        $this->assert_refused(function () use ($logid): void {
+            undo::execute($logid);
+        });
+
+        $this->assertSame($created, (int) $DB->get_field('course', 'category', ['id' => $course]));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $created]));
+        $this->assertSame(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
     }
 
     /**

@@ -376,6 +376,101 @@ final class mergerunner_test extends \advanced_testcase {
     }
 
     /**
+     * Undo keeps a created category whose recycle bin holds a course deleted after the merge.
+     */
+    public function test_undo_keeps_created_category_with_recycle_bin_items(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/course/lib.php');
+        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        if (!$DB->get_manager()->table_exists('tool_recyclebin_category')) {
+            $this->markTestSkipped('The recycle bin is not installed');
+        }
+        // The recycle bin backs up the course before deleting it; quiet loggers, as the core tests do.
+        $CFG->backup_error_log_logger_level = \backup::LOG_NONE;
+        $CFG->backup_output_indented_logger_level = \backup::LOG_NONE;
+        $CFG->backup_file_logger_level = \backup::LOG_NONE;
+        $CFG->backup_database_logger_level = \backup::LOG_NONE;
+        $CFG->backup_file_logger_level_extra = \backup::LOG_NONE;
+        set_config('categorybinenable', 1, 'tool_recyclebin');
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $a = $this->course('A', $ing);
+        $target = $this->cat('Semillas');
+        $result = $this->apply_merge($target, [$source]);
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        // A course is created in the new category and deleted: its backup waits in the category bin.
+        $c = $this->course('C', \core_course_category::get($newing, MUST_EXIST, true));
+        ob_start();
+        try {
+            delete_course($c, false);
+        } finally {
+            ob_end_clean();
+        }
+        $this->assertTrue($DB->record_exists('tool_recyclebin_category', ['categoryid' => $newing]));
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertSame((int) $ing->id, $this->category_of($a));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newing]));
+        $this->assertTrue($DB->record_exists('tool_recyclebin_category', ['categoryid' => $newing]));
+    }
+
+    /**
+     * Undo keeps a created category with a question category in its context; a lone empty «top» does not count.
+     */
+    public function test_undo_keeps_created_category_with_questions(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $sem1 = $this->cat('Semestre I', $ing);
+        $sem2 = $this->cat('Semestre II', $ing);
+        $this->course('A', $sem1);
+        $this->course('B', $sem2);
+        $target = $this->cat('Semillas');
+        $result = $this->apply_merge($target, [$source]);
+        $newing = $this->child((int) $target->id, 'Ingeniería');
+        $newsem1 = $this->child($newing, 'Semestre I');
+        $newsem2 = $this->child($newing, 'Semestre II');
+        // Inserted directly: question banks in category contexts differ between Moodle versions.
+        $top1 = $this->question_category(\context_coursecat::instance($newsem1)->id, 'top', 0);
+        $this->question_category(\context_coursecat::instance($newsem1)->id, 'Banco', $top1);
+        $this->question_category(\context_coursecat::instance($newsem2)->id, 'top', 0);
+
+        $undo = journal::undo((int) $result['logid']);
+
+        $this->assertTrue($undo['ok']);
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newsem1]));
+        $this->assertTrue($DB->record_exists('course_categories', ['id' => $newing]));
+        $this->assertFalse($DB->record_exists('course_categories', ['id' => $newsem2]));
+    }
+
+    /**
+     * Inserts a question category.
+     *
+     * @param int $contextid
+     * @param string $name
+     * @param int $parent 0 for the top category of the context.
+     * @return int
+     */
+    private function question_category(int $contextid, string $name, int $parent): int {
+        global $DB;
+        return (int) $DB->insert_record('question_categories', (object) [
+            'name' => $name,
+            'contextid' => $contextid,
+            'info' => '',
+            'infoformat' => FORMAT_HTML,
+            'stamp' => make_unique_id_code(),
+            'parent' => $parent,
+            'sortorder' => 999,
+        ]);
+    }
+
+    /**
      * Undo is refused, and writes nothing, when a course moved since or its old category is gone.
      */
     public function test_undo_conflict(): void {

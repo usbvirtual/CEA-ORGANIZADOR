@@ -422,21 +422,19 @@ class mover {
     }
 
     /**
-     * Deletes a category only when it has no courses and no subcategories.
+     * Deletes a category only when nothing would be lost: no courses, subcategories or data in its context.
      *
-     * delete_full() would delete any course inside; with none, it deletes only the category, its context and
-     * what hangs from it (cohorts, grades, content bank, questions, events). No course is deleted, so the
-     * recycle bin stores nothing.
+     * delete_full() deletes, besides the category and its context, what hangs from that context: the backups of
+     * the courses deleted from it (recycle bin), content bank items, question categories and questions,
+     * grade letters and category events (cohorts are moved to the parent). A category that holds any of these
+     * is kept.
      *
      * @param int $id
      * @return bool Whether it was deleted.
      */
     public static function delete_empty_category(int $id): bool {
         global $DB;
-        if (!$DB->record_exists('course_categories', ['id' => $id])) {
-            return false;
-        }
-        if ($DB->record_exists('course', ['category' => $id]) || $DB->record_exists('course_categories', ['parent' => $id])) {
+        if (!$DB->record_exists('course_categories', ['id' => $id]) || self::category_has_content($id)) {
             return false;
         }
         $transaction = $DB->start_delegated_transaction();
@@ -447,6 +445,54 @@ class mover {
             guard::rollback($transaction, $e);
         }
         return true;
+    }
+
+    /**
+     * Whether a category holds anything delete_full() would destroy.
+     *
+     * The «top» question category that core can create in the context by itself is ignored when it holds no
+     * question: delete_full() would only remove that empty placeholder.
+     *
+     * @param int $id
+     * @return bool
+     */
+    private static function category_has_content(int $id): bool {
+        global $DB;
+        if ($DB->record_exists('course', ['category' => $id]) || $DB->record_exists('course_categories', ['parent' => $id])) {
+            return true;
+        }
+        $manager = $DB->get_manager();
+        if (
+            $manager->table_exists('tool_recyclebin_category')
+            && $DB->record_exists('tool_recyclebin_category', ['categoryid' => $id])
+        ) {
+            return true;
+        }
+        if ($DB->record_exists('event', ['categoryid' => $id])) {
+            return true;
+        }
+        $contextid = $DB->get_field('context', 'id', ['contextlevel' => CONTEXT_COURSECAT, 'instanceid' => $id]);
+        if ($contextid === false) {
+            return false;
+        }
+        $contextid = (int) $contextid;
+        if (
+            $DB->record_exists('contentbank_content', ['contextid' => $contextid])
+            || $DB->record_exists('grade_letters', ['contextid' => $contextid])
+        ) {
+            return true;
+        }
+        // Any question category besides the top one, or any question at all, is content.
+        if ($DB->record_exists_select('question_categories', 'contextid = :ctx AND parent <> 0', ['ctx' => $contextid])) {
+            return true;
+        }
+        return $DB->record_exists_sql(
+            "SELECT 1
+               FROM {question_bank_entries} qbe
+               JOIN {question_categories} qc ON qc.id = qbe.questioncategoryid
+              WHERE qc.contextid = :ctx",
+            ['ctx' => $contextid]
+        );
     }
 
     /**

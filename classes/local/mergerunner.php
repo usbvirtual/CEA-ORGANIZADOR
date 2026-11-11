@@ -29,6 +29,10 @@ namespace tool_ceaorganizador\local;
  *
  * Every capability is checked before any write. Categories, moves and the journal row are written in one
  * transaction, so a failure leaves nothing behind. It never deletes a course or a category.
+ *
+ * Undo (journal, action 'merge') moves every course back to its original category, but not to its original
+ * position inside it: move_courses() keeps no order, so the courses come back first in the category. It then
+ * deletes the created categories that hold nothing (see mover::delete_empty_category()).
  */
 class mergerunner {
     /** @var string[] Accepted row actions. */
@@ -146,7 +150,9 @@ class mergerunner {
     /**
      * Requires every capability the merge needs. It throws, so nothing is written.
      *
-     * New categories inherit the permissions of the existing category they hang from, so that one is checked.
+     * moodle/category:manage on the target, every source, the category of every course moved and every
+     * destination that exists; new categories inherit the permissions of the existing category they hang from,
+     * so that one is checked. moodle/course:changecategory on every course moved.
      *
      * @param int $targetid
      * @param int[] $sourceids
@@ -158,9 +164,10 @@ class mergerunner {
             $categories[(int) $sourceid] = true;
         }
         foreach ($todo as $row) {
-            if ($row['missing']) {
-                $categories[(int) $row['anchor']] = true;
-            }
+            // The category each course leaves, and its destination: the existing one, or the anchor of the
+            // categories to create. Undo checks the same categories.
+            $categories[(int) $row['fromid']] = true;
+            $categories[(int) $row['anchor']] = true;
         }
         foreach (array_keys($categories) as $id) {
             mover::check_category($id);
