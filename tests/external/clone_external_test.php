@@ -82,11 +82,11 @@ final class clone_external_test extends \advanced_testcase {
     /**
      * Previews a batch through the service and cleans the result.
      *
-     * @param \stdClass $root
-     * @param \stdClass $period
+     * @param \core_course_category $root
+     * @param \core_course_category $period
      * @return array
      */
-    private function preview(\stdClass $root, \stdClass $period): array {
+    private function preview(\core_course_category $root, \core_course_category $period): array {
         $result = clone_preview::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
@@ -100,13 +100,13 @@ final class clone_external_test extends \advanced_testcase {
     /**
      * Applies the batch of a preview through the service and cleans the result.
      *
-     * @param \stdClass $root
-     * @param \stdClass $period
+     * @param \core_course_category $root
+     * @param \core_course_category $period
      * @param array $preview
      * @param array $rows Edited rows.
      * @return array
      */
-    private function apply(\stdClass $root, \stdClass $period, array $preview, array $rows = []): array {
+    private function apply(\core_course_category $root, \core_course_category $period, array $preview, array $rows = []): array {
         $result = clone_apply::execute(
             [['type' => 'category', 'id' => (int) $root->id]],
             (int) $period->id,
