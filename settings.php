@@ -50,5 +50,11 @@ if ($hassiteconfig) {
             \tool_ceaorganizador\local\sorter::DEFAULT_PATTERNS[$name]
         ));
     }
+    $settings->add(new admin_setting_configtextarea(
+        'tool_ceaorganizador/glossary',
+        get_string('glossary', 'tool_ceaorganizador'),
+        get_string('glossary_desc', 'tool_ceaorganizador'),
+        ''
+    ));
     $ADMIN->add('courses', $settings);
 }
