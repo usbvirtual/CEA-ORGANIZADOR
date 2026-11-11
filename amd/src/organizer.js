@@ -37,6 +37,7 @@ import {createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCa
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
+import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
 
@@ -91,6 +92,8 @@ const REQUESTS = [
     {key: 'clonelabel', component: 'tool_ceaorganizador'},
     {key: 'clonenames', component: 'tool_ceaorganizador'},
     {key: 'clonenew', component: 'tool_ceaorganizador'},
+    {key: 'clonenewfullname', component: 'tool_ceaorganizador'},
+    {key: 'clonenewshortname', component: 'tool_ceaorganizador'},
     {key: 'clonenoperiods', component: 'tool_ceaorganizador'},
     {key: 'clonenothing', component: 'tool_ceaorganizador'},
     {key: 'clonepending', component: 'tool_ceaorganizador'},
@@ -98,10 +101,12 @@ const REQUESTS = [
     {key: 'clonepreview', component: 'tool_ceaorganizador'},
     {key: 'cloneprogress', component: 'tool_ceaorganizador'},
     {key: 'clonesource', component: 'tool_ceaorganizador'},
+    {key: 'clonestale', component: 'tool_ceaorganizador'},
     {key: 'clonestart', component: 'tool_ceaorganizador'},
     {key: 'clonestate', component: 'tool_ceaorganizador'},
     {key: 'clonetoperiod', component: 'tool_ceaorganizador'},
     {key: 'clonetotal', component: 'tool_ceaorganizador'},
+    {key: 'cloneviewprogress', component: 'tool_ceaorganizador'},
     {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
@@ -339,7 +344,16 @@ export const init = ({root}) => {
         historyButton.className = 'btn btn-secondary btn-sm';
         historyButton.dataset.action = 'history';
         historyButton.textContent = strings.history;
-        historyButton.addEventListener('click', () => openHistory(panelOptions(historyButton)));
+        historyButton.addEventListener('click', () => openHistory({
+            ...panelOptions(historyButton),
+            // A cloning batch of the history opens its progress again; the focus returns to the history button.
+            viewProgress: (batchid) => openCloneProgress(batchid, {
+                api,
+                strings,
+                onError: Notification.exception,
+                trigger: historyButton,
+            }),
+        }));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';

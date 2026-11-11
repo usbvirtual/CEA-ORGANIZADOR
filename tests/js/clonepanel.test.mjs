@@ -9,7 +9,7 @@ globalThis.DOMParser = new JSDOM('').window.DOMParser;
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const strings = new Proxy({}, {
-    get: (_, name) => ({ cloneapply: 'Clonar {$a} cursos', clonetotal: '{$a} cursos' }[name] || String(name)),
+    get: (_, name) => ({ cloneapply: 'Clonar cursos ({$a})', clonetotal: '{$a} cursos' }[name] || String(name)),
 });
 
 test('parsePeriod reconoce 2027-01, «2026 -1» y «2026 II» y descarta «Facultades»', () => {
@@ -27,8 +27,18 @@ test('suggestLabel y isValidLabel usan AAAA-PP', () => {
     assert.equal(suggestLabel('Periodo 2026 II'), '2026-02');
     assert.equal(suggestLabel('Facultades'), '');
     assert.equal(isValidLabel('2027-01'), true);
+    assert.equal(isValidLabel('2027-02'), true);
     assert.equal(isValidLabel('2027-1'), false);
     assert.equal(isValidLabel('27-01'), false);
+});
+
+test('isValidLabel acepta solo lo que acepta el servidor: 20AA-01 o 20AA-02', () => {
+    assert.equal(isValidLabel('2027-03'), false);
+    assert.equal(isValidLabel('2027-00'), false);
+    assert.equal(isValidLabel('2027-12'), false);
+    assert.equal(isValidLabel('1999-01'), false);
+    assert.equal(isValidLabel('3027-01'), false);
+    assert.equal(isValidLabel(' 2027-01'), false);
 });
 
 test('periodOptions lista cualquier nivel, de la más reciente a la más antigua, con la ruta decodificada', () => {
@@ -161,7 +171,7 @@ test('las filas con error quedan deshabilitadas, no viajan y el botón cuenta so
     assert.match(bad.textContent, /cloneerror_shortnametaken/);
     assert.match(document.querySelector('[data-courseid="3"]').textContent, /clonenew/);
     assert.equal(document.querySelector('[data-region="total"]').textContent, '3 cursos');
-    assert.equal(document.querySelector('[data-action="apply"]').textContent, 'Clonar 2 cursos');
+    assert.equal(document.querySelector('[data-action="apply"]').textContent, 'Clonar cursos (2)');
 
     click(document, 'apply');
     await flush();
@@ -179,7 +189,7 @@ test('con 0 filas elegibles el botón queda deshabilitado', async () => {
     await flush();
     const apply = document.querySelector('[data-action="apply"]');
     assert.equal(apply.disabled, true);
-    assert.equal(apply.textContent, 'Clonar 0 cursos');
+    assert.equal(apply.textContent, 'Clonar cursos (0)');
 });
 
 test('las ediciones viajan crudas en rows y un nombre vacío deja la fila fuera', async () => {
@@ -190,7 +200,7 @@ test('las ediciones viajan crudas en rows y un nombre vacío deja la fila fuera'
     typeIn(document, document.querySelector('[data-courseid="1"] [data-field="newfullname"]'), 'A &amp; <i>B</i>');
     typeIn(document, document.querySelector('[data-courseid="1"] [data-field="newshortname"]'), 'AB-1');
     typeIn(document, document.querySelector('[data-courseid="2"] [data-field="newshortname"]'), '  ');
-    assert.equal(document.querySelector('[data-action="apply"]').textContent, 'Clonar 1 cursos');
+    assert.equal(document.querySelector('[data-action="apply"]').textContent, 'Clonar cursos (1)');
     click(document, 'apply');
     await flush();
     assert.deepEqual(calls.apply[0].rows, [{ courseid: 1, newfullname: 'A &amp; <i>B</i>', newshortname: 'AB-1' }]);
@@ -208,7 +218,7 @@ test('stale muestra el aviso y recarga la vista previa sin abrir el progreso', a
     await flush();
     assert.equal(calls.preview.length, 2);
     assert.deepEqual(calls.preview[1], calls.preview[0]);
-    assert.equal(document.querySelector('[data-region="notice"]').textContent, 'stale');
+    assert.equal(document.querySelector('[data-region="notice"]').textContent, 'clonestale');
     assert.equal(document.querySelectorAll('[data-courseid]').length, 2);
     assert.deepEqual(calls.progress, []);
     click(document, 'apply');
@@ -272,4 +282,51 @@ test('los nombres formateados se decodifican y un <b> crudo se muestra como text
     assert.match(tr.textContent, /A & B/);
     assert.match(tr.textContent, /Nueva & Co/);
     assert.equal(tr.querySelector('[data-field="newfullname"]').value, '<b>Crudo</b> &amp; Co');
+});
+
+test('el botón cuenta exactamente las filas que se envían, con sus valores actuales', async () => {
+    const { document, calls } = setup([{
+        rows: [row(1), row(2), row(3, { error: 'alreadycloned' }), row(4)],
+        total: 4,
+        hash: 'h1',
+    }], [ok]);
+    fill(document);
+    click(document, 'preview');
+    await flush();
+    typeIn(document, document.querySelector('[data-courseid="2"] [data-field="newfullname"]'), '');
+    typeIn(document, document.querySelector('[data-courseid="4"] [data-field="newshortname"]'), 'C4-NUEVO');
+    assert.equal(document.querySelector('[data-action="apply"]').textContent, 'Clonar cursos (2)');
+    click(document, 'apply');
+    await flush();
+    assert.deepEqual(calls.apply[0].rows, [
+        { courseid: 1, newfullname: 'Curso 1 2027-01', newshortname: 'C1-2027-01' },
+        { courseid: 4, newfullname: 'Curso 4 2027-01', newshortname: 'C4-NUEVO' },
+    ]);
+});
+
+test('los campos de nombre tienen etiquetas accesibles propias', async () => {
+    const { document } = setup([{ rows: [row(1)], total: 1, hash: 'h1' }], [ok]);
+    fill(document);
+    click(document, 'preview');
+    await flush();
+    const tr = document.querySelector('[data-courseid="1"]');
+    assert.equal(tr.querySelector('[data-field="newfullname"]').getAttribute('aria-label'), 'clonenewfullname: Curso 1');
+    assert.equal(tr.querySelector('[data-field="newshortname"]').getAttribute('aria-label'), 'clonenewshortname: Curso 1');
+});
+
+test('las categorías nuevas del tooltip también están en texto oculto para lectores de pantalla', async () => {
+    const { document } = setup([{
+        rows: [row(1, { newcategories: ['Posgrado / 2027-01 / A &amp; B', 'Posgrado / 2027-01 / A &amp; B / C'] })],
+        total: 1,
+        hash: 'h1',
+    }], [ok]);
+    fill(document);
+    click(document, 'preview');
+    await flush();
+    const tr = document.querySelector('[data-courseid="1"]');
+    const tag = tr.querySelector('.tool-ceaorganizador-etiqueta');
+    assert.equal(tag.title, ['Posgrado / 2027-01 / A & B', 'Posgrado / 2027-01 / A & B / C'].join(String.fromCharCode(10)));
+    const hidden = tr.querySelector('[data-region="newcategories"]');
+    assert.equal(hidden.className, 'sr-only visually-hidden');
+    assert.equal(hidden.textContent, ' Posgrado / 2027-01 / A & B; Posgrado / 2027-01 / A & B / C');
 });

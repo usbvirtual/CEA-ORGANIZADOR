@@ -41,7 +41,13 @@ const setup = (options) => {
 test('con categoryids, el panel muestra el conteo y envía categoryids en la vista previa y al aplicar', async () => {
     const { document, calls } = setup({ categoryids: [4, 5, 6], paths: ['A', 'A / B', 'C'] });
     await flush();
-    assert.equal(document.querySelector('[data-region="selectedcount"]').textContent, '3 categorías seleccionadas');
+    const count = document.querySelector('[data-region="selectedcount"]');
+    assert.equal(count.firstChild.textContent, '3 categorías seleccionadas');
+    // The list of the tooltip is also in visually hidden text, for screen readers.
+    assert.equal(count.title, 'A | A / B | C');
+    const hidden = count.querySelector('[data-region="selectedpaths"]');
+    assert.equal(hidden.className, 'sr-only visually-hidden');
+    assert.equal(hidden.textContent, ' A | A / B | C');
     assert.deepEqual(calls.preview[0], { categoryid: 0, categoryids: [4, 5, 6], scope: 'both', recursive: false });
     document.querySelector('[data-action="confirm"]').click();
     await flush();

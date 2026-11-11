@@ -37,8 +37,10 @@ const SAFE_URL = /^(https?:\/\/|\/)/i;
  * @param {Object} options
  * @param {Object} options.api cloneStatus(batchid).
  * @param {Object} options.strings Strings of the panel.
- * @param {Function} options.onError Receives the exceptions of the web service; polling stops.
+ * @param {Function} options.onError Receives the exception of the web service once the retries are spent;
+ *      polling stops then.
  * @param {Number} [options.interval] Milliseconds between queries.
+ * @param {Number[]} [options.retries] Milliseconds to wait before each retry of a failed query.
  * @param {Number} [options.cronwarning] Milliseconds without progress before the warning.
  * @param {Object} [options.timers] {setTimeout, clearTimeout, now}, to drive the time in tests.
  * @param {Element} [options.trigger] Gets the focus back on close.
@@ -50,6 +52,7 @@ export const open = (batchid, {
     strings,
     onError,
     interval = 15000,
+    retries = [15000, 30000, 60000],
     cronwarning = 600000,
     timers = {
         setTimeout: (fn, ms) => setTimeout(fn, ms),
@@ -109,7 +112,18 @@ export const open = (batchid, {
         failed: strings.clonefailed,
     };
 
+    // What is on screen: the list is redrawn only when it changes, so a focused link keeps the focus.
+    let drawn = null;
+
     const draw = (result) => {
+        const shown = JSON.stringify([
+            result.done, result.pending, result.failed,
+            result.rows.map((row) => [row.source, row.status, row.url, row.newfullname, row.reason || '']),
+        ]);
+        if (shown === drawn) {
+            return;
+        }
+        drawn = shown;
         counters.textContent = [
             `${strings.clonedone}: ${result.done}`,
             `${strings.clonepending}: ${result.pending}`,
@@ -130,12 +144,19 @@ export const open = (batchid, {
                 li.appendChild(create('span', 'tool-ceaorganizador-nombre', row.newfullname));
             }
             li.appendChild(create('span', 'tool-ceaorganizador-insignia', labels[row.status] || row.status));
+            // Optional: only copies that could not be queued carry it, and older servers send none.
+            if (row.status === 'failed' && typeof row.reason === 'string' && row.reason !== '') {
+                const reason = create('span', 'tool-ceaorganizador-ruta', row.reason);
+                reason.dataset.region = 'reason';
+                li.appendChild(reason);
+            }
             list.appendChild(li);
         });
     };
 
     let signature = null;
     let lastProgress = timers.now();
+    let failures = 0;
 
     async function poll() {
         timer = null;
@@ -146,14 +167,22 @@ export const open = (batchid, {
         try {
             result = await api.cloneStatus(batchid);
         } catch (error) {
-            if (!closed) {
-                onError(error);
+            if (closed) {
+                return;
             }
+            // A dropped request should not end the follow-up: retry later, and give up only after the last wait.
+            if (failures < retries.length) {
+                timer = timers.setTimeout(poll, retries[failures]);
+                failures += 1;
+                return;
+            }
+            onError(error);
             return;
         }
         if (closed) {
             return;
         }
+        failures = 0;
         draw(result);
         const current = `${result.done}/${result.pending}/${result.failed}`;
         if (current !== signature) {

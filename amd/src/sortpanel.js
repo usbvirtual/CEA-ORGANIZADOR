@@ -69,7 +69,12 @@ export const open = ({
     if (many) {
         const count = create('p', 'tool-ceaorganizador-ruta', String(strings.sortselectedcount).replace('{$a}', categoryids.length));
         count.dataset.region = 'selectedcount';
-        count.title = paths.map((entry) => decode(entry)).join(' | ');
+        const joined = paths.map((entry) => decode(entry)).join(' | ');
+        count.title = joined;
+        // Screen readers do not reach the tooltip: the same list, visually hidden.
+        const hidden = create('span', 'sr-only visually-hidden', ` ${joined}`);
+        hidden.dataset.region = 'selectedpaths';
+        count.appendChild(hidden);
         root.appendChild(count);
     } else if (path) {
         root.appendChild(create('p', 'tool-ceaorganizador-ruta', decode(path)));

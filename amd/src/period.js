@@ -23,7 +23,8 @@
  */
 
 const PERIOD = /(?<!\d)(20\d\d)\s*[-–_/ ]\s*(0?[12]|ii|i)(?![\p{L}\d])/iu;
-const LABEL = /^\d{4}-\d{2}$/;
+// The same labels the server accepts (cloner::period_label): year 20xx, term 01 or 02.
+const LABEL = /^20\d\d-0[12]$/;
 
 /**
  * Year and term of a name, or null when it has no period.
@@ -52,7 +53,7 @@ export const suggestLabel = (name) => {
 };
 
 /**
- * Whether a label has the form YYYY-PP.
+ * Whether a label has the form 20YY-01 or 20YY-02.
  *
  * @param {String} label
  * @returns {Boolean}

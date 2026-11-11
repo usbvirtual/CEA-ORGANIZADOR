@@ -177,7 +177,8 @@ export const open = ({
         return [...inputs].some((input) => input.value.trim() === '') ? 'empty' : null;
     };
 
-    // The rows apply would send, with the values the inputs hold now.
+    // The rows apply sends, with the values the inputs hold now. The server clones only these rows
+    // (a row left out is 'notselected'), so the count of the button is always the length of this list.
     const pending = () => {
         const out = [];
         tbody.querySelectorAll('tr').forEach((tr) => {
@@ -224,12 +225,20 @@ export const open = ({
             const dest = create('td');
             dest.appendChild(create('div', 'tool-ceaorganizador-ruta', decode(row.destpath)));
             if (row.newcategories.length > 0) {
+                const paths = row.newcategories.map((path) => decode(path));
                 const tag = create('span', 'tool-ceaorganizador-etiqueta', strings.clonenew);
-                tag.title = row.newcategories.map((path) => decode(path)).join('\n');
+                tag.title = paths.join('\n');
                 dest.appendChild(tag);
+                // Screen readers do not reach the tooltip: the same paths, visually hidden.
+                const hidden = create('span', 'sr-only visually-hidden', ` ${paths.join('; ')}`);
+                hidden.dataset.region = 'newcategories';
+                dest.appendChild(hidden);
             }
             const names = create('td');
-            [['newfullname', strings.after, row.newfullname], ['newshortname', strings.shortname, row.newshortname]]
+            [
+                ['newfullname', strings.clonenewfullname, row.newfullname],
+                ['newshortname', strings.clonenewshortname, row.newshortname],
+            ]
                 .forEach(([name, text, value]) => {
                     const input = create('input', 'form-control form-control-sm');
                     input.type = 'text';
@@ -344,7 +353,7 @@ export const open = ({
         }
         if (result.status === 'stale') {
             busy = false;
-            say(strings.stale);
+            say(strings.clonestale);
             await load(wanted);
             return;
         }

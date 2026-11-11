@@ -36,12 +36,23 @@ import {format} from 'tool_ceaorganizador/treeview';
  * @param {Function} options.onError Receives the exceptions of the web services.
  * @param {Function} options.undo Undoes an entry: (logid, {quiet}) resolves {ok, conflicts} or null.
  * @param {Function} options.reload Reloads the tree from the server.
+ * @param {Function} [options.viewProgress] Opens the progress panel of a cloning batch: (logid).
  * @param {Function} [options.decode] Turns a formatted string into plain text.
  * @param {Element} [options.trigger] Gets the focus back on close.
  * @param {Document} [options.doc]
  * @returns {{close: Function, element: Element, load: Function}}
  */
-export const open = ({api, strings, onError, undo, reload, decode = (text) => text, trigger, doc = document}) => {
+export const open = ({
+    api,
+    strings,
+    onError,
+    undo,
+    reload,
+    viewProgress,
+    decode = (text) => text,
+    trigger,
+    doc = document,
+}) => {
     const create = (tag, className, text) => {
         const node = doc.createElement(tag);
         if (className) {
@@ -130,8 +141,19 @@ export const open = ({api, strings, onError, undo, reload, decode = (text) => te
             const who = row.userfullname ? `${decode(row.userfullname)} · ` : '';
             li.appendChild(create('div', 'tool-ceaorganizador-ruta', `${who}${when}`));
             if (row.action === 'clone') {
-                // A cloning batch cannot be undone: the new courses are deleted from Moodle.
+                // A cloning batch cannot be undone (the new courses are deleted from Moodle), but its progress
+                // can be followed again. The history closes first: two dialogs would share the Esc key.
                 li.dataset.kind = 'clone';
+                if (viewProgress) {
+                    const progressButton = create('button', 'btn btn-secondary btn-sm', strings.cloneviewprogress);
+                    progressButton.type = 'button';
+                    progressButton.dataset.action = 'viewprogress';
+                    progressButton.addEventListener('click', () => {
+                        dialog.close();
+                        viewProgress(row.id);
+                    });
+                    li.appendChild(progressButton);
+                }
             } else if (row.undone) {
                 li.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.historyundone));
             } else {

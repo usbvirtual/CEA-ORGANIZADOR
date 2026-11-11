@@ -120,3 +120,106 @@ test('al cerrar se cancela el sondeo y una respuesta tardía se ignora', async (
     assert.equal(calls.length, 1);
     assert.equal(document.querySelector('[role="dialog"]'), null);
 });
+
+const setupFlaky = (script) => {
+    const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
+    const { document } = dom.window;
+    const clock = { now: 0, scheduled: [], cleared: [] };
+    const timers = {
+        setTimeout: (fn, ms) => {
+            clock.scheduled.push({ fn, ms });
+            return clock.scheduled.length;
+        },
+        clearTimeout: (id) => clock.cleared.push(id),
+        now: () => clock.now,
+    };
+    const errors = [];
+    let at = 0;
+    const api = {
+        cloneStatus: async () => {
+            const step = script[Math.min(at++, script.length - 1)];
+            if (step instanceof Error) {
+                throw step;
+            }
+            return step;
+        },
+    };
+    open(7, {
+        api,
+        strings,
+        onError: (error) => errors.push(error),
+        timers,
+        trigger: document.getElementById('t'),
+        doc: document,
+    });
+    return { document, clock, errors };
+};
+
+test('una consulta fallida se reintenta a los 15, 30 y 60 s; solo después se avisa el error', async () => {
+    const boom = new Error('red');
+    const { clock, errors } = setupFlaky([boom]);
+    await flush();
+    assert.deepEqual(clock.scheduled.map((s) => s.ms), [15000]);
+    assert.equal(errors.length, 0);
+    await tick(clock);
+    assert.deepEqual(clock.scheduled.map((s) => s.ms), [30000]);
+    await tick(clock);
+    assert.deepEqual(clock.scheduled.map((s) => s.ms), [60000]);
+    assert.equal(errors.length, 0);
+    await tick(clock);
+    assert.deepEqual(errors, [boom]);
+    assert.equal(clock.scheduled.length, 0);
+});
+
+test('un éxito reinicia la cuenta de reintentos', async () => {
+    const boom = new Error('red');
+    const { clock, errors, document } = setupFlaky([boom, boom, status(1, 0, 0), boom, status(0, 1, 0)]);
+    await flush();
+    await tick(clock);
+    assert.equal(clock.scheduled[0].ms, 30000);
+    await tick(clock);
+    // Success: back to the normal interval.
+    assert.match(document.querySelector('[data-region="counters"]').textContent, /clonepending: 1/);
+    assert.equal(clock.scheduled[0].ms, 15000);
+    await tick(clock);
+    // The first failure after a success waits 15 s again, not 60 s.
+    assert.equal(clock.scheduled[0].ms, 15000);
+    await tick(clock);
+    assert.equal(errors.length, 0);
+    assert.equal(clock.scheduled.length, 0);
+});
+
+test('sin cambios no se vuelve a pintar la lista y el foco se conserva', async () => {
+    const rows = [
+        { source: 1, newcourseid: 9, newfullname: 'A', status: 'done', url: '/course/view.php?id=9' },
+        { source: 2, newcourseid: 0, newfullname: 'B', status: 'pending', url: '' },
+    ];
+    const { document, clock } = setup([
+        status(1, 1, 0, rows),
+        status(1, 1, 0, rows.map((r) => ({ ...r }))),
+        status(0, 2, 0, [rows[0], { ...rows[1], status: 'done', newcourseid: 10, url: '/course/view.php?id=10' }]),
+    ]);
+    await flush();
+    const link = document.querySelector('a');
+    link.focus();
+    assert.equal(document.activeElement, link);
+    await tick(clock);
+    assert.equal(document.querySelector('a'), link);
+    assert.equal(document.activeElement, link);
+    await tick(clock);
+    assert.notEqual(document.querySelector('a'), link);
+    assert.equal(document.querySelectorAll('a').length, 2);
+    assert.match(document.querySelector('[data-region="counters"]').textContent, /clonedone: 2/);
+});
+
+test('el motivo de una copia fallida se muestra como texto y es opcional', async () => {
+    const { document } = setup([status(0, 0, 2, [
+        { source: 1, newcourseid: 0, newfullname: 'A', status: 'failed', url: '', reason: 'moodle_exception: <b>x</b>' },
+        { source: 2, newcourseid: 0, newfullname: 'B', status: 'failed', url: '' },
+    ])]);
+    await flush();
+    const reasons = document.querySelectorAll('[data-region="reason"]');
+    assert.equal(reasons.length, 1);
+    assert.equal(reasons[0].textContent, 'moodle_exception: <b>x</b>');
+    assert.equal(document.querySelector('[data-region="copies"] b'), null);
+});
