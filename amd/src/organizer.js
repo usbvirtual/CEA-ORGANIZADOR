@@ -153,6 +153,7 @@ const REQUESTS = [
     {key: 'dropcancelled', component: 'tool_ceaorganizador'},
     {key: 'dropinside', component: 'tool_ceaorganizador'},
     {key: 'error_generic', component: 'tool_ceaorganizador'},
+    {key: 'error_groupwithoutwinner', component: 'tool_ceaorganizador'},
     {key: 'error_toomanydelete', component: 'tool_ceaorganizador'},
     {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
@@ -206,6 +207,7 @@ const REQUESTS = [
     {key: 'opmovedown', component: 'tool_ceaorganizador'},
     {key: 'opmoveup', component: 'tool_ceaorganizador'},
     {key: 'opremove', component: 'tool_ceaorganizador'},
+    {key: 'partialdone', component: 'tool_ceaorganizador'},
     {key: 'prefix', component: 'tool_ceaorganizador'},
     {key: 'prevpage', component: 'tool_ceaorganizador'},
     {key: 'rename', component: 'tool_ceaorganizador'},
@@ -227,6 +229,7 @@ const REQUESTS = [
     {key: 'reason_tilde', component: 'tool_ceaorganizador'},
     {key: 'reason_variante', component: 'tool_ceaorganizador'},
     {key: 'renameskipped', component: 'tool_ceaorganizador'},
+    {key: 'repeatedfoldervisible', component: 'tool_ceaorganizador'},
     {key: 'replacewith', component: 'tool_ceaorganizador'},
     {key: 'resultscount', component: 'tool_ceaorganizador'},
     {key: 'searchfor', component: 'tool_ceaorganizador'},
@@ -251,6 +254,7 @@ const REQUESTS = [
     {key: 'undoconflicts', component: 'tool_ceaorganizador'},
     {key: 'visibilitychanged', component: 'tool_ceaorganizador'},
     {key: 'wholeword', component: 'tool_ceaorganizador'},
+    {key: 'winnerhidden', component: 'tool_ceaorganizador'},
 ];
 
 /**

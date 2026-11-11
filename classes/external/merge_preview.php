@@ -89,6 +89,7 @@ class merge_preview extends external_api {
                 'group' => $row['group'],
                 'existing' => $row['existing'],
                 'winner' => $row['winner'],
+                'visible' => $row['visible'],
                 'reasons' => $row['reasons'],
             ];
         }
@@ -115,7 +116,8 @@ class merge_preview extends external_api {
                 'action' => new external_value(PARAM_ALPHA, 'Default action: move, repeated or skip'),
                 'group' => new external_value(PARAM_RAW, 'Key of its group of repeated courses, or empty'),
                 'existing' => new external_value(PARAM_BOOL, 'The course is already in the target'),
-                'winner' => new external_value(PARAM_BOOL, 'Stays in the destination by default: the most recently modified'),
+                'winner' => new external_value(PARAM_BOOL, 'Stays in the destination by default: visible, then most recent'),
+                'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
                 'reasons' => new external_multiple_structure(
                     new external_value(PARAM_ALPHA, 'name, key or shortname'),
                     'Rules that matched'
@@ -126,6 +128,7 @@ class merge_preview extends external_api {
                 'path' => new external_value(PARAM_TEXT, 'Path, formatted'),
             ]), 'Source categories left empty with the default actions'),
             'folder' => new external_single_structure([
+                'visible' => new external_value(PARAM_BOOL, 'The folder exists and is visible: moved courses stay visible'),
                 'id' => new external_value(PARAM_INT, 'Folder of repeated courses under the target; 0 when it will be created'),
                 'path' => new external_value(PARAM_TEXT, 'Path of the folder, formatted'),
             ]),

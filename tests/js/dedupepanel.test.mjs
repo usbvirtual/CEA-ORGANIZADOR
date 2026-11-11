@@ -245,3 +245,23 @@ test('el historial ofrece Deshacer en una entrada dedupe', async () => {
     await flush();
     assert.deepEqual(undone, [5]);
 });
+
+test('un ganador oculto y una carpeta Repetidos visible se avisan; un resultado parcial ofrece Deshacer', async () => {
+    const hidden = preview();
+    hidden.groups[0].courses[0].visible = false;
+    hidden.groups[1].courses[1].visible = true;
+    hidden.folder = { id: 7, path: 'Facultad / Repetidos', visible: true };
+    const { document, calls, panel } = setup({ preview: hidden, apply: { status: 'partial', logid: 30, moved: 2 } });
+    await panel.ready;
+    assert.notEqual(group(document, '10-11-12').querySelector('[data-region="winnerhidden"]'), null);
+    assert.equal(group(document, '20-21').querySelector('[data-region="winnerhidden"]'), null);
+    assert.equal(document.querySelector('[data-region="foldervisible"]').hidden, false);
+    action(document, 'apply').click();
+    await flush();
+    await flush();
+    assert.equal(calls.toasts[0].message, 'partialdone');
+    calls.toasts[0].options.onAction();
+    await flush();
+    assert.deepEqual(calls.undo, [30]);
+    assert.equal(calls.reload, 1);
+});

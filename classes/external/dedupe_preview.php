@@ -77,14 +77,16 @@ class dedupe_preview extends external_api {
                     'fullname' => new external_value(PARAM_RAW, 'Full name, raw'),
                     'shortname' => new external_value(PARAM_RAW, 'Short name, raw'),
                     'timemodified' => new external_value(PARAM_INT, 'Last modification'),
+                    'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
                     'reasons' => new external_multiple_structure(
                         new external_value(PARAM_ALPHA, 'name, key or shortname'),
                         'Rules that matched'
                     ),
-                    'keep' => new external_value(PARAM_BOOL, 'Stays by default: the most recently modified'),
+                    'keep' => new external_value(PARAM_BOOL, 'Stays by default: visible first, then the most recently modified'),
                 ])),
             ])),
             'folder' => new external_single_structure([
+                'visible' => new external_value(PARAM_BOOL, 'The folder exists and is visible: moved courses stay visible'),
                 'id' => new external_value(PARAM_INT, 'Folder id; 0 when it will be created'),
                 'path' => new external_value(PARAM_TEXT, 'Path of the folder, formatted'),
             ]),

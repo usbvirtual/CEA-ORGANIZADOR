@@ -43,14 +43,15 @@ class dedupeplan {
      * @param int $categoryid
      * @return array ['groups' => [['categoryid' => int, 'path' => string (formatted), 'key' => string,
      *      'courses' => [['courseid' => int, 'fullname' => string (raw), 'shortname' => string (raw),
-     *      'timemodified' => int, 'reasons' => string[], 'keep' => bool]]]], 'folder' => ['id' => int (0 when it will
-     *      be created), 'path' => string (formatted)], 'hash' => string]
+     *      'timemodified' => int, 'visible' => bool, 'reasons' => string[], 'keep' => bool]]]],
+     *      'folder' => ['id' => int (0 when it will be created), 'visible' => bool (false when it will be created, since
+     *      it is created hidden), 'path' => string (formatted)], 'hash' => string]
      * @throws \invalid_parameter_exception When the category does not exist.
      * @throws \moodle_exception error_toomanydedupecourses beyond MAX_COURSES courses to examine.
      */
     public static function build(int $categoryid): array {
         global $DB;
-        $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name');
+        $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name, visible');
         if (!isset($records[$categoryid])) {
             throw new \invalid_parameter_exception('Category not found');
         }
@@ -98,6 +99,7 @@ class dedupeplan {
                         'fullname' => $course['fullname'],
                         'shortname' => $course['shortname'],
                         'timemodified' => $course['timemodified'],
+                        'visible' => $course['visible'] === 1,
                         'reasons' => $member['reasons'],
                         'keep' => $member['keep'],
                     ];
@@ -119,8 +121,10 @@ class dedupeplan {
                 break;
             }
         }
+        // A folder that exists and is visible would leave the moved courses visible: the panel warns about it.
         $folder = [
             'id' => $folderid,
+            'visible' => $folderid ? (int) $records[$folderid]->visible === 1 : false,
             'path' => $folderid
                 ? cloneplan::path_of($folderid, $cats, $paths)
                 : cloneplan::path_of($categoryid, $cats, $paths) . ' / ' . cloneplan::format(duplicates::FOLDER),
@@ -151,7 +155,7 @@ class dedupeplan {
      * Courses of some categories, in their order, without the site course.
      *
      * @param int[] $categoryids
-     * @return array Map category id => list of ['id', 'fullname', 'shortname', 'timemodified'].
+     * @return array Map category id => list of ['id', 'fullname', 'shortname', 'timemodified', 'visible'].
      */
     private static function load_courses(array $categoryids): array {
         global $DB;
@@ -160,7 +164,7 @@ class dedupeplan {
             [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
             $params['site'] = SITEID;
             $records = $DB->get_records_sql(
-                "SELECT id, category, fullname, shortname, timemodified
+                "SELECT id, category, fullname, shortname, timemodified, visible
                    FROM {course}
                   WHERE category $insql AND id <> :site
                ORDER BY sortorder ASC, id ASC",
@@ -172,6 +176,7 @@ class dedupeplan {
                     'fullname' => (string) $record->fullname,
                     'shortname' => (string) $record->shortname,
                     'timemodified' => (int) $record->timemodified,
+                    'visible' => (int) $record->visible,
                 ];
             }
         }

@@ -29,10 +29,11 @@ namespace tool_ceaorganizador\local;
  *
  * Two courses are the same when any of these holds: the same normalized full name (rule 'name'); the same full
  * name once a trailing copy, period or group marker is stripped (rule 'key'); the same short name once a trailing
- * copy marker, period or «_N» counter is stripped (rule 'shortname'). The rules are conservative: level numbers,
- * roman or arabic («Cálculo I» and «Cálculo II», «Física 1» and «Física 2», «MAT-1» and «MAT-2»), are never stripped.
- * And two courses whose name keys differ only in such a number are never grouped, by any rule, not even through a
- * third course (see groups()).
+ * copy marker, a period or the «_N» counter is stripped (rule 'shortname'), as long as their names share a
+ * significant word. The rules are conservative: level numbers, roman or arabic («Cálculo I» and «Cálculo II»,
+ * «Física 1» and «Física 2», «MAT-1» and «MAT-2»), are never stripped, and two courses whose names differ only in a
+ * level number or in their group («… G1» and «… G2», «Grupo A» and «Grupo B») are never grouped, by any rule, not
+ * even through a third course (see groups()).
  */
 class duplicates {
     /** @var string Name of the hidden folder that receives the repeated courses. */
@@ -44,6 +45,12 @@ class duplicates {
     /** @var int Shortest base short name that can match, in letters and digits. */
     public const MIN_SHORTNAME = 3;
 
+    /** @var int Shortest word that counts as significant for the short name rule. */
+    public const MIN_WORD = 3;
+
+    /** @var string[] Words that never count as shared, though they have three letters or more. */
+    public const STOPWORDS = ['del', 'las', 'los', 'para', 'por', 'con', 'una', 'uno', 'the', 'and', 'for'];
+
     /** @var string «Copia de …» or «Copy of …» at the start. */
     private const COPY_PREFIX = '/^(?:copia\s+de|copy\s+of)\s+/';
 
@@ -53,11 +60,18 @@ class duplicates {
     /** @var string A trailing period, as sorter::parse_period reads it, maybe in parentheses: «2025-2», «(2025-02)». */
     private const PERIOD = '/[\s_-]*\(?\s*(?<![a-z0-9])20\d\d\s*[-–_\/ ]\s*(?:0?[12]|ii|i)\s*\)?$/u';
 
-    /** @var string A trailing group marker: «Grupo 1», «Grupo A», «G1», «Gr. 2». */
-    private const GROUP = '/[\s_-]*\(?\s*(?<![a-z0-9])(?:(?:grupo|group)(?:\s+[a-z]|\s*\d{1,4})|gr?\.?\s?\d{1,4})\s*\)?$/';
+    /**
+     * @var string A trailing group marker: «Grupo 1», «Grupo A», «G1», «Gr. 2». The group id is captured in 'id'
+     *      (digits) or 'letter'.
+     */
+    private const GROUP = '/[\s_-]*\(?\s*(?<![a-z0-9])(?:(?:grupo|group)(?:\s+(?<letter>[a-z])|\s*(?<id>\d{1,4}))'
+        . '|gr?\.?\s?(?<gid>\d{1,4}))\s*\)?$/';
 
-    /** @var string A trailing period in a short name; the separator between year and term may be missing. */
-    private const SHORT_PERIOD = '/[\s_-]*\(?\s*(?<!\d)20\d\d\s*[-–_\/ ]?\s*(?:0?[12]|ii|i)\s*\)?$/u';
+    /**
+     * @var string A trailing period in a short name, with a separator between year and term: «-2025-2», «_2025-02».
+     *      «CAL20261» is not a period: digits glued to the code are part of it.
+     */
+    private const SHORT_PERIOD = '/[\s_-]*\(?\s*(?<!\d)20\d\d\s*[-–_\/ ]\s*(?:0?[12]|ii|i)\s*\)?$/u';
 
     /**
      * @var string A trailing «_1», the counter Moodle adds when a short name is taken. Never «-1»: «MAT-1» and «MAT-2»
@@ -75,12 +89,22 @@ class duplicates {
      * @return string '' when nothing is left.
      */
     public static function key_name(string $fullname): string {
-        $key = preg_replace(self::COPY_PREFIX, '', sorter::normalize($fullname));
-        return self::strip($key, [self::COPY, self::PERIOD, self::GROUP]);
+        return self::parse_name($fullname)[0];
     }
 
     /**
-     * Key of a short name: normalized, without trailing copy markers, periods or counters.
+     * Group of a full name: the id of its trailing group marker, normalized («Grupo 01» and «G1» give '1', «Grupo A»
+     * gives 'a'), or '' when it has none.
+     *
+     * @param string $fullname Raw full name.
+     * @return string
+     */
+    public static function group_id(string $fullname): string {
+        return self::parse_name($fullname)[1];
+    }
+
+    /**
+     * Key of a short name: normalized, without trailing copy markers, periods or the «_N» counter.
      *
      * @param string $shortname Raw short name.
      * @return string '' when fewer than MIN_SHORTNAME letters and digits are left.
@@ -94,21 +118,20 @@ class duplicates {
     }
 
     /**
-     * Strips trailing markers until none is left.
+     * Significant words of a name key: three letters or more, not a stopword.
      *
-     * @param string $key
-     * @param string[] $patterns
-     * @return string
+     * @param string $key As key_name() returns it.
+     * @return string[] Map word => word.
      */
-    private static function strip(string $key, array $patterns): string {
-        $key = rtrim($key, self::TRIM);
-        do {
-            $before = $key;
-            foreach ($patterns as $pattern) {
-                $key = rtrim((string) preg_replace($pattern, '', $key), self::TRIM);
+    public static function words(string $key): array {
+        preg_match_all('/[a-z]+/', $key, $matches);
+        $words = [];
+        foreach ($matches[0] as $word) {
+            if (strlen($word) >= self::MIN_WORD && !in_array($word, self::STOPWORDS, true)) {
+                $words[$word] = $word;
             }
-        } while ($key !== $before && $key !== '');
-        return $key;
+        }
+        return $words;
     }
 
     /**
@@ -149,15 +172,18 @@ class duplicates {
      * Groups of repeated courses among the courses of one category.
      *
      * Grouping is transitive: A like B by name and B like C by short name put A, B and C in one group. The course
-     * that stays is the most recently modified; a tie goes to the highest id.
+     * that stays is a visible one before a hidden one, then the most recently modified; a tie goes to the highest id.
      *
-     * A group never holds two courses whose name keys differ only in a level number (levels()): «Cálculo I» and
-     * «Cálculo II» stay apart even when their short names match, and even through a third course. Two groups that
-     * would break this are not joined; links are made in a fixed order (rule, then course order), so the result
-     * does not depend on chance.
+     * A group never holds two courses whose name keys share a stem (levels()) with different level numbers, nor two
+     * different group ids of the same stem: «Cálculo I» and «Cálculo II» stay apart, and so do «… G1» and «… G2»,
+     * even when their short names match and even through a third course («Cálculo I» may join «Cálculo I G1», but
+     * then not «Cálculo I G2»). Two groups that would break this are not joined; links are made in a fixed order
+     * (rule, then course order), so the result does not depend on chance. A short name match links two courses only
+     * when their name keys share a significant word (words()).
      *
-     * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int],
-     *      raw names. The order is kept inside each group and between groups.
+     * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int,
+     *      'visible' => int (optional, 1 when missing)], raw names. The order is kept inside each group and between
+     *      groups.
      * @return array List of ['key' => string (sorted ids joined by '-'), 'ids' => int[] (sorted), 'keep' => int,
      *      'courses' => [['id' => int, 'reasons' => string[], 'keep' => bool]]], only groups of two or more.
      */
@@ -174,12 +200,13 @@ class duplicates {
         };
 
         $names = [];
-        // Per component root: stem => level numbers of the courses in it.
+        $words = [];
+        // Per component root: stem => ['levels' => string, 'group' => string ('' when no course of it has one)].
         $profile = [];
         $buckets = array_fill_keys(self::RULES, []);
         foreach ($courses as $i => $course) {
             $names[$i] = sorter::normalize((string) $course['fullname']);
-            $key = self::key_name((string) $course['fullname']);
+            [$key, $group] = self::parse_name((string) $course['fullname']);
             $values = [
                 'name' => $names[$i],
                 'key' => $key,
@@ -190,26 +217,41 @@ class duplicates {
                     $buckets[$rule][$value][] = $i;
                 }
             }
+            $words[$i] = self::words($key);
             $profile[$i] = [];
             if ($key !== '') {
                 [$stem, $levels] = self::levels($key);
-                $profile[$i][$stem] = $levels;
+                $profile[$i][$stem] = ['levels' => $levels, 'group' => $group];
             }
         }
-        // Joins two components unless that puts two level numbers of the same stem together.
+        // Joins two components unless that puts two level numbers, or two group ids, of the same stem together.
         $join = static function (int $i, int $j) use (&$parent, &$profile, $find): bool {
             $a = $find($i);
             $b = $find($j);
             if ($a === $b) {
                 return true;
             }
-            foreach ($profile[$a] as $stem => $levels) {
-                if (isset($profile[$b][$stem]) && $profile[$b][$stem] !== $levels) {
+            foreach ($profile[$a] as $stem => $mine) {
+                if (!isset($profile[$b][$stem])) {
+                    continue;
+                }
+                $theirs = $profile[$b][$stem];
+                if ($theirs['levels'] !== $mine['levels']) {
+                    return false;
+                }
+                if ($theirs['group'] !== '' && $mine['group'] !== '' && $theirs['group'] !== $mine['group']) {
                     return false;
                 }
             }
+            // The joined component keeps, per stem, the levels and the group id it has (if any course has one).
+            foreach ($profile[$a] as $stem => $mine) {
+                if (!isset($profile[$b][$stem])) {
+                    $profile[$b][$stem] = $mine;
+                } else if ($profile[$b][$stem]['group'] === '') {
+                    $profile[$b][$stem]['group'] = $mine['group'];
+                }
+            }
             $parent[$a] = $b;
-            $profile[$b] += $profile[$a];
             return true;
         };
 
@@ -218,6 +260,10 @@ class duplicates {
             foreach ($list as $members) {
                 foreach ($members as $position => $i) {
                     foreach (array_slice($members, 0, $position) as $j) {
+                        // A short name alone links only names that share a significant word.
+                        if ($rule === 'shortname' && !array_intersect_key($words[$i], $words[$j])) {
+                            continue;
+                        }
                         if (!$join($j, $i)) {
                             continue;
                         }
@@ -245,7 +291,7 @@ class duplicates {
             foreach ($members as $i) {
                 $course = $courses[$i];
                 $ids[] = (int) $course['id'];
-                $rank = [(int) $course['timemodified'], (int) $course['id']];
+                $rank = [(int) ($course['visible'] ?? 1) ? 1 : 0, (int) $course['timemodified'], (int) $course['id']];
                 if ($keep === null || $rank > $keep[0]) {
                     $keep = [$rank, (int) $course['id']];
                 }
@@ -265,5 +311,46 @@ class duplicates {
             $groups[] = ['key' => implode('-', $ids), 'ids' => $ids, 'keep' => $keep[1], 'courses' => $list];
         }
         return $groups;
+    }
+
+    /**
+     * Key and group id of a full name.
+     *
+     * @param string $fullname Raw full name.
+     * @return array [string key, string group id]
+     */
+    private static function parse_name(string $fullname): array {
+        $key = rtrim((string) preg_replace(self::COPY_PREFIX, '', sorter::normalize($fullname)), self::TRIM);
+        $group = '';
+        do {
+            $before = $key;
+            $key = rtrim((string) preg_replace(self::COPY, '', $key), self::TRIM);
+            $key = rtrim((string) preg_replace(self::PERIOD, '', $key), self::TRIM);
+            if (preg_match(self::GROUP, $key, $match)) {
+                // The marker nearest to the name is the group: «Curso G1 (copia)» is group 1.
+                $id = ($match['id'] ?? '') . ($match['gid'] ?? '');
+                $group = $id !== '' ? (string) (int) $id : (string) ($match['letter'] ?? '');
+                $key = rtrim(substr($key, 0, -strlen($match[0])), self::TRIM);
+            }
+        } while ($key !== $before && $key !== '');
+        return [$key, $group];
+    }
+
+    /**
+     * Strips trailing markers until none is left.
+     *
+     * @param string $key
+     * @param string[] $patterns
+     * @return string
+     */
+    private static function strip(string $key, array $patterns): string {
+        $key = rtrim($key, self::TRIM);
+        do {
+            $before = $key;
+            foreach ($patterns as $pattern) {
+                $key = rtrim((string) preg_replace($pattern, '', $key), self::TRIM);
+            }
+        } while ($key !== $before && $key !== '');
+        return $key;
     }
 }

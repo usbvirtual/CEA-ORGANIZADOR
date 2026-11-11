@@ -81,6 +81,8 @@ final class duplicates_test extends \advanced_testcase {
         $this->assertSame('calc2', duplicates::key_shortname('CALC2'));
         $this->assertSame('calc12', duplicates::key_shortname('CALC12'));
         $this->assertSame('fis1b', duplicates::key_shortname('FIS1B'));
+        // Digits glued to the code are not a period.
+        $this->assertSame('cal20261', duplicates::key_shortname('CAL20261'));
     }
 
     /**
@@ -143,7 +145,7 @@ final class duplicates_test extends \advanced_testcase {
         $groups = duplicates::groups([
             ['id' => 1, 'fullname' => 'Cálculo I', 'shortname' => 'XA1', 'timemodified' => 5],
             ['id' => 2, 'fullname' => 'Cálculo I copia 1', 'shortname' => 'ZZZ9', 'timemodified' => 5],
-            ['id' => 3, 'fullname' => 'Otro nombre', 'shortname' => 'ZZZ9_1', 'timemodified' => 1],
+            ['id' => 3, 'fullname' => 'Cálculo I (nueva versión)', 'shortname' => 'ZZZ9_1', 'timemodified' => 1],
             ['id' => 4, 'fullname' => 'Cálculo II', 'shortname' => 'C2X', 'timemodified' => 9],
             ['id' => 5, 'fullname' => 'Física', 'shortname' => 'F1X', 'timemodified' => 1],
             ['id' => 6, 'fullname' => 'FÍSICA', 'shortname' => 'F2X', 'timemodified' => 1],
@@ -188,5 +190,107 @@ final class duplicates_test extends \advanced_testcase {
             ['id' => 1, 'fullname' => 'Física 1', 'shortname' => 'FIS1', 'timemodified' => 1],
             ['id' => 2, 'fullname' => 'Física 2', 'shortname' => 'FIS2', 'timemodified' => 1],
         ]));
+    }
+
+    /**
+     * A course of the same category.
+     *
+     * @param string $fullname
+     * @param int $id
+     * @param string $shortname
+     * @param int $timemodified
+     * @param int $visible
+     * @return array
+     */
+    private static function entry(string $fullname, int $id, string $shortname, int $timemodified = 1, int $visible = 1): array {
+        return [
+            'id' => $id,
+            'fullname' => $fullname,
+            'shortname' => $shortname,
+            'timemodified' => $timemodified,
+            'visible' => $visible,
+        ];
+    }
+
+    /**
+     * The group id of a name: digits as a number, a letter as is, '' when there is none.
+     */
+    public function test_group_id(): void {
+        $this->assertSame('1', duplicates::group_id('Cálculo I G1'));
+        $this->assertSame('1', duplicates::group_id('Cálculo I - Grupo 01'));
+        $this->assertSame('a', duplicates::group_id('Física Grupo A'));
+        $this->assertSame('1', duplicates::group_id('Juegos de Inteligencia (2026-2) G1'));
+        $this->assertSame('1', duplicates::group_id('Cálculo I G1 (copia)'));
+        $this->assertSame('', duplicates::group_id('Cálculo I'));
+        $this->assertSame('', duplicates::group_id('Grupos'));
+    }
+
+    /**
+     * Different live sections of a course (different groups) are never grouped: real pairs from eCampus.
+     */
+    public function test_groups_never_join_different_groups(): void {
+        $pairs = [
+            ['Juegos de Inteligencia (2026-2) G1', 'Juegos de Inteligencia (2026-2) G2'],
+            ['Física Grupo A', 'Física Grupo B'],
+            ['Laboratorio de Física G2', 'Laboratorio de Física G3'],
+            ['Práctica Profesional I - Grupo 1', 'Práctica Profesional I - Grupo 2'],
+        ];
+        foreach ($pairs as [$one, $two]) {
+            $this->assertSame([], duplicates::groups([
+                self::entry($one, 1, 'SEC1'),
+                self::entry($two, 2, 'SEC1_1'),
+            ]), $one);
+        }
+    }
+
+    /**
+     * A course without a group may join one with a group, but then never a course of another group.
+     */
+    public function test_groups_with_and_without_group(): void {
+        $groups = duplicates::groups([self::entry('Cálculo I', 1, 'CA1'), self::entry('Cálculo I G1', 2, 'CA2')]);
+        $this->assertSame('1-2', $groups[0]['key']);
+
+        $groups = duplicates::groups([
+            self::entry('Cálculo I G1', 1, 'CA1'),
+            self::entry('Cálculo I', 2, 'CA2'),
+            self::entry('Cálculo I G2', 3, 'CA3'),
+        ]);
+        $this->assertCount(1, $groups);
+        $this->assertSame('1-2', $groups[0]['key']);
+    }
+
+    /**
+     * A visible course stays before a hidden one, even an older one.
+     */
+    public function test_groups_visible_wins(): void {
+        $groups = duplicates::groups([
+            self::entry('Álgebra', 1, 'ALG1', 9000, 0),
+            self::entry('Álgebra', 2, 'ALG2', 1000, 1),
+        ]);
+        $this->assertSame(2, $groups[0]['keep']);
+        // Without visibility a course counts as visible.
+        $groups = duplicates::groups([
+            ['id' => 3, 'fullname' => 'Álgebra', 'shortname' => 'ALG3', 'timemodified' => 9000],
+            self::entry('Álgebra', 4, 'ALG4', 1000, 1),
+        ]);
+        $this->assertSame(3, $groups[0]['keep']);
+    }
+
+    /**
+     * A short name match alone links only names that share a significant word.
+     */
+    public function test_groups_shortname_needs_shared_word(): void {
+        $this->assertSame([], duplicates::groups([
+            self::entry('Cálculo Diferencial', 1, 'CAL101'),
+            self::entry('Física', 2, 'CAL101_2'),
+        ]));
+        $groups = duplicates::groups([
+            self::entry('Cálculo Diferencial', 1, 'CAL101'),
+            self::entry('Cálculo Diferencial e Integral', 2, 'CAL101_2'),
+        ]);
+        $this->assertSame('1-2', $groups[0]['key']);
+        $this->assertSame(['shortname'], $groups[0]['courses'][0]['reasons']);
+        // Stopwords and short words do not count.
+        $this->assertSame(['calculo' => 'calculo', 'integral' => 'integral'], duplicates::words('calculo del integral y la'));
     }
 }

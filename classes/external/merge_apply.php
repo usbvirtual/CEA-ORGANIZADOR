@@ -30,6 +30,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use tool_ceaorganizador\local\mergerunner;
+use tool_ceaorganizador\local\partial_exception;
 
 /**
  * Moves the courses of a preview that is still current. The lock and the native permissions live in mergerunner.
@@ -74,7 +75,19 @@ class merge_apply extends external_api {
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
 
-        return mergerunner::run($params['targetid'], $params['sourceids'], $params['rows'], $params['hash']);
+        try {
+            return mergerunner::run($params['targetid'], $params['sourceids'], $params['rows'], $params['hash']);
+        } catch (partial_exception $e) {
+            // Half done: what moved is recorded under logid, and the panel offers to undo it.
+            return [
+                'status' => 'partial',
+                'logid' => $e->logid,
+                'moved' => $e->moved,
+                'repeated' => 0,
+                'skipped' => 0,
+                'emptied' => [],
+            ];
+        }
     }
 
     /**
@@ -84,7 +97,10 @@ class merge_apply extends external_api {
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'status' => new external_value(PARAM_ALPHA, 'ok, or stale when the preview is no longer current'),
+            'status' => new external_value(
+                PARAM_ALPHA,
+                'ok, stale (the preview changed) or partial (stopped halfway; logid undoes it)'
+            ),
             'logid' => new external_value(PARAM_INT, 'Journal id; 0 when nothing was recorded'),
             'moved' => new external_value(PARAM_INT, 'Courses moved to their destination'),
             'repeated' => new external_value(PARAM_INT, 'Courses moved to the Repetidos folder'),

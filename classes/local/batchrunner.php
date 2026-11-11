@@ -31,8 +31,10 @@ namespace tool_ceaorganizador\local;
  * 1. One short transaction creates the missing categories and records the journal row, with no items yet.
  * 2. One transaction per destination category, at most CHUNK courses each, moves the courses and rewrites the
  *    journal row with the items moved so far.
- * A failure rolls back only its own chunk and reaches the caller; what was committed before is in the journal row,
- * so it can be undone (journal::undo() undoes the whole row in one transaction). No step leaves moves without a row.
+ * A failure rolls back only its own chunk; what was committed before is in the journal row, so it can be undone
+ * (journal::undo() undoes the whole row in one transaction). No step leaves moves without a row. When a chunk fails
+ * after another was committed, the caller gets a partial_exception with the row and the counts; before that, the
+ * failure itself.
  */
 abstract class batchrunner {
     /** @var int Most courses moved in one transaction. */
@@ -49,6 +51,7 @@ abstract class batchrunner {
      * @param array $payload Payload without 'created' and 'items'.
      * @param array $rows Rows with 'courseid', 'fromid', 'anchor', 'missing' and, optionally, 'hidden'.
      * @return int Journal id.
+     * @throws partial_exception When a chunk fails after at least one chunk was committed.
      */
     protected static function write(array $payload, array $rows): int {
         global $DB;
@@ -92,7 +95,15 @@ abstract class batchrunner {
                     static::update_batch($logid, ['items' => $items] + $payload);
                     $transaction->allow_commit();
                 } catch (\Throwable $e) {
-                    guard::rollback($transaction, $e);
+                    try {
+                        guard::rollback($transaction, $e);
+                    } catch (\Throwable $failure) {
+                        // After a committed chunk the batch is half done: the caller gets the row to undo it.
+                        if ($payload['items']) {
+                            throw new partial_exception($logid, count($payload['items']), count($rows), $failure);
+                        }
+                        throw $failure;
+                    }
                 }
                 $payload['items'] = $items;
             }

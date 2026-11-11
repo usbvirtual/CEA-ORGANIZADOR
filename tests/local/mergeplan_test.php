@@ -181,7 +181,8 @@ final class mergeplan_test extends \advanced_testcase {
         $this->assertFalse($this->row($plan, $other)['duplicate']);
         $this->assertSame('move', $this->row($plan, $other)['action']);
         $this->assertSame('', $this->row($plan, $other)['group']);
-        $this->assertSame(['id' => 0, 'path' => 'Semillas / Repetidos'], $plan['folder']);
+        $this->assertSame(['id' => 0, 'visible' => false, 'path' => 'Semillas / Repetidos'], $plan['folder']);
+        $this->assertTrue($row['visible']);
     }
 
     /**
@@ -233,7 +234,29 @@ final class mergeplan_test extends \advanced_testcase {
         $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
 
         $this->assertSame([$chem], array_column($plan['rows'], 'courseid'));
-        $this->assertSame(['id' => (int) $folder->id, 'path' => 'Semillas / REPETIDOS'], $plan['folder']);
+        $this->assertSame(['id' => (int) $folder->id, 'visible' => true, 'path' => 'Semillas / REPETIDOS'], $plan['folder']);
+    }
+
+    /**
+     * A visible target course stays before a newer hidden source course, which goes to Repetidos.
+     */
+    public function test_visible_target_course_wins(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $targeteng = $this->cat('Ingeniería', $target);
+        $source = $this->cat('Facultades');
+        $eng = $this->cat('Ingeniería', $source);
+        $kept = $this->course('Cálculo I', $targeteng, 1000);
+        $hidden = $this->course('Cálculo I', $eng, 2000);
+        $DB->set_field('course', 'visible', 0, ['id' => $hidden]);
+
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertSame('repeated', $this->row($plan, $hidden)['action']);
+        $this->assertFalse($this->row($plan, $hidden)['visible']);
+        $this->assertTrue($this->existing_rows($plan)[$kept]['winner']);
     }
 
     /**

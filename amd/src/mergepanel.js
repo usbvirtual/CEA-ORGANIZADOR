@@ -160,7 +160,15 @@ export const open = ({
     const folderLine = create('p', 'tool-ceaorganizador-ruta');
     folderLine.dataset.region = 'folder';
     folderLine.hidden = true;
-    root.append(targetBox, sourceBox, actions, notice, folderLine, tablewrap, emptied);
+    const folderWarning = create('p', 'tool-ceaorganizador-aviso', strings.repeatedfoldervisible);
+    folderWarning.dataset.region = 'foldervisible';
+    folderWarning.setAttribute('role', 'status');
+    folderWarning.hidden = true;
+    const groupNotice = create('p', 'tool-ceaorganizador-aviso');
+    groupNotice.dataset.region = 'groupnotice';
+    groupNotice.setAttribute('role', 'alert');
+    groupNotice.hidden = true;
+    root.append(targetBox, sourceBox, actions, notice, folderLine, folderWarning, groupNotice, tablewrap, emptied);
 
     let targetid = 0;
     const sources = new Set(sourceid > 0 ? [sourceid] : []);
@@ -205,10 +213,31 @@ export const open = ({
     // goes to «Repetidos» (one that is kept is already where it belongs).
     const pending = () => rows.filter((row) => (row.existing ? row.action === 'repeated' : row.action !== 'skip')).length;
 
+    // A group with courses in the target must leave one of them in the destination (mergerunner checks it too).
+    const lostGroup = () => {
+        const groups = new Map();
+        rows.filter((row) => row.group).forEach((row) => {
+            groups.set(row.group, [...(groups.get(row.group) || []), row]);
+        });
+        for (const members of groups.values()) {
+            const intarget = members.some((row) => row.existing);
+            const kept = members.some((row) => (row.existing ? row.action !== 'repeated' : row.action === 'move'));
+            if (intarget && !kept) {
+                return (members.find((row) => row.winner) || members[0]).fullname;
+            }
+        }
+        return null;
+    };
+
     const refresh = () => {
         const count = pending();
+        const lost = lostGroup();
         applyButton.textContent = format(strings.mergeapply, count);
-        applyButton.disabled = busy || plan === null || count === 0;
+        applyButton.disabled = busy || plan === null || count === 0 || lost !== null;
+        if (plan !== null) {
+            groupNotice.textContent = lost === null ? '' : format(strings.error_groupwithoutwinner, decode(lost));
+            groupNotice.hidden = lost === null;
+        }
         previewButton.disabled = busy || targetid === 0 || sourceIds().length === 0;
         createButton.disabled = busy;
     };
@@ -222,6 +251,8 @@ export const open = ({
         tbody.textContent = '';
         tablewrap.hidden = true;
         folderLine.hidden = true;
+        folderWarning.hidden = true;
+        groupNotice.hidden = true;
         refresh();
     };
 
@@ -333,6 +364,11 @@ export const open = ({
                 state.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.mergeduplicate));
                 if (row.winner) {
                     state.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.mergewinner));
+                    if (row.visible === false) {
+                        const warning = create('span', 'tool-ceaorganizador-insignia', strings.winnerhidden);
+                        warning.dataset.region = 'winnerhidden';
+                        state.appendChild(warning);
+                    }
                 }
                 const reasons = (row.reasons || []).map((reason) => strings[`dedupereason_${reason}`] || reason);
                 if (reasons.length > 0) {
@@ -355,6 +391,8 @@ export const open = ({
         const any = rows.some((row) => row.duplicate);
         folderLine.textContent = any && folder ? format(strings.mergerepeatedto, decode(folder.path)) : '';
         folderLine.hidden = !any || !folder;
+        // An existing visible folder would leave the moved courses visible.
+        folderWarning.hidden = !any || !folder || !folder.visible;
     };
 
     // One task at a time across the panel: the preview, the apply and the creation share the lock.
@@ -457,7 +495,15 @@ export const open = ({
         tbody.textContent = '';
         tablewrap.hidden = true;
         folderLine.hidden = true;
-        if (result.logid > 0) {
+        folderWarning.hidden = true;
+        groupNotice.hidden = true;
+        if (result.status === 'partial') {
+            // It stopped halfway: what moved is recorded and can be undone.
+            toast.show(format(strings.partialdone, result.moved), {
+                actionLabel: strings.undo,
+                onAction: () => undoMerge(result.logid),
+            });
+        } else if (result.logid > 0) {
             let message = format(strings.mergedone, result.moved);
             if (result.repeated > 0) {
                 message += ` · ${format(strings.mergedonerepeated, result.repeated)}`;

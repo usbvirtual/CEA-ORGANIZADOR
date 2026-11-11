@@ -162,7 +162,10 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame('Cálculo I copia 1', $courses[$a2]['fullname']);
         $this->assertSame('CALCA_1', $courses[$a2]['shortname']);
         $this->assertSame(1000, $courses[$a2]['timemodified']);
-        $this->assertSame(['id' => (int) $folder->id, 'path' => 'Facultad / REPETIDOS'], $plan['folder']);
+        $this->assertSame((int) $folder->id, $plan['folder']['id']);
+        $this->assertSame('Facultad / REPETIDOS', $plan['folder']['path']);
+        // It exists and is visible: the panel warns that moved courses would stay visible.
+        $this->assertTrue($plan['folder']['visible']);
     }
 
     /**
@@ -174,7 +177,7 @@ final class deduperunner_test extends \advanced_testcase {
         $root = $this->cat('Programa');
         $a = $this->course('Cálculo I', $root, 1000, 'XAB1');
         $b = $this->course('Cálculo I (2025-2)', $root, 3000, 'ZZQ9');
-        $c = $this->course('Otro nombre', $root, 2000, 'ZZQ9_2');
+        $c = $this->course('Cálculo I (nueva versión)', $root, 2000, 'ZZQ9_2');
         $this->course('Cálculo II', $root, 5000, 'XAB2');
 
         $plan = dedupeplan::build((int) $root->id);
@@ -185,7 +188,45 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame(implode('-', $ids), $plan['groups'][0]['key']);
         $keep = array_column($plan['groups'][0]['courses'], 'keep', 'courseid');
         $this->assertTrue($keep[$b]);
-        $this->assertSame(['id' => 0, 'path' => 'Programa / Repetidos'], $plan['folder']);
+        $this->assertSame(0, $plan['folder']['id']);
+        $this->assertSame('Programa / Repetidos', $plan['folder']['path']);
+        $this->assertFalse($plan['folder']['visible']);
+    }
+
+    /**
+     * A visible course stays before a hidden one, even a newer one; the preview says which ones are hidden.
+     */
+    public function test_preview_visible_wins(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $root = $this->cat('Programa');
+        $visible = $this->course('Álgebra', $root, 1000);
+        $hidden = $this->course('Álgebra', $root, 3000);
+        $DB->set_field('course', 'visible', 0, ['id' => $hidden]);
+
+        $plan = dedupeplan::build((int) $root->id);
+
+        $courses = array_column($plan['groups'][0]['courses'], null, 'courseid');
+        $this->assertTrue($courses[$visible]['keep']);
+        $this->assertFalse($courses[$hidden]['keep']);
+        $this->assertTrue($courses[$visible]['visible']);
+        $this->assertFalse($courses[$hidden]['visible']);
+    }
+
+    /**
+     * Sections of a course with different groups are never moved as repeated.
+     */
+    public function test_preview_keeps_groups_apart(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $root = $this->cat('Programa');
+        $this->course('Juegos de Inteligencia (2026-2) G1', $root);
+        $this->course('Juegos de Inteligencia (2026-2) G2', $root);
+        $this->course('Física Grupo A', $root);
+        $this->course('Física Grupo B', $root);
+
+        $this->assertSame([], dedupeplan::build((int) $root->id)['groups']);
     }
 
     /**

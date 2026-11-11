@@ -45,7 +45,8 @@ class mergeplan {
      * Each row has 'action': 'move' (to the destination; for a course already in the target, it stays), 'repeated'
      * (to the «Repetidos» folder) or 'skip' (left in the source). Rows of a group share 'group' (the sorted ids of the
      * group joined by '-'), 'winner' marks the course that stays by default and 'reasons' the rules that matched.
-     * 'existing' marks a course that is already in the target.
+     * 'existing' marks a course that is already in the target, 'visible' whether the course is visible: a visible
+     * course is kept before a hidden one (duplicates::groups()).
      *
      * @param int $targetid Category that receives the courses.
      * @param int[] $sourceids Categories whose courses are moved, at any depth.
@@ -53,7 +54,7 @@ class mergeplan {
      *      existing destination category), 'missing' (raw names to create below it) and 'hidden' (the destination is
      *      inside the «Repetidos» folder). The hash does not change.
      * @return array ['rows' => array[], 'emptied' => array[], 'folder' => ['id' => int (0 when it will be created),
-     *      'path' => string], 'hash' => string]
+     *      'visible' => bool (false when it will be created hidden), 'path' => string], 'hash' => string]
      */
     public static function build(int $targetid, array $sourceids, bool $details = false): array {
         global $DB;
@@ -66,7 +67,8 @@ class mergeplan {
             throw new \invalid_parameter_exception('Repeated source category');
         }
 
-        $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', 'id, parent, name, path, sortorder');
+        $fields = 'id, parent, name, path, sortorder, visible';
+        $records = $DB->get_records('course_categories', null, 'sortorder ASC, id ASC', $fields);
         $cats = [];
         $children = [];
         foreach ($records as $record) {
@@ -116,8 +118,10 @@ class mergeplan {
         $index = cloner::index($cats);
         $folderkey = sorter::normalize(duplicates::FOLDER);
         $folderid = $index[$targetid][$folderkey] ?? 0;
+        // A folder that exists and is visible would leave the moved courses visible: the panel warns about it.
         $folder = [
             'id' => $folderid,
+            'visible' => $folderid ? (int) $records[$folderid]->visible === 1 : false,
             'path' => $folderid
                 ? cloneplan::path_of($folderid, $cats, $paths)
                 : cloneplan::path_of($targetid, $cats, $paths) . ' / ' . cloneplan::format(duplicates::FOLDER),
@@ -146,6 +150,7 @@ class mergeplan {
             $rows[] = [
                 'courseid' => (int) $course->id,
                 'fullname' => cloneplan::format($course->fullname),
+                'visible' => (int) $course->visible === 1,
                 'from' => $paths[$category],
                 'to' => $destinations[$where['key']]['to'],
                 'toid' => $missing ? 0 : $where['resolved']['existing'],
@@ -167,6 +172,7 @@ class mergeplan {
                     'fullname' => $course->fullname,
                     'shortname' => $course->shortname,
                     'timemodified' => (int) $course->timemodified,
+                    'visible' => (int) $course->visible,
                     'row' => count($rows) - 1,
                 ];
             }
@@ -257,7 +263,7 @@ class mergeplan {
         foreach (array_chunk(array_keys($keyof), self::CHUNK) as $chunk) {
             [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
             $records = $DB->get_records_sql(
-                "SELECT id, category, fullname, shortname, timemodified
+                "SELECT id, category, fullname, shortname, timemodified, visible
                    FROM {course}
                   WHERE category $insql
                ORDER BY sortorder ASC, id ASC",
@@ -269,6 +275,7 @@ class mergeplan {
                     'fullname' => $record->fullname,
                     'shortname' => $record->shortname,
                     'timemodified' => (int) $record->timemodified,
+                    'visible' => (int) $record->visible,
                     'row' => -1,
                     'category' => (int) $record->category,
                 ];
@@ -320,6 +327,7 @@ class mergeplan {
                     $extra[] = $values + [
                         'courseid' => $candidate['id'],
                         'fullname' => cloneplan::format($candidate['fullname']),
+                        'visible' => $candidate['visible'] === 1,
                         'from' => $path,
                         'to' => $path,
                         'toid' => $category,
@@ -396,7 +404,7 @@ class mergeplan {
             [$insql, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED);
             $params['site'] = SITEID;
             $records = $DB->get_records_sql(
-                "SELECT id, category, sortorder, fullname, shortname, timemodified
+                "SELECT id, category, sortorder, fullname, shortname, timemodified, visible
                    FROM {course}
                   WHERE category $insql AND id <> :site",
                 $params

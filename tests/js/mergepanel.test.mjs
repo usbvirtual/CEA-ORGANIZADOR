@@ -16,6 +16,8 @@ const strings = new Proxy({}, {
         mergeskip: 'Dejar en el origen',
         mergerepeatedto: 'A Repetidos: {$a}',
         mergedonerepeated: 'A Repetidos: {$a}',
+        error_groupwithoutwinner: 'Sin ganador: {$a}',
+        partialdone: 'Interrumpido: {$a}',
         historypage: 'Página {$a}',
     })[name] || String(name),
 });
@@ -172,8 +174,16 @@ test('la vista previa muestra Nueva y los grupos de repetidos con su elección; 
     };
     pick(choice, 'skip');
     assert.equal(action(document, 'apply').textContent, 'Unificar (2)');
+    // Nobody of the group would stay in the target: the apply is blocked and the winner is named, as text.
     pick(existingChoice, 'repeated');
-    assert.equal(action(document, 'apply').textContent, 'Unificar (3)');
+    assert.equal(action(document, 'apply').disabled, true);
+    const groupNotice = document.querySelector('[data-region="groupnotice"]');
+    assert.equal(groupNotice.hidden, false);
+    assert.equal(groupNotice.textContent, 'Sin ganador: Física 2026-1');
+    pick(choice, 'move');
+    assert.equal(groupNotice.hidden, true);
+    assert.equal(action(document, 'apply').disabled, false);
+    assert.equal(action(document, 'apply').textContent, 'Unificar (4)');
     action(document, 'apply').click();
     await flush();
     assert.deepEqual(calls.apply[0], {
@@ -181,7 +191,7 @@ test('la vista previa muestra Nueva y los grupos de repetidos con su elección; 
         sourceids: [1],
         rows: [
             { courseid: 10, action: 'move' },
-            { courseid: 11, action: 'skip' },
+            { courseid: 11, action: 'move' },
             { courseid: 13, action: 'repeated' },
             { courseid: 12, action: 'move' },
         ],
@@ -376,4 +386,31 @@ test('una vista previa en vuelo se descarta si la selección cambia antes de que
     assert.equal(document.querySelector('[data-region="preview"]').hidden, true);
     assert.equal(document.querySelectorAll('tbody tr').length, 0);
     assert.equal(action(document, 'apply').disabled, true);
+});
+
+test('un ganador oculto y una carpeta Repetidos visible se avisan; un resultado parcial ofrece Deshacer', async () => {
+    const { document, calls } = setup({
+        sourceid: 1,
+        preview: {
+            ...previewOf([
+                row(11, 'Física', { duplicate: true, action: 'move', group: '11-13', winner: true, visible: false }),
+                row(13, 'Física', { duplicate: true, action: 'repeated', group: '11-13', existing: true, visible: true }),
+            ]),
+            folder: { id: 8, path: 'Semillas / Repetidos', visible: true },
+        },
+        apply: { status: 'partial', logid: 21, moved: 1, repeated: 0, skipped: 0, emptied: [] },
+    });
+    pickTarget(document, 3);
+    action(document, 'preview').click();
+    await flush();
+    assert.notEqual(document.querySelector('tr[data-courseid="11"] [data-region="winnerhidden"]'), null);
+    assert.equal(document.querySelector('tr[data-courseid="13"] [data-region="winnerhidden"]'), null);
+    assert.equal(document.querySelector('[data-region="foldervisible"]').hidden, false);
+    action(document, 'apply').click();
+    await flush();
+    assert.equal(calls.toasts[0].message, 'Interrumpido: 1');
+    calls.toasts[0].options.onAction();
+    await flush();
+    assert.deepEqual(calls.undo, [21]);
+    assert.equal(calls.reload, 1);
 });

@@ -83,6 +83,8 @@ final class dedupe_external_test extends \advanced_testcase {
         $this->assertFalse($courses[$old]['keep']);
         $this->assertSame(['key', 'shortname'], $courses[$old]['reasons']);
         $this->assertSame(0, $result['folder']['id']);
+        $this->assertFalse($result['folder']['visible']);
+        $this->assertTrue($courses[$new]['visible']);
         $this->assertNotEmpty($result['hash']);
     }
 

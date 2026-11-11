@@ -711,11 +711,17 @@ final class mergerunner_test extends \advanced_testcase {
             }
         };
 
+        $logid = 0;
         try {
             $runner::run((int) $target->id, [(int) $source->id], [], $plan['hash']);
             $this->fail('The failure must reach the caller');
-        } catch (\coding_exception $e) {
-            $this->assertStringContainsString('Simulated failure', $e->getMessage());
+        } catch (partial_exception $e) {
+            // Half done: the caller gets the journal row and the counts, and the cause in the debug information.
+            $this->assertSame('error_partialbatch', $e->errorcode);
+            $this->assertSame(1, $e->moved);
+            $this->assertSame(2, $e->total);
+            $this->assertStringContainsString('Simulated failure', (string) $e->debuginfo);
+            $logid = $e->logid;
         }
 
         $newlaw = $this->child((int) $target->id, 'Derecho');
@@ -723,7 +729,7 @@ final class mergerunner_test extends \advanced_testcase {
         $this->assertSame($newlaw, $this->category_of($law));
         $this->assertSame((int) $ing->id, $this->category_of($calc));
         $this->assertSame($categories + 2, $DB->count_records('course_categories'));
-        $logid = (int) $DB->get_field(journal::TABLE, 'id', ['action' => 'merge'], MUST_EXIST);
+        $this->assertSame($logid, (int) $DB->get_field(journal::TABLE, 'id', ['action' => 'merge'], MUST_EXIST));
         $payload = $this->payload($logid);
         $this->assertSame([$law], array_column($payload['items'], 'id'));
         $this->assertEqualsCanonicalizing([$newlaw, $newing], $payload['created']);
@@ -733,5 +739,51 @@ final class mergerunner_test extends \advanced_testcase {
         $this->assertTrue($undo['ok']);
         $this->assertSame((int) $derecho->id, $this->category_of($law));
         $this->assertSame($categories, $DB->count_records('course_categories'));
+    }
+
+    /**
+     * A group with a course in the target must leave one in the destination: leaving the source winner in the
+     * source, or sending everyone to Repetidos, is refused before any write, naming the course.
+     */
+    public function test_group_without_winner_rejected(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $new = $this->course('Cálculo I', $ing, 2000);
+        $target = $this->cat('Semillas');
+        $ting = $this->cat('Ingeniería', $target);
+        $old = $this->course('Cálculo I', $ting, 1000);
+        $categories = $DB->count_records('course_categories');
+
+        $cases = [
+            // The newer source course stays in the source; the target course goes to Repetidos by default.
+            [['courseid' => $new, 'action' => 'skip']],
+            // Everyone to Repetidos.
+            [['courseid' => $new, 'action' => 'repeated']],
+        ];
+        foreach ($cases as $rows) {
+            try {
+                $this->apply_merge($target, [$source], $rows);
+                $this->fail('A group without a course in the destination must be refused');
+            } catch (\moodle_exception $e) {
+                $this->assertSame('error_groupwithoutwinner', $e->errorcode);
+                $this->assertSame(get_string('error_groupwithoutwinner', 'tool_ceaorganizador', 'Cálculo I'), $e->getMessage());
+            }
+        }
+        $this->assertSame((int) $ing->id, $this->category_of($new));
+        $this->assertSame((int) $ting->id, $this->category_of($old));
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+
+        // Keeping the target course is fine: the source course stays in the source.
+        $result = $this->apply_merge($target, [$source], [
+            ['courseid' => $new, 'action' => 'skip'],
+            ['courseid' => $old, 'action' => 'move'],
+        ]);
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(0, $result['logid']);
+        $this->assertSame((int) $ting->id, $this->category_of($old));
     }
 }

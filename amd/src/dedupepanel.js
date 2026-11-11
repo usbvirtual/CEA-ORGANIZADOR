@@ -124,6 +124,10 @@ export const open = ({
     const folderLine = create('p', 'tool-ceaorganizador-ruta');
     folderLine.dataset.region = 'folder';
     folderLine.hidden = true;
+    const folderWarning = create('p', 'tool-ceaorganizador-aviso', strings.repeatedfoldervisible);
+    folderWarning.dataset.region = 'foldervisible';
+    folderWarning.setAttribute('role', 'status');
+    folderWarning.hidden = true;
     const groupsBox = create('div');
     groupsBox.dataset.region = 'groups';
     const applyButton = button('apply', format(strings.dedupeapply, 0), 'btn btn-primary');
@@ -132,7 +136,7 @@ export const open = ({
     closeButton.addEventListener('click', () => dialog.close());
     const actions = create('div', 'tool-ceaorganizador-acciones');
     actions.append(applyButton, closeButton);
-    root.append(pickBox, note, notice, folderLine, groupsBox, actions);
+    root.append(pickBox, note, notice, folderLine, folderWarning, groupsBox, actions);
 
     let chosen = 0;
     // What the preview was made with: the hash only matches that category.
@@ -235,6 +239,11 @@ export const open = ({
             label.appendChild(create('span', 'tool-ceaorganizador-ruta', ` · ${details.join(' · ')}`));
             if (course.courseid === group.default) {
                 label.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.dedupekeep));
+                if (course.visible === false) {
+                    const warning = create('span', 'tool-ceaorganizador-insignia', strings.winnerhidden);
+                    warning.dataset.region = 'winnerhidden';
+                    label.appendChild(warning);
+                }
             }
             wrap.append(radio, label);
             item.appendChild(wrap);
@@ -260,6 +269,8 @@ export const open = ({
         groups.forEach((group) => groupsBox.appendChild(drawGroup(group)));
         folderLine.textContent = format(strings.dedupefolder, decode(result.folder.path));
         folderLine.hidden = groups.length === 0;
+        // An existing visible folder would leave the moved courses visible.
+        folderWarning.hidden = groups.length === 0 || !result.folder.visible;
         if (groups.length === 0) {
             say(strings.dedupenothing);
         } else {
@@ -307,6 +318,7 @@ export const open = ({
         groups = [];
         groupsBox.textContent = '';
         folderLine.hidden = true;
+        folderWarning.hidden = true;
         drawCategories();
         refresh();
         return loadTask();
@@ -346,7 +358,9 @@ export const open = ({
         groupsBox.textContent = '';
         refresh();
         if (result.logid > 0) {
-            toast.show(format(strings.dedupedone, result.moved), {
+            // A partial result stopped halfway: what moved is recorded and can be undone.
+            const message = result.status === 'partial' ? strings.partialdone : strings.dedupedone;
+            toast.show(format(message, result.moved), {
                 actionLabel: strings.undo,
                 onAction: () => undoDedupe(result.logid),
             });

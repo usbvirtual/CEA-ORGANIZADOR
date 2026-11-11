@@ -108,7 +108,10 @@ final class merge_external_test extends \advanced_testcase {
         $this->assertTrue($existing[0]['winner']);
         $this->assertSame($bycourse[$b->id]['group'], $existing[0]['group']);
         $this->assertSame('', $bycourse[$a->id]['group']);
-        $this->assertSame(['id' => 0, 'path' => 'Semillas / Repetidos'], $result['folder']);
+        $this->assertSame(0, $result['folder']['id']);
+        $this->assertSame('Semillas / Repetidos', $result['folder']['path']);
+        $this->assertFalse($result['folder']['visible']);
+        $this->assertTrue($existing[0]['visible']);
         $this->assertArrayNotHasKey('toid', $bycourse[$a->id]);
         $this->assertSame('Facultades / Programa A', $bycourse[$a->id]['from']);
         $this->assertSame('Semillas / programa á', $bycourse[$a->id]['to']);

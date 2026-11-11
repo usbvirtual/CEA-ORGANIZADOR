@@ -55,6 +55,9 @@ class mergerunner extends batchrunner {
      *      'emptied' => [['id' => int, 'path' => string]]]; logid is 0 when nothing was recorded.
      * @throws \required_capability_exception When a category or course cannot be changed; nothing is written.
      * @throws \invalid_parameter_exception For an unknown course or action in $rows.
+     * @throws \moodle_exception error_groupwithoutwinner when a group with courses in the target would leave none of
+     *      them in the destination; nothing is written.
+     * @throws partial_exception When it stops halfway; what moved is recorded and can be undone.
      */
     public static function run(int $targetid, array $sourceids, array $rows, string $hash): array {
         // Up to mergeplan::MAX_ROWS courses are moved in one request.
@@ -145,7 +148,42 @@ class mergerunner extends batchrunner {
             }
             $planrows[$byid[$courseid]]['action'] = $action;
         }
+        self::check_winners($planrows);
         return $planrows;
+    }
+
+    /**
+     * Rejects the actions when a group with courses in the target would leave none of them in the destination.
+     *
+     * A course already in the target stays unless it goes to «Repetidos»; a source course reaches the destination
+     * only with 'move'. When the source winner is left in the source, or every member goes to «Repetidos», the
+     * destination would lose the course: that is refused, before any write.
+     *
+     * @param array $planrows Plan rows with the final action.
+     * @throws \moodle_exception error_groupwithoutwinner, naming the course that stays by default.
+     */
+    private static function check_winners(array $planrows): void {
+        $groups = [];
+        foreach ($planrows as $row) {
+            if ($row['group'] !== '') {
+                $groups[$row['group']][] = $row;
+            }
+        }
+        foreach ($groups as $members) {
+            $intarget = false;
+            $kept = false;
+            $name = $members[0]['fullname'];
+            foreach ($members as $row) {
+                $intarget = $intarget || $row['existing'];
+                $kept = $kept || ($row['existing'] ? $row['action'] !== 'repeated' : $row['action'] === 'move');
+                if ($row['winner']) {
+                    $name = $row['fullname'];
+                }
+            }
+            if ($intarget && !$kept) {
+                throw new \moodle_exception('error_groupwithoutwinner', 'tool_ceaorganizador', '', $name);
+            }
+        }
     }
 
     /**
