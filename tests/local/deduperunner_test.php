@@ -265,7 +265,7 @@ final class deduperunner_test extends \advanced_testcase {
             $log->summary
         );
         $payload = json_decode($log->payload, true);
-        $this->assertSame((int) $root->id, $payload['categoryid']);
+        $this->assertSame([(int) $root->id], $payload['categoryids']);
         $this->assertSame([$folder], $payload['created']);
 
         // A second preview does not see the folder: nothing is repeated now.
