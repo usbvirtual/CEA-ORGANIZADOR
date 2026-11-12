@@ -83,6 +83,7 @@ final class merge_external_test extends \advanced_testcase {
      * and the output survives the return definition.
      */
     public function test_preview(): void {
+        global $DB;
         $this->resetAfterTest();
         $this->setAdminUser();
         [$source, $target, $a, $b] = $this->seeds();
@@ -115,7 +116,12 @@ final class merge_external_test extends \advanced_testcase {
         $this->assertArrayNotHasKey('toid', $bycourse[$a->id]);
         $this->assertSame('Facultades / Programa A', $bycourse[$a->id]['from']);
         $this->assertSame('Semillas / programa á', $bycourse[$a->id]['to']);
-        $this->assertSame([], $result['emptied']);
+        // A moves and B goes to Repetidos by default, so both source categories are left empty, deepest first.
+        $program = (int) $DB->get_field('course_categories', 'id', ['name' => 'Programa A', 'parent' => $source->id]);
+        $this->assertSame([
+            ['id' => $program, 'path' => 'Facultades / Programa A'],
+            ['id' => (int) $source->id, 'path' => 'Facultades'],
+        ], $result['emptied']);
     }
 
     /**
