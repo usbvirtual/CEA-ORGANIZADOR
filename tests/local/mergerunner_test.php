@@ -786,4 +786,44 @@ final class mergerunner_test extends \advanced_testcase {
         $this->assertSame(0, $result['logid']);
         $this->assertSame((int) $ting->id, $this->category_of($old));
     }
+
+    /**
+     * A confirmed possible group is accepted only when it is a possible group of the preview, and it must leave a
+     * course in the destination like a sure group; then the target course can go to Repetidos.
+     */
+    public function test_confirmed_possible_group(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->cat('Facultades');
+        $ing = $this->cat('Ingeniería', $source);
+        $new = $this->course('Física Mecánica', $ing, 2000);
+        $target = $this->cat('Semillas');
+        $ting = $this->cat('Ingeniería', $target);
+        $old = $this->course('Física', $ting, 1000);
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+        $key = $plan['possible'][0]['key'];
+        $rows = [['courseid' => $new, 'action' => 'move'], ['courseid' => $old, 'action' => 'repeated']];
+
+        try {
+            mergerunner::run((int) $target->id, [(int) $source->id], $rows, $plan['hash'], [$new . '-0']);
+            $this->fail('A key that is not a possible group of the preview must be refused');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertSame(0, $DB->count_records(journal::TABLE));
+        }
+        try {
+            $everyone = [['courseid' => $new, 'action' => 'repeated'], ['courseid' => $old, 'action' => 'repeated']];
+            mergerunner::run((int) $target->id, [(int) $source->id], $everyone, $plan['hash'], [$key]);
+            $this->fail('A confirmed group must leave a course in the destination');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error_groupwithoutwinner', $e->errorcode);
+        }
+
+        $result = mergerunner::run((int) $target->id, [(int) $source->id], $rows, $plan['hash'], [$key]);
+
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame(1, $result['repeated']);
+        $this->assertSame((int) $ting->id, $this->category_of($new));
+        $this->assertSame($this->child((int) $target->id, duplicates::FOLDER), $this->category_of($old));
+    }
 }

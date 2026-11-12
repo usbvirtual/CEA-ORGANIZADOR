@@ -293,4 +293,69 @@ final class duplicates_test extends \advanced_testcase {
         // Stopwords and short words do not count.
         $this->assertSame(['calculo' => 'calculo', 'integral' => 'integral'], duplicates::words('calculo del integral y la'));
     }
+
+    /**
+     * The course that stays: visible first, then the most activities, then the most recent, then the highest id.
+     */
+    public function test_groups_rank_activities(): void {
+        $course = static function (int $id, int $time, int $visible, int $activities): array {
+            return self::entry('Álgebra', $id, 'ALG' . $id, $time, $visible) + ['activities' => $activities];
+        };
+        // More activities beat a more recent course.
+        $this->assertSame(1, duplicates::groups([$course(1, 1000, 1, 12), $course(2, 9000, 1, 2)])[0]['keep']);
+        // A visible course beats a hidden one with more activities.
+        $this->assertSame(1, duplicates::groups([$course(1, 1000, 1, 1), $course(2, 9000, 0, 50)])[0]['keep']);
+        // Same activities: the most recent.
+        $this->assertSame(2, duplicates::groups([$course(1, 1000, 1, 3), $course(2, 9000, 1, 3)])[0]['keep']);
+    }
+
+    /**
+     * Possible repeated courses: each reason, with the course that would stay.
+     */
+    public function test_candidates_positives(): void {
+        $cases = [
+            'group' => ['Física Grupo A', 'Física Grupo B', 'FA1', 'FB1'],
+            'shortname' => ['Cálculo Diferencial', 'Física', 'CAL101', 'CAL101_2'],
+            'extra' => ['Física', 'Física Mecánica', 'F01', 'F02'],
+            'similar' => ['Cálculo Diferencial', 'Cálculo Diferencail', 'Y01', 'Y02'],
+        ];
+        foreach ($cases as $reason => [$one, $two, $short1, $short2]) {
+            $courses = [self::entry($one, 1, $short1), self::entry($two, 2, $short2) + ['activities' => 4]];
+            $groups = duplicates::groups($courses);
+            $this->assertSame([], $groups, $reason);
+            $possible = duplicates::candidates($courses, $groups);
+            $this->assertCount(1, $possible, $reason);
+            $this->assertSame($reason, $possible[0]['reason']);
+            $this->assertSame('1-2', $possible[0]['key']);
+            $this->assertSame(2, $possible[0]['keep'], $reason);
+        }
+        // A parenthesis at the end, and the same words in another order.
+        $courses = [self::entry('Cálculo Diferencial', 1, 'X01'), self::entry('Cálculo Diferencial (virtual)', 2, 'X02')];
+        $this->assertSame('extra', duplicates::candidates($courses, [])[0]['reason']);
+        $courses = [self::entry('Historia de Colombia', 1, 'H01'), self::entry('Colombia Historia de', 2, 'H02')];
+        $this->assertSame('similar', duplicates::candidates($courses, [])[0]['reason']);
+    }
+
+    /**
+     * Never suggested: different levels, a level as the extra word, unrelated names, and courses of a sure group.
+     */
+    public function test_candidates_negatives(): void {
+        $pairs = [
+            ['Cálculo I', 'Cálculo II', 'Z01', 'Z02'],
+            ['Cálculo I', 'Cálculo II', 'CALC', 'CALC_1'],
+            ['Física 1', 'Física 2', 'S01', 'S02'],
+            ['Programación', 'Programación I', 'P01', 'P02'],
+            ['Inglés I', 'Inglés IV', 'I01', 'I02'],
+            ['Física', 'Química', 'Q01', 'Q02'],
+        ];
+        foreach ($pairs as [$one, $two, $short1, $short2]) {
+            $courses = [self::entry($one, 1, $short1), self::entry($two, 2, $short2)];
+            $this->assertSame([], duplicates::candidates($courses, duplicates::groups($courses)), "$one / $two");
+        }
+        // Repeated for sure: in a group, so not a possible one.
+        $courses = [self::entry('Física', 1, 'R01'), self::entry('Física (copia)', 2, 'R02')];
+        $groups = duplicates::groups($courses);
+        $this->assertCount(1, $groups);
+        $this->assertSame([], duplicates::candidates($courses, $groups));
+    }
 }

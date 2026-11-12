@@ -45,6 +45,12 @@ class duplicates {
     /** @var int Shortest base short name that can match, in letters and digits. */
     public const MIN_SHORTNAME = 3;
 
+    /** @var string[] Reasons of a possible group, most cautious first. */
+    public const POSSIBLE_REASONS = ['group', 'shortname', 'extra', 'similar'];
+
+    /** @var int Shortest name key compared by edit distance for a possible group. */
+    public const MIN_SIMILAR = 12;
+
     /** @var int Shortest word that counts as significant for the short name rule. */
     public const MIN_WORD = 3;
 
@@ -172,7 +178,8 @@ class duplicates {
      * Groups of repeated courses among the courses of one category.
      *
      * Grouping is transitive: A like B by name and B like C by short name put A, B and C in one group. The course
-     * that stays is a visible one before a hidden one, then the most recently modified; a tie goes to the highest id.
+     * that stays is ranked by [visible, activities, timemodified, id] (group_of()): a visible course before a hidden
+     * one, then the one with more activities, then the most recently modified, then the highest id.
      *
      * A group never holds two courses whose name keys share a stem (levels()) with different level numbers, nor two
      * different group ids of the same stem: «Cálculo I» and «Cálculo II» stay apart, and so do «… G1» and «… G2»,
@@ -182,8 +189,8 @@ class duplicates {
      * when their name keys share a significant word (words()).
      *
      * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int,
-     *      'visible' => int (optional, 1 when missing)], raw names. The order is kept inside each group and between
-     *      groups.
+     *      'visible' => int (optional, 1 when missing), 'activities' => int (optional, 0 when missing)], raw names. The
+     *      order is kept inside each group and between groups.
      * @return array List of ['key' => string (sorted ids joined by '-'), 'ids' => int[] (sorted), 'keep' => int,
      *      'courses' => [['id' => int, 'reasons' => string[], 'keep' => bool]]], only groups of two or more.
      */
@@ -286,31 +293,190 @@ class duplicates {
             if (count($members) < 2) {
                 continue;
             }
-            $keep = null;
-            $ids = [];
+            $memberreasons = [];
             foreach ($members as $i) {
-                $course = $courses[$i];
-                $ids[] = (int) $course['id'];
-                $rank = [(int) ($course['visible'] ?? 1) ? 1 : 0, (int) $course['timemodified'], (int) $course['id']];
-                if ($keep === null || $rank > $keep[0]) {
-                    $keep = [$rank, (int) $course['id']];
-                }
+                $mine = $reasons[$i];
+                $memberreasons[$i] = array_values(array_filter(self::RULES, static function (string $rule) use ($mine): bool {
+                    return isset($mine[$rule]);
+                }));
             }
-            $list = [];
-            foreach ($members as $i) {
-                $id = (int) $courses[$i]['id'];
-                $list[] = [
-                    'id' => $id,
-                    'reasons' => array_values(array_filter(self::RULES, static function (string $rule) use ($reasons, $i): bool {
-                        return isset($reasons[$i][$rule]);
-                    })),
-                    'keep' => $id === $keep[1],
-                ];
-            }
-            sort($ids);
-            $groups[] = ['key' => implode('-', $ids), 'ids' => $ids, 'keep' => $keep[1], 'courses' => $list];
+            $groups[] = self::group_of($courses, $memberreasons);
         }
         return $groups;
+    }
+
+    /**
+     * «Posibles repetidos»: courses whose names are equal or very close but that the safe rules do not group.
+     *
+     * The tool asks the user about them instead of deciding. Only courses that are in no group of groups() take part,
+     * so a confirmed possible group never overlaps a sure one. Reasons, in the order they are tried for a pair:
+     * - 'group': the same name key with two different group ids («… G1» and «… G2»): normally NOT repeated;
+     * - 'shortname': the same short name key, with names that share no significant word;
+     * - 'extra': one name key is the other plus one trailing word of three letters or more, or a parenthesis;
+     * - 'similar': the same set of words in another order, or, for keys of 12 characters or more, a Levenshtein
+     *   distance of 2 or less.
+     * Except for 'group', both keys must have the same level numbers and no conflicting group ids: «Cálculo I» and
+     * «Cálculo II», or «Programación» and «Programación I», are never suggested. Pairs are joined transitively; a
+     * possible group takes the most cautious reason of its pairs ('group' first).
+     *
+     * @param array $courses As groups() takes them: the courses of one category.
+     * @param array $groups What groups() returned for them.
+     * @return array List of groups as groups() returns them, plus 'reason' => string.
+     */
+    public static function candidates(array $courses, array $groups): array {
+        $courses = array_values($courses);
+        $grouped = [];
+        foreach ($groups as $group) {
+            foreach ($group['ids'] as $id) {
+                $grouped[$id] = true;
+            }
+        }
+        $info = [];
+        foreach ($courses as $i => $course) {
+            if (isset($grouped[(int) $course['id']])) {
+                continue;
+            }
+            [$key, $group] = self::parse_name((string) $course['fullname']);
+            if ($key === '') {
+                continue;
+            }
+            [$stem, $levels] = self::levels($key);
+            $info[$i] = [
+                'key' => $key,
+                'group' => $group,
+                'stem' => $stem,
+                'levels' => $levels,
+                'short' => self::key_shortname((string) $course['shortname']),
+                'words' => self::words($key),
+            ];
+        }
+
+        $parent = [];
+        foreach (array_keys($info) as $i) {
+            $parent[$i] = $i;
+        }
+        $find = static function (int $i) use (&$parent): int {
+            while ($parent[$i] !== $i) {
+                $parent[$i] = $parent[$parent[$i]];
+                $i = $parent[$i];
+            }
+            return $i;
+        };
+        $order = array_flip(self::POSSIBLE_REASONS);
+        $reasonof = [];
+        $indexes = array_keys($info);
+        foreach ($indexes as $position => $i) {
+            foreach (array_slice($indexes, 0, $position) as $j) {
+                $reason = self::pair_reason($info[$j], $info[$i]);
+                if ($reason === null) {
+                    continue;
+                }
+                $a = $find($j);
+                $b = $find($i);
+                $best = $reason;
+                foreach ([$a, $b] as $root) {
+                    if (isset($reasonof[$root]) && $order[$reasonof[$root]] < $order[$best]) {
+                        $best = $reasonof[$root];
+                    }
+                }
+                if ($a !== $b) {
+                    $parent[$a] = $b;
+                    unset($reasonof[$a]);
+                }
+                $reasonof[$b] = $best;
+            }
+        }
+
+        $byroot = [];
+        foreach (array_keys($info) as $i) {
+            $byroot[$find($i)][] = $i;
+        }
+        $possible = [];
+        foreach ($byroot as $root => $members) {
+            if (count($members) < 2) {
+                continue;
+            }
+            $memberreasons = array_fill_keys($members, [$reasonof[$root]]);
+            $possible[] = self::group_of($courses, $memberreasons) + ['reason' => $reasonof[$root]];
+        }
+        return $possible;
+    }
+
+    /**
+     * Why two courses might be the same, or null when they are not close enough or a veto makes them different.
+     *
+     * @param array $one Name data of a course, as candidates() builds it.
+     * @param array $two
+     * @return string|null One of POSSIBLE_REASONS.
+     */
+    private static function pair_reason(array $one, array $two): ?string {
+        // The case the group veto blocks: shown with a warning, the user decides.
+        if ($one['key'] === $two['key']) {
+            return ($one['group'] !== '' && $two['group'] !== '' && $one['group'] !== $two['group']) ? 'group' : null;
+        }
+        // Everything else needs the same level numbers and no conflicting group ids.
+        if ($one['levels'] !== $two['levels']) {
+            return null;
+        }
+        if ($one['group'] !== '' && $two['group'] !== '' && $one['group'] !== $two['group']) {
+            return null;
+        }
+        if ($one['short'] !== '' && $one['short'] === $two['short'] && !array_intersect_key($one['words'], $two['words'])) {
+            return 'shortname';
+        }
+        [$short, $long] = strlen($one['key']) <= strlen($two['key']) ? [$one['key'], $two['key']] : [$two['key'], $one['key']];
+        if (str_starts_with($long, $short . ' ')) {
+            $rest = trim(substr($long, strlen($short)), " \t-:");
+            if (preg_match('/^[a-z]{3,}$/', $rest) || preg_match('/^\([^()]+\)$/', $rest)) {
+                return 'extra';
+            }
+        }
+        $onewords = preg_split('/[^a-z0-9]+/', $one['key'], -1, PREG_SPLIT_NO_EMPTY);
+        $twowords = preg_split('/[^a-z0-9]+/', $two['key'], -1, PREG_SPLIT_NO_EMPTY);
+        sort($onewords);
+        sort($twowords);
+        if ($onewords === $twowords) {
+            return 'similar';
+        }
+        if (min(strlen($one['key']), strlen($two['key'])) >= self::MIN_SIMILAR && levenshtein($one['key'], $two['key']) <= 2) {
+            return 'similar';
+        }
+        return null;
+    }
+
+    /**
+     * Builds a group from some courses: its key, its sorted ids and the course that stays.
+     *
+     * The course that stays is ranked by [visible, activities, timemodified, id]: a visible course before a hidden
+     * one, then the most complete, then the most recently modified, then the highest id.
+     *
+     * @param array $courses All the courses, by index.
+     * @param array $memberreasons Index of each member => its reasons, in the order of the group.
+     * @return array ['key', 'ids', 'keep', 'courses' => [['id', 'reasons', 'keep']]]
+     */
+    private static function group_of(array $courses, array $memberreasons): array {
+        $keep = null;
+        $ids = [];
+        foreach (array_keys($memberreasons) as $i) {
+            $course = $courses[$i];
+            $ids[] = (int) $course['id'];
+            $rank = [
+                (int) ($course['visible'] ?? 1) ? 1 : 0,
+                (int) ($course['activities'] ?? 0),
+                (int) $course['timemodified'],
+                (int) $course['id'],
+            ];
+            if ($keep === null || $rank > $keep[0]) {
+                $keep = [$rank, (int) $course['id']];
+            }
+        }
+        $list = [];
+        foreach ($memberreasons as $i => $reasons) {
+            $id = (int) $courses[$i]['id'];
+            $list[] = ['id' => $id, 'reasons' => $reasons, 'keep' => $id === $keep[1]];
+        }
+        sort($ids);
+        return ['key' => implode('-', $ids), 'ids' => $ids, 'keep' => $keep[1], 'courses' => $list];
     }
 
     /**

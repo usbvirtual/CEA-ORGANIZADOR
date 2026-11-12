@@ -113,7 +113,7 @@ final class deduperunner_test extends \advanced_testcase {
      * @return array Result of deduperunner::run().
      */
     private function apply_dedupe(\core_course_category $category, ?array $groups = null): array {
-        $plan = dedupeplan::build((int) $category->id);
+        $plan = dedupeplan::build([(int) $category->id]);
         if ($groups === null) {
             $groups = [];
             foreach ($plan['groups'] as $group) {
@@ -123,7 +123,7 @@ final class deduperunner_test extends \advanced_testcase {
                 $groups[] = ['key' => $group['key'], 'keep' => $keep[0]['courseid']];
             }
         }
-        return deduperunner::run((int) $category->id, $groups, $plan['hash']);
+        return deduperunner::run([(int) $category->id], $groups, $plan['hash']);
     }
 
     /**
@@ -148,7 +148,7 @@ final class deduperunner_test extends \advanced_testcase {
         $this->course('Álgebra', $nested);
         $this->course('Álgebra', $nested);
 
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
 
         $this->assertCount(1, $plan['groups']);
         $group = $plan['groups'][0];
@@ -162,10 +162,10 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame('Cálculo I copia 1', $courses[$a2]['fullname']);
         $this->assertSame('CALCA_1', $courses[$a2]['shortname']);
         $this->assertSame(1000, $courses[$a2]['timemodified']);
-        $this->assertSame((int) $folder->id, $plan['folder']['id']);
-        $this->assertSame('Facultad / REPETIDOS', $plan['folder']['path']);
+        $this->assertSame((int) $folder->id, $plan['folders'][0]['id']);
+        $this->assertSame('Facultad / REPETIDOS', $plan['folders'][0]['path']);
         // It exists and is visible: the panel warns that moved courses would stay visible.
-        $this->assertTrue($plan['folder']['visible']);
+        $this->assertTrue($plan['folders'][0]['visible']);
     }
 
     /**
@@ -180,7 +180,7 @@ final class deduperunner_test extends \advanced_testcase {
         $c = $this->course('Cálculo I (nueva versión)', $root, 2000, 'ZZQ9_2');
         $this->course('Cálculo II', $root, 5000, 'XAB2');
 
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
 
         $this->assertCount(1, $plan['groups']);
         $ids = [$a, $b, $c];
@@ -188,9 +188,9 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame(implode('-', $ids), $plan['groups'][0]['key']);
         $keep = array_column($plan['groups'][0]['courses'], 'keep', 'courseid');
         $this->assertTrue($keep[$b]);
-        $this->assertSame(0, $plan['folder']['id']);
-        $this->assertSame('Programa / Repetidos', $plan['folder']['path']);
-        $this->assertFalse($plan['folder']['visible']);
+        $this->assertSame(0, $plan['folders'][0]['id']);
+        $this->assertSame('Programa / Repetidos', $plan['folders'][0]['path']);
+        $this->assertFalse($plan['folders'][0]['visible']);
     }
 
     /**
@@ -205,7 +205,7 @@ final class deduperunner_test extends \advanced_testcase {
         $hidden = $this->course('Álgebra', $root, 3000);
         $DB->set_field('course', 'visible', 0, ['id' => $hidden]);
 
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
 
         $courses = array_column($plan['groups'][0]['courses'], null, 'courseid');
         $this->assertTrue($courses[$visible]['keep']);
@@ -226,7 +226,7 @@ final class deduperunner_test extends \advanced_testcase {
         $this->course('Física Grupo A', $root);
         $this->course('Física Grupo B', $root);
 
-        $this->assertSame([], dedupeplan::build((int) $root->id)['groups']);
+        $this->assertSame([], dedupeplan::build([(int) $root->id])['groups']);
     }
 
     /**
@@ -269,7 +269,7 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame([$folder], $payload['created']);
 
         // A second preview does not see the folder: nothing is repeated now.
-        $this->assertSame([], dedupeplan::build((int) $root->id)['groups']);
+        $this->assertSame([], dedupeplan::build([(int) $root->id])['groups']);
 
         $undo = journal::undo((int) $result['logid']);
 
@@ -292,13 +292,13 @@ final class deduperunner_test extends \advanced_testcase {
         $new = $this->course('Cálculo I copia 1', $root, 2000);
         $f1 = $this->course('Física', $root, 1000);
         $f2 = $this->course('Física', $root, 2000);
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
         $this->assertCount(2, $plan['groups']);
         $calc = array_values(array_filter($plan['groups'], static function (array $group) use ($old): bool {
             return in_array($old, array_column($group['courses'], 'courseid'), true);
         }))[0];
 
-        $result = deduperunner::run((int) $root->id, [['key' => $calc['key'], 'keep' => $old]], $plan['hash']);
+        $result = deduperunner::run([(int) $root->id], [['key' => $calc['key'], 'keep' => $old]], $plan['hash']);
 
         $this->assertSame(1, $result['moved']);
         $folder = $this->child((int) $root->id, duplicates::FOLDER);
@@ -353,11 +353,11 @@ final class deduperunner_test extends \advanced_testcase {
         $root = $this->cat('Programa');
         $a = $this->course('Cálculo I', $root, 1000);
         $b = $this->course('Cálculo I', $root, 2000);
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
         // A new repeated course changes the groups.
         $this->course('Cálculo I copia 2', $root);
 
-        $result = deduperunner::run((int) $root->id, [['key' => $plan['groups'][0]['key'], 'keep' => $b]], $plan['hash']);
+        $result = deduperunner::run([(int) $root->id], [['key' => $plan['groups'][0]['key'], 'keep' => $b]], $plan['hash']);
 
         $this->assertSame(['status' => 'stale', 'logid' => 0, 'moved' => 0], $result);
         $this->assertSame((int) $root->id, $this->category_of($a));
@@ -376,7 +376,7 @@ final class deduperunner_test extends \advanced_testcase {
         $a = $this->course('Cálculo I', $root);
         $this->course('Cálculo I', $root);
         $outside = $this->course('Física', $root);
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
         $key = $plan['groups'][0]['key'];
 
         $cases = [
@@ -386,7 +386,7 @@ final class deduperunner_test extends \advanced_testcase {
         ];
         foreach ($cases as $groups) {
             try {
-                deduperunner::run((int) $root->id, $groups, $plan['hash']);
+                deduperunner::run([(int) $root->id], $groups, $plan['hash']);
                 $this->fail('Invalid groups must be rejected');
             } catch (\invalid_parameter_exception $e) {
                 $this->assertSame(0, $DB->count_records(journal::TABLE));
@@ -410,11 +410,11 @@ final class deduperunner_test extends \advanced_testcase {
             /** @var int A small limit for the test. */
             public const MAX_MOVES = 1;
         };
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
         $group = $plan['groups'][0];
 
         try {
-            $runner::run((int) $root->id, [['key' => $group['key'], 'keep' => $group['courses'][0]['courseid']]], $plan['hash']);
+            $runner::run([(int) $root->id], [['key' => $group['key'], 'keep' => $group['courses'][0]['courseid']]], $plan['hash']);
             $this->fail('The limit must be enforced');
         } catch (\moodle_exception $e) {
             $this->assertSame('error_toomanydedupe', $e->errorcode);
@@ -444,18 +444,18 @@ final class deduperunner_test extends \advanced_testcase {
         };
 
         // Two courses to examine: within the limit.
-        $this->assertSame([], $plan::build((int) $root->id)['groups']);
+        $this->assertSame([], $plan::build([(int) $root->id])['groups']);
 
         $this->course('Álgebra', $sub);
         try {
-            $plan::build((int) $root->id);
+            $plan::build([(int) $root->id]);
             $this->fail('The limit must be enforced');
         } catch (\moodle_exception $e) {
             $this->assertSame('error_toomanydedupecourses', $e->errorcode);
             $this->assertSame(get_string('error_toomanydedupecourses', 'tool_ceaorganizador', 2), $e->getMessage());
         }
         // A smaller category is fine.
-        $this->assertSame([], $plan::build((int) $sub->id)['groups']);
+        $this->assertSame([], $plan::build([(int) $sub->id])['groups']);
     }
 
     /**
@@ -469,7 +469,7 @@ final class deduperunner_test extends \advanced_testcase {
         $root = $this->cat('Programa');
         $a = $this->course('Cálculo I', $root, 1000);
         $b = $this->course('Cálculo I', $root, 2000);
-        $plan = dedupeplan::build((int) $root->id);
+        $plan = dedupeplan::build([(int) $root->id]);
         $groups = [['key' => $plan['groups'][0]['key'], 'keep' => $b]];
         $categories = $DB->count_records('course_categories');
         $system = \context_system::instance();
@@ -480,7 +480,7 @@ final class deduperunner_test extends \advanced_testcase {
         role_assign($role, $user->id, $system->id);
         $this->setUser($user);
         try {
-            deduperunner::run((int) $root->id, $groups, $plan['hash']);
+            deduperunner::run([(int) $root->id], $groups, $plan['hash']);
             $this->fail('moodle/course:changecategory must be required');
         } catch (\required_capability_exception $e) {
             $this->assertSame(get_capability_string('moodle/course:changecategory'), $e->a);
@@ -492,7 +492,7 @@ final class deduperunner_test extends \advanced_testcase {
         role_assign($partial, $other->id, $system->id);
         $this->setUser($other);
         try {
-            deduperunner::run((int) $root->id, $groups, $plan['hash']);
+            deduperunner::run([(int) $root->id], $groups, $plan['hash']);
             $this->fail('moodle/category:manage must be required');
         } catch (\required_capability_exception $e) {
             $this->assertSame(get_capability_string('moodle/category:manage'), $e->a);
@@ -501,5 +501,139 @@ final class deduperunner_test extends \advanced_testcase {
         $this->assertSame((int) $root->id, $this->category_of($a));
         $this->assertSame($categories, $DB->count_records('course_categories'));
         $this->assertSame(0, $DB->count_records(journal::TABLE));
+    }
+
+    /**
+     * Activities are counted, without the modules being deleted, and the most complete course stays.
+     */
+    public function test_preview_activities_rank(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $root = $this->cat('Programa');
+        $older = $this->course('Álgebra', $root, 1000);
+        $newer = $this->course('Álgebra', $root, 3000);
+        $gen = $this->getDataGenerator();
+        $gen->create_module('label', ['course' => $older]);
+        $gen->create_module('label', ['course' => $older]);
+        $modules = [];
+        for ($i = 0; $i < 3; $i++) {
+            $modules[] = (int) $gen->create_module('label', ['course' => $newer])->cmid;
+        }
+        // Two of the newer course's modules are being deleted: they do not count.
+        $DB->set_field('course_modules', 'deletioninprogress', 1, ['id' => $modules[0]]);
+        $DB->set_field('course_modules', 'deletioninprogress', 1, ['id' => $modules[1]]);
+
+        $plan = dedupeplan::build([(int) $root->id]);
+
+        $courses = array_column($plan['groups'][0]['courses'], null, 'courseid');
+        $this->assertSame(2, $courses[$older]['activities']);
+        $this->assertSame(1, $courses[$newer]['activities']);
+        $this->assertTrue($courses[$older]['keep']);
+        // A grouped query has no order: compare by course id.
+        $counts = dedupeplan::activities([$older, $newer, $older]);
+        ksort($counts);
+        $this->assertSame([$older => 2, $newer => 1], $counts);
+    }
+
+    /**
+     * Several chosen categories: one inside another is skipped, each one gets its own folder, there is one journal
+     * entry for all of them and one undo restores everything.
+     */
+    public function test_several_categories_one_entry_and_undo(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $one = $this->cat('Programa A');
+        $inner = $this->cat('Semestre 1', $one);
+        $two = $this->cat('Programa B');
+        $a = $this->course('Cálculo I', $inner, 1000);
+        $this->course('Cálculo I', $inner, 2000);
+        $b = $this->course('Física', $two, 1000);
+        $this->course('Física (copia)', $two, 2000);
+        $categories = $DB->count_records('course_categories');
+
+        $plan = dedupeplan::build([(int) $two->id, (int) $inner->id, (int) $one->id]);
+
+        $this->assertSame([(int) $one->id, (int) $two->id], $plan['roots']);
+        $this->assertSame([(int) $one->id, (int) $two->id], array_column($plan['folders'], 'rootid'));
+        $this->assertCount(2, $plan['groups']);
+        $result = $this->apply_dedupe_to([(int) $one->id, (int) $two->id], $plan);
+
+        $this->assertSame(2, $result['moved']);
+        $this->assertSame(1, $DB->count_records(journal::TABLE, ['action' => 'dedupe']));
+        $folderone = $this->child((int) $one->id, duplicates::FOLDER);
+        $foldertwo = $this->child((int) $two->id, duplicates::FOLDER);
+        $this->assertSame($folderone, $this->category_of($a));
+        $this->assertSame($foldertwo, $this->category_of($b));
+        $this->assertSame($categories + 2, $DB->count_records('course_categories'));
+        $payload = json_decode($DB->get_field(journal::TABLE, 'payload', ['id' => $result['logid']]), true);
+        $this->assertSame([(int) $one->id, (int) $two->id], $payload['categoryids']);
+
+        $this->assertTrue(journal::undo((int) $result['logid'])['ok']);
+
+        $this->assertSame((int) $inner->id, $this->category_of($a));
+        $this->assertSame((int) $two->id, $this->category_of($b));
+        $this->assertSame($categories, $DB->count_records('course_categories'));
+    }
+
+    /**
+     * Applies a preview with the default course of every sure group.
+     *
+     * @param int[] $categoryids
+     * @param array $plan
+     * @return array Result of deduperunner::run().
+     */
+    private function apply_dedupe_to(array $categoryids, array $plan): array {
+        $groups = [];
+        foreach ($plan['groups'] as $group) {
+            $keep = array_values(array_filter($group['courses'], static function (array $course): bool {
+                return $course['keep'];
+            }));
+            $groups[] = ['key' => $group['key'], 'keep' => $keep[0]['courseid']];
+        }
+        return deduperunner::run($categoryids, $groups, $plan['hash']);
+    }
+
+    /**
+     * A possible group (different sections) is never moved by default; once confirmed it is accepted, and only
+     * groups of that very preview are: other course ids are refused.
+     */
+    public function test_possible_groups_need_confirmation(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $root = $this->cat('Programa');
+        $first = $this->course('Física Grupo A', $root, 1000);
+        $second = $this->course('Física Grupo B', $root, 2000);
+        $other = $this->course('Química', $root, 3000);
+
+        $plan = dedupeplan::build([(int) $root->id]);
+
+        $this->assertSame([], $plan['groups']);
+        $this->assertCount(1, $plan['possible']);
+        $possible = $plan['possible'][0];
+        $this->assertSame('group', $possible['reason']);
+        $this->assertSame(min($first, $second) . '-' . max($first, $second), $possible['key']);
+
+        // Not confirmed: nothing moves.
+        $none = deduperunner::run([(int) $root->id], [], $plan['hash']);
+        $this->assertSame(['status' => 'ok', 'logid' => 0, 'moved' => 0], $none);
+
+        // Arbitrary courses are refused, even when they are in the category.
+        try {
+            deduperunner::run([(int) $root->id], [['key' => $first . '-' . $other, 'keep' => $first]], $plan['hash']);
+            $this->fail('A group that is not in the preview must be refused');
+        } catch (\invalid_parameter_exception $e) {
+            $this->assertSame(0, $DB->count_records(journal::TABLE));
+        }
+
+        // Confirmed: it is applied like a sure group.
+        $result = deduperunner::run([(int) $root->id], [['key' => $possible['key'], 'keep' => $first]], $plan['hash']);
+
+        $this->assertSame(1, $result['moved']);
+        $this->assertSame((int) $root->id, $this->category_of($first));
+        $this->assertSame($this->child((int) $root->id, duplicates::FOLDER), $this->category_of($second));
+        $this->assertSame((int) $root->id, $this->category_of($other));
     }
 }

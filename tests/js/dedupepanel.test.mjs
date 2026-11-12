@@ -12,6 +12,11 @@ const strings = new Proxy({}, {
         dedupecategorynow: 'Categoría: {$a}',
         dedupedone: 'Movidos: {$a}',
         dedupefolder: 'Van a: {$a}',
+        activities: '{$a} actividades',
+        possiblecount: 'Posibles: {$a}',
+        dedupeconfirm: 'Mover {$a->moves} en {$a->categories}',
+        mergeconfirm: 'A Semillas {$a->moves}, a Repetidos {$a->repeated}',
+        mergedone: '{$a} unificados',
         dedupegroups: 'Grupos: {$a}',
         dedupemodified: 'Modificado: {$a}',
         dedupereason_key: 'sin copia',
@@ -44,7 +49,7 @@ const preview = () => ({
             key: '10-11-12',
             courses: [
                 course(10, 'Cálculo &amp; <b>I</b>', { keep: true, timemodified: 3000 }),
-                course(11, 'Cálculo I copia 1', { reasons: ['key'] }),
+                course(11, 'Cálculo I copia 1', { reasons: ['key'], activities: 3 }),
                 course(12, 'Cálculo I (2025-2)', { reasons: ['key'] }),
             ],
         },
@@ -55,7 +60,9 @@ const preview = () => ({
             courses: [course(20, 'Física'), course(21, 'Física', { keep: true })],
         },
     ],
-    folder: { id: 0, path: 'Facultad / Repetidos' },
+    roots: [1],
+    possible: [],
+    folders: [{ rootid: 1, id: 0, visible: false, path: 'Facultad / Repetidos' }],
     hash: 'h1',
 });
 
@@ -65,9 +72,10 @@ const setup = (overrides = {}) => {
     globalThis.DOMParser = dom.window.DOMParser;
     const calls = { preview: [], apply: [], toasts: [], undo: [], reload: 0, errors: [] };
     const api = overrides.api || {
-        dedupePreview: async (categoryid) => {
-            calls.preview.push(categoryid);
-            return typeof overrides.preview === 'function' ? overrides.preview(categoryid) : (overrides.preview || preview());
+        dedupePreview: async (categoryids) => {
+            calls.preview.push(categoryids);
+            const result = typeof overrides.preview === 'function' ? overrides.preview(categoryids) : (overrides.preview || preview());
+            return { ...result, roots: categoryids };
         },
         dedupeApply: async (params) => {
             calls.apply.push(params);
@@ -109,14 +117,14 @@ test('movesOf cuenta todos menos el que se conserva, solo en los grupos incluido
 test('desde el menú analiza la categoría; los nombres crudos van como texto y las rutas se decodifican', async () => {
     const { document, calls, panel } = setup();
     await panel.ready;
-    assert.deepEqual(calls.preview, [1]);
+    assert.deepEqual(calls.preview, [[1]]);
     const first = group(document, '10-11-12');
     // The path is formatted: decoded. The course name is raw: never decoded, never HTML.
     assert.equal(first.querySelector('h3').textContent, 'Facultad / Programa & A');
     const name = first.querySelector('li[data-courseid="10"] .tool-ceaorganizador-nombre');
     assert.equal(name.textContent, 'Cálculo &amp; <b>I</b>');
     assert.equal(first.querySelector('b'), null);
-    assert.match(first.querySelector('li[data-courseid="11"]').textContent, /S11 · Modificado: .* · sin copia/);
+    assert.match(first.querySelector('li[data-courseid="11"]').textContent, /S11 · 3 actividades · Modificado: .* · sin copia/);
     assert.match(first.querySelector('li[data-courseid="10"]').textContent, /dedupekeep/);
     assert.equal(first.querySelector('input[type="radio"]:checked').value, '10');
     assert.equal(group(document, '20-21').querySelector('input[type="radio"]:checked').value, '21');
@@ -141,16 +149,16 @@ test('se elige otro que se conserva, se excluye un grupo y se aplica con Deshace
     action(document, 'apply').click();
     await flush();
     await flush();
-    assert.deepEqual(calls.apply, [{ categoryid: 1, groups: [{ key: '10-11-12', keep: 12 }], hash: 'h1' }]);
+    assert.deepEqual(calls.apply, [{ categoryids: [1], groups: [{ key: '10-11-12', keep: 12 }], hash: 'h1' }]);
     assert.equal(calls.reload, 1);
     assert.equal(calls.toasts[0].message, 'Movidos: 3');
     // A new preview follows the apply.
-    assert.deepEqual(calls.preview, [1, 1]);
+    assert.deepEqual(calls.preview, [[1], [1]]);
     calls.toasts[0].options.onAction();
     await flush();
     await flush();
     assert.deepEqual(calls.undo, [9]);
-    assert.deepEqual(calls.preview, [1, 1, 1]);
+    assert.deepEqual(calls.preview, [[1], [1], [1]]);
 });
 
 test('sin categoría pide una; si algo cambió avisa y regenera la vista previa', async () => {
@@ -164,19 +172,19 @@ test('sin categoría pide una; si algo cambió avisa y regenera la vista previa'
     assert.equal(pick.textContent, 'Facultad / Programa & A');
     pick.click();
     await flush();
-    assert.deepEqual(calls.preview, [2]);
+    assert.deepEqual(calls.preview, [[2]]);
     assert.equal(document.querySelector('[data-region="category"]').textContent, 'Categoría: Facultad / Programa & A');
     action(document, 'apply').click();
     await flush();
     await flush();
     assert.equal(calls.apply.length, 1);
-    assert.deepEqual(calls.preview, [2, 2]);
+    assert.deepEqual(calls.preview, [[2], [2]]);
     assert.equal(calls.toasts.length, 0);
     assert.equal(document.querySelector('[data-region="notice"]').textContent, 'dedupestale');
 });
 
 test('sin repetidos lo dice y no deja aplicar', async () => {
-    const { document, panel } = setup({ preview: { groups: [], folder: { id: 0, path: 'Facultad / Repetidos' }, hash: 'h' } });
+    const { document, panel } = setup({ preview: { groups: [], possible: [], folders: [{ rootid: 1, id: 0, visible: false, path: 'Facultad / Repetidos' }], hash: 'h' } });
     await panel.ready;
     assert.equal(document.querySelector('[data-region="notice"]').textContent, 'dedupenothing');
     assert.equal(document.querySelector('[data-region="folder"]').hidden, true);
@@ -196,14 +204,14 @@ test('con el api real, los dos servicios reciben el nombre y los parámetros exa
     try {
         const { document, calls, panel } = setup({ api: real });
         await panel.ready;
-        assert.deepEqual(sent[0], { methodname: 'tool_ceaorganizador_dedupe_preview', args: { categoryid: 1 } });
+        assert.deepEqual(sent[0], { methodname: 'tool_ceaorganizador_dedupe_preview', args: { categoryids: [1] } });
         action(document, 'apply').click();
         await flush();
         await flush();
         assert.deepEqual(sent[1], {
             methodname: 'tool_ceaorganizador_dedupe_apply',
             args: {
-                categoryid: 1,
+                categoryids: [1],
                 groups: [{ key: '10-11-12', keep: 10 }, { key: '20-21', keep: 21 }],
                 hash: 'h1',
             },
@@ -250,7 +258,7 @@ test('un ganador oculto y una carpeta Repetidos visible se avisan; un resultado 
     const hidden = preview();
     hidden.groups[0].courses[0].visible = false;
     hidden.groups[1].courses[1].visible = true;
-    hidden.folder = { id: 7, path: 'Facultad / Repetidos', visible: true };
+    hidden.folders = [{ rootid: 1, id: 7, path: 'Facultad / Repetidos', visible: true }];
     const { document, calls, panel } = setup({ preview: hidden, apply: { status: 'partial', logid: 30, moved: 2 } });
     await panel.ready;
     assert.notEqual(group(document, '10-11-12').querySelector('[data-region="winnerhidden"]'), null);
@@ -264,4 +272,43 @@ test('un ganador oculto y una carpeta Repetidos visible se avisan; un resultado 
     await flush();
     assert.deepEqual(calls.undo, [30]);
     assert.equal(calls.reload, 1);
+});
+
+test('un posible repetido pregunta Sí o No: por defecto no se mueve; con Sí entra al lote con su ganador', async () => {
+    const withPossible = preview();
+    withPossible.possible = [{
+        rootid: 1,
+        categoryid: 2,
+        path: 'Facultad / Programa',
+        key: '30-31',
+        reason: 'group',
+        courses: [course(30, 'Física G1', { activities: 5, keep: true }), course(31, 'Física G2')],
+    }];
+    const { document, calls, panel } = setup({ preview: withPossible });
+    await panel.ready;
+    const box = group(document, '30-31');
+    assert.equal(box.dataset.possible, '1');
+    assert.match(box.querySelector('[data-region="reason"]').textContent, /possiblereason_group/);
+    assert.match(box.textContent, /5 actividades/);
+    // Sure groups only: 2 + 1.
+    assert.equal(action(document, 'apply').textContent, 'Mover 3 repetidos a Repetidos');
+    assert.equal(box.querySelector('input[type="radio"]').disabled, true);
+    box.querySelector('[data-action="possibleyes"]').click();
+    assert.equal(action(document, 'apply').textContent, 'Mover 4 repetidos a Repetidos');
+    assert.equal(box.querySelector('input[type="radio"]').disabled, false);
+    // The winner can still be changed.
+    const other = box.querySelector('input[value="31"]');
+    other.checked = true;
+    other.dispatchEvent(new document.defaultView.Event('change'));
+    box.querySelector('[data-action="possibleno"]').click();
+    assert.equal(action(document, 'apply').textContent, 'Mover 3 repetidos a Repetidos');
+    box.querySelector('[data-action="possibleyes"]').click();
+    action(document, 'apply').click();
+    await flush();
+    await flush();
+    assert.deepEqual(calls.apply[0].groups, [
+        { key: '10-11-12', keep: 10 },
+        { key: '20-21', keep: 21 },
+        { key: '30-31', keep: 31 },
+    ]);
 });

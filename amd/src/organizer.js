@@ -43,6 +43,7 @@ import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 import {open as openDelete} from 'tool_ceaorganizador/deletepanel';
 import {open as openDedupe} from 'tool_ceaorganizador/dedupepanel';
+import {quickDedupe, quickMerge, fromSelection, outerIds} from 'tool_ceaorganizador/oneclick';
 import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
 
 const SEARCH_DELAY = 250;
@@ -50,6 +51,7 @@ const MIN_COURSE_SEARCH = 3;
 
 // Literal shape, so that check-strings can verify every key.
 const REQUESTS = [
+    {key: 'activities', component: 'tool_ceaorganizador'},
     {key: 'affixadd', component: 'tool_ceaorganizador'},
     {key: 'affixmode', component: 'tool_ceaorganizador'},
     {key: 'affixposition', component: 'tool_ceaorganizador'},
@@ -114,6 +116,9 @@ const REQUESTS = [
     {key: 'clonetoperiod', component: 'tool_ceaorganizador'},
     {key: 'clonetotal', component: 'tool_ceaorganizador'},
     {key: 'cloneviewprogress', component: 'tool_ceaorganizador'},
+    {key: 'confirmapply', component: 'tool_ceaorganizador'},
+    {key: 'confirmcancel', component: 'tool_ceaorganizador'},
+    {key: 'confirmdetail', component: 'tool_ceaorganizador'},
     {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
@@ -121,12 +126,14 @@ const REQUESTS = [
     {key: 'dedupeapply', component: 'tool_ceaorganizador'},
     {key: 'dedupecategory', component: 'tool_ceaorganizador'},
     {key: 'dedupecategorynow', component: 'tool_ceaorganizador'},
+    {key: 'dedupeconfirm', component: 'tool_ceaorganizador'},
     {key: 'dedupedone', component: 'tool_ceaorganizador'},
     {key: 'dedupefolder', component: 'tool_ceaorganizador'},
     {key: 'dedupegroups', component: 'tool_ceaorganizador'},
     {key: 'dedupeinclude', component: 'tool_ceaorganizador'},
     {key: 'dedupekeep', component: 'tool_ceaorganizador'},
     {key: 'dedupemodified', component: 'tool_ceaorganizador'},
+    {key: 'dedupenone', component: 'tool_ceaorganizador'},
     {key: 'dedupenote', component: 'tool_ceaorganizador'},
     {key: 'dedupenothing', component: 'tool_ceaorganizador'},
     {key: 'dedupereason_key', component: 'tool_ceaorganizador'},
@@ -170,7 +177,9 @@ const REQUESTS = [
     {key: 'loadmore', component: 'tool_ceaorganizador'},
     {key: 'merge', component: 'tool_ceaorganizador'},
     {key: 'mergeaction', component: 'tool_ceaorganizador'},
+    {key: 'mergealreadyinseeds', component: 'tool_ceaorganizador'},
     {key: 'mergeapply', component: 'tool_ceaorganizador'},
+    {key: 'mergeconfirm', component: 'tool_ceaorganizador'},
     {key: 'mergecourse', component: 'tool_ceaorganizador'},
     {key: 'mergecreate', component: 'tool_ceaorganizador'},
     {key: 'mergedone', component: 'tool_ceaorganizador'},
@@ -179,6 +188,7 @@ const REQUESTS = [
     {key: 'mergeemptied', component: 'tool_ceaorganizador'},
     {key: 'mergeexisting', component: 'tool_ceaorganizador'},
     {key: 'mergefrom', component: 'tool_ceaorganizador'},
+    {key: 'mergeinsideleft', component: 'tool_ceaorganizador'},
     {key: 'mergekeep', component: 'tool_ceaorganizador'},
     {key: 'mergemove', component: 'tool_ceaorganizador'},
     {key: 'mergenothing', component: 'tool_ceaorganizador'},
@@ -208,6 +218,16 @@ const REQUESTS = [
     {key: 'opmoveup', component: 'tool_ceaorganizador'},
     {key: 'opremove', component: 'tool_ceaorganizador'},
     {key: 'partialdone', component: 'tool_ceaorganizador'},
+    {key: 'possible', component: 'tool_ceaorganizador'},
+    {key: 'possibleask', component: 'tool_ceaorganizador'},
+    {key: 'possiblecount', component: 'tool_ceaorganizador'},
+    {key: 'possibleno', component: 'tool_ceaorganizador'},
+    {key: 'possiblereason_extra', component: 'tool_ceaorganizador'},
+    {key: 'possiblereason_group', component: 'tool_ceaorganizador'},
+    {key: 'possiblereason_shortname', component: 'tool_ceaorganizador'},
+    {key: 'possiblereason_similar', component: 'tool_ceaorganizador'},
+    {key: 'possiblereview', component: 'tool_ceaorganizador'},
+    {key: 'possibleyes', component: 'tool_ceaorganizador'},
     {key: 'prefix', component: 'tool_ceaorganizador'},
     {key: 'prevpage', component: 'tool_ceaorganizador'},
     {key: 'rename', component: 'tool_ceaorganizador'},
@@ -465,14 +485,31 @@ export const init = ({root}) => {
         mergeButton.className = 'btn btn-secondary btn-sm';
         mergeButton.dataset.action = 'merge';
         mergeButton.textContent = strings.merge;
-        mergeButton.addEventListener('click', () => openMerge(mergeOptions(mergeButton)));
+        // With categories selected in the tree, one click: preview, one short question, apply. Without, the panel.
+        const selectedOuter = () => outerIds(ctx.model, selectedCategoryIds(selection.items()));
+        const quickOptions = (trigger) => ({
+            ...mergeOptions(trigger),
+            doc: document,
+            openPanel: (options) => openDedupe({...mergeOptions(trigger), ...options}),
+            openDedupePanel: (options) => openDedupe({...mergeOptions(trigger), ...options}),
+            openMergePanel: (options) => openMerge({...mergeOptions(trigger), ...options}),
+        });
+        mergeButton.addEventListener('click', () => fromSelection({
+            categoryids: selectedOuter(),
+            quick: (categoryids) => quickMerge({...quickOptions(mergeButton), categoryids}),
+            panel: () => openMerge(mergeOptions(mergeButton)),
+        }));
         // «Quitar repetidos» asks for the category in its own panel.
         const dedupeButton = document.createElement('button');
         dedupeButton.type = 'button';
         dedupeButton.className = 'btn btn-secondary btn-sm';
         dedupeButton.dataset.action = 'dedupe';
         dedupeButton.textContent = strings.dedupe;
-        dedupeButton.addEventListener('click', () => openDedupe(mergeOptions(dedupeButton)));
+        dedupeButton.addEventListener('click', () => fromSelection({
+            categoryids: selectedOuter(),
+            quick: (categoryids) => quickDedupe({...quickOptions(dedupeButton), categoryids}),
+            panel: () => openDedupe(mergeOptions(dedupeButton)),
+        }));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';

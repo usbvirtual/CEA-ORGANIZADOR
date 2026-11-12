@@ -51,6 +51,12 @@ class merge_apply extends external_api {
                 'Action of each course, as the user left it'
             ),
             'hash' => new external_value(PARAM_ALPHANUM, 'Hash returned by merge_preview'),
+            'confirmed' => new external_multiple_structure(
+                new external_value(PARAM_RAW, 'Key of a possible group'),
+                'Possible groups the user confirmed as repeated',
+                VALUE_DEFAULT,
+                []
+            ),
         ]);
     }
 
@@ -61,22 +67,30 @@ class merge_apply extends external_api {
      * @param int[] $sourceids
      * @param array $rows
      * @param string $hash
+     * @param string[] $confirmed Keys of the possible groups confirmed.
      * @return array ['status' => string, 'logid' => int, 'moved' => int, 'repeated' => int, 'skipped' => int,
      *      'emptied' => array[]]
      */
-    public static function execute(int $targetid, array $sourceids, array $rows, string $hash): array {
+    public static function execute(int $targetid, array $sourceids, array $rows, string $hash, array $confirmed = []): array {
         $params = self::validate_parameters(self::execute_parameters(), [
             'targetid' => $targetid,
             'sourceids' => $sourceids,
             'rows' => $rows,
             'hash' => $hash,
+            'confirmed' => $confirmed,
         ]);
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
 
         try {
-            return mergerunner::run($params['targetid'], $params['sourceids'], $params['rows'], $params['hash']);
+            return mergerunner::run(
+                $params['targetid'],
+                $params['sourceids'],
+                $params['rows'],
+                $params['hash'],
+                $params['confirmed']
+            );
         } catch (partial_exception $e) {
             // Half done: what moved is recorded under logid, and the panel offers to undo it.
             return [

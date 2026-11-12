@@ -109,7 +109,8 @@ export const cloneApply = (params) => call('clone_apply', params);
 export const mergePreview = (params) => call('merge_preview', params);
 
 /**
- * @param {Object} params {targetid, sourceids, rows: [{courseid, action: move|repeated|skip}], hash}.
+ * @param {Object} params {targetid, sourceids, rows: [{courseid, action: move|repeated|skip}], hash, confirmed}; confirmed
+ *                        lists the keys of the possible groups the user confirmed.
  * @returns {Promise} {status, logid, moved, repeated, skipped, emptied}.
  */
 export const mergeApply = (params) => call('merge_apply', params);
@@ -123,13 +124,14 @@ export const createSeedroot = (params) => call('create_seedroot', params);
 export const cloneStatus = (batchid) => call('clone_status', {batchid});
 
 /**
- * @param {Number} categoryid Category analysed, with all its subcategories.
- * @returns {Promise} {groups: [{categoryid, path, key, courses}], folder: {id, path}, hash}.
+ * @param {Number[]} categoryids Categories analysed, each with all its subcategories.
+ * @returns {Promise} {roots, groups, possible, folders, hash}.
  */
-export const dedupePreview = (categoryid) => call('dedupe_preview', {categoryid});
+export const dedupePreview = (categoryids) => call('dedupe_preview', {categoryids});
 
 /**
- * @param {Object} params {categoryid, groups: [{key, keep}], hash}; a group left out is not touched.
+ * @param {Object} params {categoryids, groups: [{key, keep}], hash}; a group left out is not touched; a possible
+ *                        group is sent only when the user confirmed it.
  * @returns {Promise} {status, logid, moved}.
  */
 export const dedupeApply = (params) => call('dedupe_apply', params);

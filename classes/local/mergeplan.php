@@ -54,7 +54,10 @@ class mergeplan {
      *      existing destination category), 'missing' (raw names to create below it) and 'hidden' (the destination is
      *      inside the «Repetidos» folder). The hash does not change.
      * @return array ['rows' => array[], 'emptied' => array[], 'folder' => ['id' => int (0 when it will be created),
-     *      'visible' => bool (false when it will be created hidden), 'path' => string], 'hash' => string]
+     *      'visible' => bool (false when it will be created hidden), 'path' => string], 'possible' => [['key' => string,
+     *      'path' => string (destination), 'reason' => string, 'courses' => [['courseid', 'fullname', 'existing',
+     *      'visible', 'activities', 'keep']]]], 'hash' => string]. Rows of a possible group carry its key in 'possible'
+     *      and keep their default action until the user confirms it.
      */
     public static function build(int $targetid, array $sourceids, bool $details = false): array {
         global $DB;
@@ -158,6 +161,8 @@ class mergeplan {
                 'duplicate' => false,
                 'action' => 'move',
                 'group' => '',
+                'possible' => '',
+                'activities' => 0,
                 'existing' => false,
                 'winner' => false,
                 'reasons' => [],
@@ -179,7 +184,25 @@ class mergeplan {
         }
 
         self::add_target_courses($candidates, $rows);
-        $rows = self::group_rows($rows, $candidates, $cats, $paths);
+        // Activities of every course, sources and target, in one grouped query per chunk: part of the ranking.
+        $ids = array_column($rows, 'courseid');
+        foreach ($candidates as $list) {
+            $ids = array_merge($ids, array_column($list, 'id'));
+        }
+        $activities = dedupeplan::activities($ids);
+        foreach ($rows as &$row) {
+            $row['activities'] = $activities[$row['courseid']] ?? 0;
+        }
+        unset($row);
+        foreach ($candidates as &$list) {
+            foreach ($list as &$candidate) {
+                $candidate['activities'] = $activities[$candidate['id']] ?? 0;
+            }
+            unset($candidate);
+        }
+        unset($list);
+        $possible = [];
+        $rows = self::group_rows($rows, $candidates, $cats, $paths, $possible);
         if (count($rows) > self::MAX_ROWS) {
             throw new \moodle_exception('error_toomanymerge', 'tool_ceaorganizador', '', self::MAX_ROWS);
         }
@@ -187,7 +210,18 @@ class mergeplan {
 
         $signature = [];
         foreach ($rows as $row) {
-            $signature[] = [$row['courseid'], $row['toid'], $row['to'], $row['action'], $row['group'], $row['existing']];
+            $signature[] = [
+                $row['courseid'],
+                $row['toid'],
+                $row['to'],
+                $row['action'],
+                $row['group'],
+                $row['possible'],
+                $row['existing'],
+            ];
+        }
+        foreach ($possible as $group) {
+            $signature[] = [$group['key'], $group['reason']];
         }
         $sorted = $sourceids;
         sort($sorted);
@@ -198,7 +232,7 @@ class mergeplan {
             }
             unset($row);
         }
-        return ['rows' => $rows, 'emptied' => $emptied, 'folder' => $folder, 'hash' => $hash];
+        return ['rows' => $rows, 'emptied' => $emptied, 'folder' => $folder, 'possible' => $possible, 'hash' => $hash];
     }
 
     /**
@@ -292,16 +326,48 @@ class mergeplan {
      * @param array $candidates
      * @param array $cats
      * @param string[] $paths Memo of formatted paths.
+     * @param array $possible Receives the possible groups («Posibles repetidos») of every destination.
      * @return array The rows, in their final order.
      */
-    private static function group_rows(array $rows, array $candidates, array $cats, array &$paths): array {
+    private static function group_rows(array $rows, array $candidates, array $cats, array &$paths, array &$possible): array {
         $extra = [];
         foreach ($candidates as $list) {
             if (count($list) < 2) {
                 continue;
             }
             $byid = array_column($list, null, 'id');
-            foreach (duplicates::groups($list) as $group) {
+            $sure = duplicates::groups($list);
+            foreach (duplicates::candidates($list, $sure) as $group) {
+                $fromsources = array_filter($group['courses'], static function (array $member) use ($byid): bool {
+                    return $byid[$member['id']]['row'] >= 0;
+                });
+                // As for sure groups: only between a source course and the destination, or sources among themselves.
+                if (!$fromsources) {
+                    continue;
+                }
+                $courses = [];
+                $to = '';
+                foreach ($group['courses'] as $member) {
+                    $candidate = $byid[$member['id']];
+                    $courses[] = [
+                        'courseid' => $candidate['id'],
+                        'fullname' => cloneplan::format($candidate['fullname']),
+                        'existing' => $candidate['row'] < 0,
+                        'visible' => $candidate['visible'] === 1,
+                        'activities' => $candidate['activities'],
+                        'keep' => $member['keep'],
+                    ];
+                    if ($candidate['row'] >= 0) {
+                        $rows[$candidate['row']]['possible'] = $group['key'];
+                        $to = $rows[$candidate['row']]['to'];
+                        continue;
+                    }
+                    // A target course of a possible group gets a row, so a confirmation can send it to Repetidos.
+                    $extra[] = ['possible' => $group['key']] + self::target_row($candidate, $cats, $paths);
+                }
+                $possible[] = ['key' => $group['key'], 'path' => $to, 'reason' => $group['reason'], 'courses' => $courses];
+            }
+            foreach ($sure as $group) {
                 $fromsources = array_filter($group['courses'], static function (array $member) use ($byid): bool {
                     return $byid[$member['id']]['row'] >= 0;
                 });
@@ -322,22 +388,7 @@ class mergeplan {
                         $rows[$candidate['row']] = $values + $rows[$candidate['row']];
                         continue;
                     }
-                    $category = $candidate['category'];
-                    $path = cloneplan::path_of($category, $cats, $paths);
-                    $extra[] = $values + [
-                        'courseid' => $candidate['id'],
-                        'fullname' => cloneplan::format($candidate['fullname']),
-                        'visible' => $candidate['visible'] === 1,
-                        'from' => $path,
-                        'to' => $path,
-                        'toid' => $category,
-                        'newcategories' => [],
-                        'existing' => true,
-                        'fromid' => $category,
-                        'anchor' => $category,
-                        'missing' => [],
-                        'hidden' => false,
-                    ];
+                    $extra[] = $values + self::target_row($candidate, $cats, $paths);
                 }
             }
         }
@@ -347,13 +398,14 @@ class mergeplan {
         $rank = [];
         foreach ($all as $i => $row) {
             $existing = $row['existing'] ? 1 : 0;
-            if ($row['group'] === '') {
+            $cluster = $row['group'] !== '' ? $row['group'] : ($row['possible'] !== '' ? 'p' . $row['possible'] : '');
+            if ($cluster === '') {
                 $rank[$i] = [$i, $existing, $i];
                 continue;
             }
             // Every group has at least one source row, and source rows come before the extra ones.
-            $firstof[$row['group']] = $firstof[$row['group']] ?? $i;
-            $rank[$i] = [$firstof[$row['group']], $existing, $i];
+            $firstof[$cluster] = $firstof[$cluster] ?? $i;
+            $rank[$i] = [$firstof[$cluster], $existing, $i];
         }
         $order = array_keys($all);
         usort($order, static function (int $a, int $b) use ($rank): int {
@@ -364,6 +416,40 @@ class mergeplan {
             $result[] = $all[$i];
         }
         return $result;
+    }
+
+    /**
+     * The row of a course that is already in the target, staying where it is by default.
+     *
+     * @param array $candidate Target course, as add_target_courses() adds it.
+     * @param array $cats
+     * @param string[] $paths Memo of formatted paths.
+     * @return array
+     */
+    private static function target_row(array $candidate, array $cats, array &$paths): array {
+        $category = $candidate['category'];
+        $path = cloneplan::path_of($category, $cats, $paths);
+        return [
+            'courseid' => $candidate['id'],
+            'fullname' => cloneplan::format($candidate['fullname']),
+            'visible' => $candidate['visible'] === 1,
+            'activities' => $candidate['activities'],
+            'from' => $path,
+            'to' => $path,
+            'toid' => $category,
+            'newcategories' => [],
+            'duplicate' => false,
+            'action' => 'move',
+            'group' => '',
+            'possible' => '',
+            'existing' => true,
+            'winner' => false,
+            'reasons' => [],
+            'fromid' => $category,
+            'anchor' => $category,
+            'missing' => [],
+            'hidden' => false,
+        ];
     }
 
     /**

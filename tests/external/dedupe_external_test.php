@@ -59,7 +59,7 @@ final class dedupe_external_test extends \advanced_testcase {
      * @return array
      */
     private function preview_of(int $categoryid): array {
-        return external_api::clean_returnvalue(dedupe_preview::execute_returns(), dedupe_preview::execute($categoryid));
+        return external_api::clean_returnvalue(dedupe_preview::execute_returns(), dedupe_preview::execute([$categoryid]));
     }
 
     /**
@@ -82,8 +82,8 @@ final class dedupe_external_test extends \advanced_testcase {
         $this->assertTrue($courses[$new]['keep']);
         $this->assertFalse($courses[$old]['keep']);
         $this->assertSame(['key', 'shortname'], $courses[$old]['reasons']);
-        $this->assertSame(0, $result['folder']['id']);
-        $this->assertFalse($result['folder']['visible']);
+        $this->assertSame(0, $result['folders'][0]['id']);
+        $this->assertFalse($result['folders'][0]['visible']);
         $this->assertTrue($courses[$new]['visible']);
         $this->assertNotEmpty($result['hash']);
     }
@@ -100,7 +100,11 @@ final class dedupe_external_test extends \advanced_testcase {
 
         $result = external_api::clean_returnvalue(
             dedupe_apply::execute_returns(),
-            dedupe_apply::execute((int) $category->id, [['key' => $preview['groups'][0]['key'], 'keep' => $new]], $preview['hash'])
+            dedupe_apply::execute(
+                [(int) $category->id],
+                [['key' => $preview['groups'][0]['key'], 'keep' => $new]],
+                $preview['hash']
+            )
         );
 
         $this->assertSame('ok', $result['status']);
@@ -127,8 +131,8 @@ final class dedupe_external_test extends \advanced_testcase {
         [$category] = $this->seeds();
         $preview = $this->preview_of((int) $category->id);
 
-        $none = dedupe_apply::execute((int) $category->id, [], $preview['hash']);
-        $stale = dedupe_apply::execute((int) $category->id, [], sha1('other'));
+        $none = dedupe_apply::execute([(int) $category->id], [], $preview['hash']);
+        $stale = dedupe_apply::execute([(int) $category->id], [], sha1('other'));
 
         $this->assertSame(['status' => 'ok', 'logid' => 0, 'moved' => 0], $none);
         $this->assertSame(['status' => 'stale', 'logid' => 0, 'moved' => 0], $stale);
@@ -147,10 +151,10 @@ final class dedupe_external_test extends \advanced_testcase {
 
         $calls = [
             static function () use ($category): void {
-                dedupe_preview::execute((int) $category->id);
+                dedupe_preview::execute([(int) $category->id]);
             },
             static function () use ($category, $preview): void {
-                dedupe_apply::execute((int) $category->id, [], $preview['hash']);
+                dedupe_apply::execute([(int) $category->id], [], $preview['hash']);
             },
         ];
         foreach ($calls as $call) {

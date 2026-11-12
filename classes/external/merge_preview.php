@@ -90,10 +90,18 @@ class merge_preview extends external_api {
                 'existing' => $row['existing'],
                 'winner' => $row['winner'],
                 'visible' => $row['visible'],
+                'activities' => $row['activities'],
+                'possible' => $row['possible'],
                 'reasons' => $row['reasons'],
             ];
         }
-        return ['rows' => $rows, 'emptied' => $plan['emptied'], 'folder' => $plan['folder'], 'hash' => $plan['hash']];
+        return [
+            'rows' => $rows,
+            'emptied' => $plan['emptied'],
+            'folder' => $plan['folder'],
+            'possible' => $plan['possible'],
+            'hash' => $plan['hash'],
+        ];
     }
 
     /**
@@ -118,6 +126,8 @@ class merge_preview extends external_api {
                 'existing' => new external_value(PARAM_BOOL, 'The course is already in the target'),
                 'winner' => new external_value(PARAM_BOOL, 'Stays in the destination by default: visible, then most recent'),
                 'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
+                'activities' => new external_value(PARAM_INT, 'Activities of the course'),
+                'possible' => new external_value(PARAM_RAW, 'Key of its possible group, or empty'),
                 'reasons' => new external_multiple_structure(
                     new external_value(PARAM_ALPHA, 'name, key or shortname'),
                     'Rules that matched'
@@ -132,6 +142,19 @@ class merge_preview extends external_api {
                 'id' => new external_value(PARAM_INT, 'Folder of repeated courses under the target; 0 when it will be created'),
                 'path' => new external_value(PARAM_TEXT, 'Path of the folder, formatted'),
             ]),
+            'possible' => new external_multiple_structure(new external_single_structure([
+                'key' => new external_value(PARAM_RAW, 'Stable key: sorted course ids joined by -'),
+                'path' => new external_value(PARAM_TEXT, 'Destination path, formatted'),
+                'reason' => new external_value(PARAM_ALPHA, 'group, shortname, extra or similar'),
+                'courses' => new external_multiple_structure(new external_single_structure([
+                    'courseid' => new external_value(PARAM_INT, 'Course id'),
+                    'fullname' => new external_value(PARAM_TEXT, 'Full name, formatted'),
+                    'existing' => new external_value(PARAM_BOOL, 'Already in the target'),
+                    'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
+                    'activities' => new external_value(PARAM_INT, 'Activities of the course'),
+                    'keep' => new external_value(PARAM_BOOL, 'Would stay if confirmed: visible, activities, recency'),
+                ])),
+            ]), 'Possible repeated courses that need confirmation'),
             'hash' => new external_value(PARAM_ALPHANUM, 'Signature of the preview, to pass to merge_apply'),
         ]);
     }

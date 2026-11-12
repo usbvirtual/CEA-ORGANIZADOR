@@ -338,4 +338,38 @@ final class merge_external_test extends \advanced_testcase {
         }
         $this->assertSame(0, $DB->count_records(journal::TABLE));
     }
+
+    /**
+     * The target of a merge from the selection: the top-level «Semillas» (normalized) that create_seedroot returns,
+     * without creating another. The selected categories outside it are sources; one inside it is refused as a source,
+     * which is why the panel leaves those as they are.
+     */
+    public function test_semillas_auto_target(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $seeds = $gen->create_category(['name' => 'SEMILLAS']);
+        $inside = $gen->create_category(['name' => 'Programa', 'parent' => $seeds->id]);
+        $source = $gen->create_category(['name' => 'Facultades']);
+        $law = $gen->create_category(['name' => 'Derecho', 'parent' => $source->id]);
+        $course = $gen->create_course(['fullname' => 'Penal I', 'shortname' => 'PEN1', 'category' => $law->id]);
+        $before = $DB->count_records('course_categories');
+
+        $seed = external_api::clean_returnvalue(create_seedroot::execute_returns(), create_seedroot::execute());
+
+        $this->assertFalse($seed['created']);
+        $this->assertSame((int) $seeds->id, $seed['id']);
+        $this->assertSame($before, $DB->count_records('course_categories'));
+        $preview = external_api::clean_returnvalue(
+            merge_preview::execute_returns(),
+            merge_preview::execute($seed['id'], [(int) $source->id])
+        );
+        $this->assertSame((int) $course->id, $preview['rows'][0]['courseid']);
+        $this->assertSame('SEMILLAS / Derecho', $preview['rows'][0]['to']);
+        $this->assertSame('move', $preview['rows'][0]['action']);
+
+        $this->expectException(\invalid_parameter_exception::class);
+        merge_preview::execute($seed['id'], [(int) $source->id, (int) $inside->id]);
+    }
 }

@@ -14,9 +14,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * «Quitar repetidos» panel: a category (chosen in the panel or given by its menu), the groups of repeated courses
- * of it and its subcategories, a choice per group of the course that stays and whether the group is cleaned, and
- * the apply step, which moves the others to a hidden «Repetidos» folder.
+ * «Quitar repetidos» panel: one category (chosen in the panel or given by its menu) or several (the selection of the
+ * tree), the groups of repeated courses of them and their subcategories, a choice per group of the course that stays
+ * and whether the group is cleaned, the «Posibles repetidos» that need a yes or no (no by default, so nothing moves),
+ * and the apply step, which moves the others to a hidden «Repetidos» folder under each chosen category.
  *
  * The paths of dedupe_preview are formatted (entities) and are decoded with options.decode; the course names are
  * raw and are never decoded. Everything is written with textContent. The modules of Moodle arrive in the options,
@@ -49,7 +50,7 @@ export const movesOf = (groups) => groups
  * Opens the panel.
  *
  * @param {Object} options
- * @param {Object} options.api dedupePreview(categoryid) and dedupeApply(params).
+ * @param {Object} options.api dedupePreview(categoryids) and dedupeApply(params).
  * @param {Object} options.strings Strings of the panel.
  * @param {Object} options.toast Object with show(message, options).
  * @param {Function} options.onError Receives the exceptions of the web services.
@@ -58,6 +59,8 @@ export const movesOf = (groups) => groups
  * @param {Function} options.getModel Returns the live tree model (reload() replaces it).
  * @param {Function} [options.decode] Turns a formatted string into plain text.
  * @param {Number} [options.categoryid] Category to analyse at once (from its menu); 0 asks for one.
+ * @param {Number[]} [options.categoryids] Categories to analyse at once (from the selection); wins over categoryid.
+ * @param {String} [options.focus] 'possible' puts the focus on the first possible group once it is loaded.
  * @param {Element} [options.trigger] Gets the focus back on close.
  * @param {Document} [options.doc]
  * @returns {{close: Function, element: Element, ready: Promise}}
@@ -72,9 +75,12 @@ export const open = ({
     getModel,
     decode = (text) => text,
     categoryid = 0,
+    categoryids = null,
+    focus = '',
     trigger,
     doc = document,
 }) => {
+    const scope = categoryids ? categoryids.map(Number) : (categoryid > 0 ? [Number(categoryid)] : []);
     const create = (tag, className, text) => {
         const node = doc.createElement(tag);
         if (className) {
@@ -138,9 +144,10 @@ export const open = ({
     actions.append(applyButton, closeButton);
     root.append(pickBox, note, notice, folderLine, folderWarning, groupsBox, actions);
 
-    let chosen = 0;
-    // What the preview was made with: the hash only matches that category.
-    let planid = 0;
+    // The chosen categories; the picker chooses one, the selection of the tree may bring several.
+    let chosen = scope.slice();
+    // What the preview was made with: the hash only matches those categories.
+    let planids = [];
     let groups = [];
     let hash = '';
     let busy = false;
@@ -154,7 +161,7 @@ export const open = ({
     const refresh = () => {
         const count = movesOf(groups);
         applyButton.textContent = format(strings.dedupeapply, count);
-        applyButton.disabled = busy || planid === 0 || count === 0;
+        applyButton.disabled = busy || planids.length === 0 || count === 0;
     };
 
     const setBusy = (value) => {
@@ -184,9 +191,9 @@ export const open = ({
             const pick = create('button', 'tool-ceaorganizador-dialogo-opcion btn btn-link', pathOf(id));
             pick.type = 'button';
             pick.dataset.categoryId = String(id);
-            pick.setAttribute('aria-pressed', id === chosen ? 'true' : 'false');
+            pick.setAttribute('aria-pressed', chosen.includes(id) ? 'true' : 'false');
             // eslint-disable-next-line no-use-before-define
-            pick.addEventListener('click', () => choose(id));
+            pick.addEventListener('click', () => choose([id]));
             item.appendChild(pick);
             list.appendChild(item);
         });
@@ -194,24 +201,9 @@ export const open = ({
 
     const reasonsText = (reasons) => reasons.map((reason) => strings[`dedupereason_${reason}`] || reason).join(', ');
 
-    const drawGroup = (group) => {
-        counter += 1;
-        const box = create('section', 'tool-ceaorganizador-fusion-bloque');
-        box.dataset.groupKey = group.key;
-        box.appendChild(create('h3', 'tool-ceaorganizador-sugerencias-titulo', decode(group.path)));
-        const includeWrap = create('div', 'custom-control form-check custom-checkbox');
-        const include = create('input', 'custom-control-input form-check-input');
-        include.type = 'checkbox';
-        include.id = `tool-ceaorganizador-dedupe-${counter}`;
-        include.dataset.action = 'include';
-        include.checked = group.included;
-        const includeLabel = create('label', 'custom-control-label form-check-label', strings.dedupeinclude);
-        includeLabel.htmlFor = include.id;
-        includeWrap.append(include, includeLabel);
-        box.appendChild(includeWrap);
-
+    // The course that stays: a radio per course; enabled while the group is included.
+    const drawCourses = (group, radios) => {
         const options = create('ul', 'tool-ceaorganizador-dialogo-lista');
-        const radios = [];
         group.courses.forEach((course, index) => {
             const item = create('li');
             item.dataset.courseid = String(course.courseid);
@@ -234,8 +226,12 @@ export const open = ({
             // Raw names: plain text, never decoded.
             label.appendChild(create('span', 'tool-ceaorganizador-nombre', course.fullname));
             const when = new Date(course.timemodified * 1000).toLocaleString();
-            const details = [course.shortname, format(strings.dedupemodified, when), reasonsText(course.reasons)]
-                .filter((text) => text !== '');
+            const details = [
+                course.shortname,
+                format(strings.activities, course.activities || 0),
+                format(strings.dedupemodified, when),
+                group.possible ? '' : reasonsText(course.reasons),
+            ].filter((text) => text !== '');
             label.appendChild(create('span', 'tool-ceaorganizador-ruta', ` · ${details.join(' · ')}`));
             if (course.courseid === group.default) {
                 label.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.dedupekeep));
@@ -249,42 +245,101 @@ export const open = ({
             item.appendChild(wrap);
             options.appendChild(item);
         });
-        include.addEventListener('change', () => {
-            group.included = include.checked;
+        return options;
+    };
+
+    const drawGroup = (group) => {
+        counter += 1;
+        const box = create('section', 'tool-ceaorganizador-fusion-bloque');
+        box.dataset.groupKey = group.key;
+        box.appendChild(create('h3', 'tool-ceaorganizador-sugerencias-titulo', decode(group.path)));
+        const radios = [];
+        const enable = (value) => {
+            group.included = value;
             radios.forEach((radio) => {
-                radio.disabled = !include.checked;
+                radio.disabled = !value;
             });
             refresh();
-        });
-        box.appendChild(options);
+        };
+        if (group.possible) {
+            // «Posibles repetidos»: nothing moves unless the user says they are the same course.
+            box.dataset.possible = '1';
+            box.appendChild(create('p', '', strings.possibleask));
+            const reason = create('p', group.reason === 'group' ? 'tool-ceaorganizador-aviso' : 'tool-ceaorganizador-ruta',
+                strings[`possiblereason_${group.reason}`] || group.reason);
+            reason.dataset.region = 'reason';
+            box.appendChild(reason);
+            const yes = button('possibleyes', strings.possibleyes);
+            const no = button('possibleno', strings.possibleno);
+            const mark = () => {
+                yes.setAttribute('aria-pressed', group.included ? 'true' : 'false');
+                no.setAttribute('aria-pressed', group.included ? 'false' : 'true');
+            };
+            yes.addEventListener('click', () => {
+                enable(true);
+                mark();
+            });
+            no.addEventListener('click', () => {
+                enable(false);
+                mark();
+            });
+            mark();
+            const answers = create('div', 'tool-ceaorganizador-acciones');
+            answers.append(yes, no);
+            box.appendChild(answers);
+        } else {
+            const includeWrap = create('div', 'custom-control form-check custom-checkbox');
+            const include = create('input', 'custom-control-input form-check-input');
+            include.type = 'checkbox';
+            include.id = `tool-ceaorganizador-dedupe-${counter}`;
+            include.dataset.action = 'include';
+            include.checked = group.included;
+            include.addEventListener('change', () => enable(include.checked));
+            const includeLabel = create('label', 'custom-control-label form-check-label', strings.dedupeinclude);
+            includeLabel.htmlFor = include.id;
+            includeWrap.append(include, includeLabel);
+            box.appendChild(includeWrap);
+        }
+        box.appendChild(drawCourses(group, radios));
         return box;
     };
 
     const draw = (result) => {
         groupsBox.textContent = '';
-        groups = result.groups.map((group) => {
+        const prepare = (group, possible) => {
             const kept = group.courses.find((course) => course.keep) || group.courses[0];
-            return {...group, keep: kept.courseid, default: kept.courseid, included: true};
-        });
-        groups.forEach((group) => groupsBox.appendChild(drawGroup(group)));
-        folderLine.textContent = format(strings.dedupefolder, decode(result.folder.path));
+            // A sure group is included by default; a possible one only when the user says so.
+            return {...group, keep: kept.courseid, default: kept.courseid, included: !possible, possible};
+        };
+        const sure = result.groups.map((group) => prepare(group, false));
+        const possible = (result.possible || []).map((group) => prepare(group, true));
+        groups = [...sure, ...possible];
+        sure.forEach((group) => groupsBox.appendChild(drawGroup(group)));
+        if (possible.length > 0) {
+            const title = create('h3', 'tool-ceaorganizador-sugerencias-titulo', strings.possible);
+            title.dataset.region = 'possible';
+            groupsBox.appendChild(title);
+            possible.forEach((group) => groupsBox.appendChild(drawGroup(group)));
+        }
+        const folders = result.folders || [];
+        folderLine.textContent = format(strings.dedupefolder, folders.map((folder) => decode(folder.path)).join('; '));
         folderLine.hidden = groups.length === 0;
         // An existing visible folder would leave the moved courses visible.
-        folderWarning.hidden = groups.length === 0 || !result.folder.visible;
+        folderWarning.hidden = groups.length === 0 || !folders.some((folder) => folder.visible);
         if (groups.length === 0) {
             say(strings.dedupenothing);
         } else {
-            say(format(strings.dedupegroups, groups.length));
+            say(format(strings.dedupegroups, sure.length));
         }
     };
 
-    // One apply at a time. A preview is never blocked: choosing another category discards the answer of the
+    // One apply at a time. A preview is never blocked: choosing other categories discards the answer of the
     // one in flight (token) and asks again.
     const serial = exclusive((task) => task());
 
     const loadTask = async(keepNotice = false) => {
-        const wanted = chosen;
-        if (wanted === 0) {
+        const wanted = chosen.slice();
+        if (wanted.length === 0) {
             return;
         }
         const mine = ++token;
@@ -295,11 +350,17 @@ export const open = ({
         try {
             const result = await api.dedupePreview(wanted);
             if (mine === token && !closed) {
-                planid = wanted;
+                planids = result.roots || wanted;
                 hash = result.hash;
                 draw(result);
                 if (keepNotice) {
                     say(strings.dedupestale);
+                }
+                if (focus === 'possible') {
+                    const first = groupsBox.querySelector('[data-action="possibleyes"]');
+                    if (first) {
+                        first.focus();
+                    }
                 }
             }
         } catch (error) {
@@ -309,12 +370,14 @@ export const open = ({
         }
     };
 
-    function choose(id) {
-        chosen = id;
-        now.textContent = id > 0 ? format(strings.dedupecategorynow, pathOf(id)) : '';
+    function choose(ids) {
+        chosen = ids.slice();
+        now.textContent = chosen.length > 0
+            ? format(strings.dedupecategorynow, chosen.map((id) => pathOf(id)).join('; '))
+            : '';
         // A preview still in flight belongs to the old choice: its answer is discarded.
         token++;
-        planid = 0;
+        planids = [];
         groups = [];
         groupsBox.textContent = '';
         folderLine.hidden = true;
@@ -332,14 +395,14 @@ export const open = ({
     };
 
     const applyTask = async() => {
-        if (busy || planid === 0 || movesOf(groups) === 0) {
+        if (busy || planids.length === 0 || movesOf(groups) === 0) {
             return;
         }
         setBusy(true);
         let result = null;
         try {
             result = await api.dedupeApply({
-                categoryid: planid,
+                categoryids: planids,
                 groups: groups.filter((group) => group.included).map((group) => ({key: group.key, keep: group.keep})),
                 hash,
             });
@@ -353,7 +416,7 @@ export const open = ({
             return;
         }
         // The preview is spent: a new one is made below.
-        planid = 0;
+        planids = [];
         groups = [];
         groupsBox.textContent = '';
         refresh();
@@ -385,8 +448,8 @@ export const open = ({
     drawCategories();
     refresh();
     let ready = Promise.resolve();
-    if (categoryid > 0) {
-        ready = choose(categoryid);
+    if (chosen.length > 0) {
+        ready = choose(chosen);
         closeButton.focus();
     } else {
         search.focus();

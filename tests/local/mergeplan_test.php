@@ -456,4 +456,35 @@ final class mergeplan_test extends \advanced_testcase {
         $this->assertSame('move', $this->row($two, $a)['action']);
         $this->assertNotSame($one['hash'], $two['hash']);
     }
+
+    /**
+     * A source course close to a target course, but not repeated for sure, is a possible group: both get a row with
+     * its key and keep their default action until the user confirms it.
+     */
+    public function test_possible_group_with_target_course(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $target = $this->cat('Semillas');
+        $targeteng = $this->cat('Ingeniería', $target);
+        $source = $this->cat('Facultades');
+        $eng = $this->cat('Ingeniería', $source);
+        $old = $this->course('Física', $targeteng, 1000);
+        $new = $this->course('Física Mecánica', $eng, 2000);
+
+        $plan = mergeplan::build((int) $target->id, [(int) $source->id]);
+
+        $this->assertCount(1, $plan['possible']);
+        $possible = $plan['possible'][0];
+        $this->assertSame('extra', $possible['reason']);
+        $this->assertSame(min($old, $new) . '-' . max($old, $new), $possible['key']);
+        $this->assertSame('Semillas / Ingeniería', $possible['path']);
+        $this->assertSame([$new, $old], array_column($possible['courses'], 'courseid'));
+        $this->assertSame($possible['key'], $this->row($plan, $new)['possible']);
+        $this->assertSame('move', $this->row($plan, $new)['action']);
+        $this->assertFalse($this->row($plan, $new)['duplicate']);
+        $existing = $this->existing_rows($plan)[$old];
+        $this->assertSame($possible['key'], $existing['possible']);
+        $this->assertSame('move', $existing['action']);
+        $this->assertSame(0, $existing['activities']);
+    }
 }

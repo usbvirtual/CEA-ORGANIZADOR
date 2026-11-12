@@ -32,64 +32,99 @@ use core_external\external_value;
 use tool_ceaorganizador\local\dedupeplan;
 
 /**
- * Lists the groups of repeated courses of a category and its subcategories, with its signature. It writes nothing.
+ * Lists the groups of repeated courses of some categories and their subcategories, the possible repeated courses
+ * that need the user's confirmation, and its signature. It writes nothing.
  */
 class dedupe_preview extends external_api {
     /**
-     * Parameters: the category analysed.
+     * Parameters shared with dedupe_apply: the chosen categories.
+     *
+     * @return array Map name => parameter definition.
+     */
+    public static function plan_parameters(): array {
+        return [
+            'categoryids' => new external_multiple_structure(
+                new external_value(PARAM_INT, 'Category analysed, with all its subcategories'),
+                'Chosen categories; one inside another chosen one is skipped'
+            ),
+        ];
+    }
+
+    /**
+     * Parameters: see plan_parameters().
      *
      * @return external_function_parameters
      */
     public static function execute_parameters(): external_function_parameters {
-        return new external_function_parameters([
-            'categoryid' => new external_value(PARAM_INT, 'Category analysed, with all its subcategories'),
-        ]);
+        return new external_function_parameters(self::plan_parameters());
     }
 
     /**
      * Previews it.
      *
-     * @param int $categoryid
-     * @return array ['groups' => array[], 'folder' => array, 'hash' => string]
+     * @param int[] $categoryids
+     * @return array ['roots' => int[], 'groups' => array[], 'possible' => array[], 'folders' => array[], 'hash' => string]
      */
-    public static function execute(int $categoryid): array {
-        $params = self::validate_parameters(self::execute_parameters(), ['categoryid' => $categoryid]);
+    public static function execute(array $categoryids): array {
+        $params = self::validate_parameters(self::execute_parameters(), ['categoryids' => $categoryids]);
         $context = \context_system::instance();
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
 
-        return dedupeplan::build($params['categoryid']);
+        return dedupeplan::build($params['categoryids']);
     }
 
     /**
-     * Returns: the groups, the folder that receives the repeated courses and the signature of the preview.
+     * Structure of a group, sure or possible.
+     *
+     * @param bool $possible Whether it carries the reason of a possible group.
+     * @return external_single_structure
+     */
+    private static function group_structure(bool $possible): external_single_structure {
+        $fields = [
+            'rootid' => new external_value(PARAM_INT, 'Chosen category the group belongs to'),
+            'categoryid' => new external_value(PARAM_INT, 'Category of the group'),
+            'path' => new external_value(PARAM_TEXT, 'Path of that category, formatted'),
+            'key' => new external_value(PARAM_RAW, 'Stable key of the group: its sorted course ids joined by -'),
+            'courses' => new external_multiple_structure(new external_single_structure([
+                'courseid' => new external_value(PARAM_INT, 'Course id'),
+                'fullname' => new external_value(PARAM_RAW, 'Full name, raw'),
+                'shortname' => new external_value(PARAM_RAW, 'Short name, raw'),
+                'timemodified' => new external_value(PARAM_INT, 'Last modification'),
+                'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
+                'activities' => new external_value(PARAM_INT, 'Activities of the course'),
+                'reasons' => new external_multiple_structure(
+                    new external_value(PARAM_ALPHA, 'Rule or reason that matched'),
+                    'Rules that matched'
+                ),
+                'keep' => new external_value(PARAM_BOOL, 'Stays by default: visible, then most activities, then most recent'),
+            ])),
+        ];
+        if ($possible) {
+            $fields['reason'] = new external_value(PARAM_ALPHA, 'group, shortname, extra or similar');
+        }
+        return new external_single_structure($fields);
+    }
+
+    /**
+     * Returns: the groups, the possible groups, the folders that receive the repeated courses and the signature.
      *
      * @return external_single_structure
      */
     public static function execute_returns(): external_single_structure {
         return new external_single_structure([
-            'groups' => new external_multiple_structure(new external_single_structure([
-                'categoryid' => new external_value(PARAM_INT, 'Category of the group'),
-                'path' => new external_value(PARAM_TEXT, 'Path of that category, formatted'),
-                'key' => new external_value(PARAM_RAW, 'Stable key of the group: its sorted course ids joined by -'),
-                'courses' => new external_multiple_structure(new external_single_structure([
-                    'courseid' => new external_value(PARAM_INT, 'Course id'),
-                    'fullname' => new external_value(PARAM_RAW, 'Full name, raw'),
-                    'shortname' => new external_value(PARAM_RAW, 'Short name, raw'),
-                    'timemodified' => new external_value(PARAM_INT, 'Last modification'),
-                    'visible' => new external_value(PARAM_BOOL, 'The course is visible'),
-                    'reasons' => new external_multiple_structure(
-                        new external_value(PARAM_ALPHA, 'name, key or shortname'),
-                        'Rules that matched'
-                    ),
-                    'keep' => new external_value(PARAM_BOOL, 'Stays by default: visible first, then the most recently modified'),
-                ])),
-            ])),
-            'folder' => new external_single_structure([
-                'visible' => new external_value(PARAM_BOOL, 'The folder exists and is visible: moved courses stay visible'),
+            'roots' => new external_multiple_structure(
+                new external_value(PARAM_INT, 'Chosen category'),
+                'Chosen categories analysed, without the ones inside another'
+            ),
+            'groups' => new external_multiple_structure(self::group_structure(false), 'Sure groups'),
+            'possible' => new external_multiple_structure(self::group_structure(true), 'Groups that need confirmation'),
+            'folders' => new external_multiple_structure(new external_single_structure([
+                'rootid' => new external_value(PARAM_INT, 'Chosen category the folder hangs from'),
                 'id' => new external_value(PARAM_INT, 'Folder id; 0 when it will be created'),
+                'visible' => new external_value(PARAM_BOOL, 'The folder exists and is visible: moved courses stay visible'),
                 'path' => new external_value(PARAM_TEXT, 'Path of the folder, formatted'),
-            ]),
+            ])),
             'hash' => new external_value(PARAM_ALPHANUM, 'Signature of the preview, to pass to dedupe_apply'),
         ]);
     }

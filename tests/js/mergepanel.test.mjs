@@ -196,6 +196,7 @@ test('la vista previa muestra Nueva y los grupos de repetidos con su elección; 
             { courseid: 12, action: 'move' },
         ],
         hash: 'abc123',
+        confirmed: [],
     });
     assert.equal(calls.reload, 1);
     assert.equal(calls.toasts[0].message, '2 unificados · A Repetidos: 1');
@@ -245,6 +246,7 @@ test('con el api real, los tres servicios reciben el nombre y los parámetros ex
                 sourceids: [1],
                 rows: [{ courseid: 10, action: 'move' }, { courseid: 11, action: 'skip' }],
                 hash: 'abc123',
+                confirmed: [],
             },
         });
         assert.equal(calls.errors.length, 0);
@@ -413,4 +415,74 @@ test('un ganador oculto y una carpeta Repetidos visible se avisan; un resultado 
     await flush();
     assert.deepEqual(calls.undo, [21]);
     assert.equal(calls.reload, 1);
+});
+
+test('un posible repetido del destino pregunta Sí o No; con Sí entra al grupo y se envía como confirmado', async () => {
+    const { document, calls } = setup({
+        sourceid: 1,
+        preview: {
+            ...previewOf([
+                row(11, 'Física general', { possible: '11-13', activities: 4 }),
+                row(13, 'Física', { possible: '11-13', existing: true }),
+            ]),
+            folder: { id: 0, path: 'Semillas / Repetidos', visible: false },
+            possible: [{
+                key: '11-13',
+                path: 'Semillas / Ingeniería',
+                reason: 'extra',
+                courses: [
+                    { courseid: 11, fullname: 'Física general', existing: false, visible: true, activities: 4, keep: true },
+                    { courseid: 13, fullname: 'Física', existing: true, visible: true, activities: 0, keep: false },
+                ],
+            }],
+        },
+        apply: { status: 'ok', logid: 7, moved: 2, repeated: 1, skipped: 0, emptied: [] },
+    });
+    pickTarget(document, 3);
+    action(document, 'preview').click();
+    await flush();
+    const box = document.querySelector('[data-region="possible"]');
+    assert.equal(box.hidden, false);
+    assert.match(box.textContent, /possiblereason_extra/);
+    // By default nothing of it changes: the target course stays.
+    assert.equal(action(document, 'apply').textContent, 'Unificar (1)');
+    assert.equal(document.querySelector('tr[data-courseid="13"] [data-action="choice"]'), null);
+    box.querySelector('[data-action="possibleyes"]').click();
+    assert.equal(action(document, 'apply').textContent, 'Unificar (2)');
+    assert.equal(document.querySelector('tr[data-courseid="13"] [data-action="choice"]').value, 'repeated');
+    action(document, 'apply').click();
+    await flush();
+    assert.deepEqual(calls.apply[0].rows, [{ courseid: 11, action: 'move' }, { courseid: 13, action: 'repeated' }]);
+    assert.deepEqual(calls.apply[0].confirmed, ['11-13']);
+});
+
+test('con destino y orígenes dados (desde la selección) la vista previa se pide sola', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="t">x</button></body>');
+    const { document } = dom.window;
+    globalThis.DOMParser = dom.window.DOMParser;
+    const asked = [];
+    const panel = open({
+        api: { mergePreview: async (params) => {
+            asked.push(params);
+            return previewOf([row(10, 'Cálculo')]);
+        } },
+        strings,
+        toast: { show: () => null },
+        onError: (error) => {
+            throw error;
+        },
+        undo: async () => null,
+        reload: async () => null,
+        getModel: () => tree(),
+        wwwroot: 'https://moodle.test',
+        decode: decodeEntities,
+        targetid: 3,
+        sourceids: [1, 5],
+        trigger: document.getElementById('t'),
+        doc: document,
+    });
+    await panel.ready;
+    await flush();
+    assert.deepEqual(asked, [{ targetid: 3, sourceids: [1, 5] }]);
+    assert.equal(document.querySelector('[data-source-id="1"]').checked, true);
 });

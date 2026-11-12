@@ -51,6 +51,9 @@ class mergerunner extends batchrunner {
      * @param array $rows List of ['courseid' => int, 'action' => 'move'|'repeated'|'skip']; plan rows not listed keep
      *      their default action. For a course already in the target, 'move' and 'skip' leave it where it is.
      * @param string $hash Hash of the preview the user saw.
+     * @param string[] $confirmed Keys of the possible groups («Posibles repetidos») the user confirmed; each must be
+     *      in the possible list of that preview. A confirmed group must leave a course in the destination, as a sure
+     *      one; the actions of its rows come in $rows.
      * @return array ['status' => 'ok'|'stale', 'logid' => int, 'moved' => int, 'repeated' => int, 'skipped' => int,
      *      'emptied' => [['id' => int, 'path' => string]]]; logid is 0 when nothing was recorded.
      * @throws \required_capability_exception When a category or course cannot be changed; nothing is written.
@@ -59,7 +62,7 @@ class mergerunner extends batchrunner {
      *      them in the destination; nothing is written.
      * @throws partial_exception When it stops halfway; what moved is recorded and can be undone.
      */
-    public static function run(int $targetid, array $sourceids, array $rows, string $hash): array {
+    public static function run(int $targetid, array $sourceids, array $rows, string $hash, array $confirmed = []): array {
         // Up to mergeplan::MAX_ROWS courses are moved in one request.
         \core_php_time_limit::raise();
         raise_memory_limit(MEMORY_EXTRA);
@@ -70,7 +73,7 @@ class mergerunner extends batchrunner {
             if (!hash_equals($plan['hash'], $hash)) {
                 return ['status' => 'stale', 'logid' => 0, 'moved' => 0, 'repeated' => 0, 'skipped' => 0, 'emptied' => []];
             }
-            $planrows = self::actions($plan['rows'], $rows);
+            $planrows = self::actions($plan['rows'], $rows, self::confirmed($plan['possible'], $confirmed));
             $folderid = (int) $plan['folder']['id'];
             $todo = [];
             $moved = 0;
@@ -130,9 +133,10 @@ class mergerunner extends batchrunner {
      *
      * @param array $planrows
      * @param array $rows
+     * @param array $confirmed Confirmed possible groups, key => true.
      * @return array Plan rows with the final action.
      */
-    private static function actions(array $planrows, array $rows): array {
+    private static function actions(array $planrows, array $rows, array $confirmed): array {
         $byid = [];
         foreach ($planrows as $index => $row) {
             $byid[$row['courseid']] = $index;
@@ -148,8 +152,29 @@ class mergerunner extends batchrunner {
             }
             $planrows[$byid[$courseid]]['action'] = $action;
         }
-        self::check_winners($planrows);
+        self::check_winners($planrows, $confirmed);
         return $planrows;
+    }
+
+    /**
+     * The confirmed possible groups, checked against the preview.
+     *
+     * @param array $possible Possible groups of the plan.
+     * @param string[] $confirmed Keys sent.
+     * @return array Map key => true.
+     * @throws \invalid_parameter_exception For a key that is not a possible group of this preview.
+     */
+    private static function confirmed(array $possible, array $confirmed): array {
+        $keys = array_flip(array_column($possible, 'key'));
+        $result = [];
+        foreach ($confirmed as $key) {
+            $key = (string) $key;
+            if (!isset($keys[$key])) {
+                throw new \invalid_parameter_exception('Possible group not in the preview: ' . $key);
+            }
+            $result[$key] = true;
+        }
+        return $result;
     }
 
     /**
@@ -160,13 +185,16 @@ class mergerunner extends batchrunner {
      * destination would lose the course: that is refused, before any write.
      *
      * @param array $planrows Plan rows with the final action.
+     * @param array $confirmed Confirmed possible groups, key => true: they count as groups.
      * @throws \moodle_exception error_groupwithoutwinner, naming the course that stays by default.
      */
-    private static function check_winners(array $planrows): void {
+    private static function check_winners(array $planrows, array $confirmed): void {
         $groups = [];
         foreach ($planrows as $row) {
             if ($row['group'] !== '') {
                 $groups[$row['group']][] = $row;
+            } else if ($row['possible'] !== '' && isset($confirmed[$row['possible']])) {
+                $groups['p' . $row['possible']][] = $row;
             }
         }
         foreach ($groups as $members) {

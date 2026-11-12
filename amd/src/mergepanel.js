@@ -51,6 +51,8 @@ let counter = 0;
  * @param {String} options.wwwroot Root URL of the site, for the links to the category management.
  * @param {Function} [options.decode] Turns a formatted string into plain text.
  * @param {Number} [options.sourceid] Category that starts selected as a source.
+ * @param {Number} [options.targetid] Target that starts chosen; with sourceids, the preview is made at once.
+ * @param {Number[]} [options.sourceids] Sources that start selected (the selection of the tree).
  * @param {Element} [options.trigger] Gets the focus back on close.
  * @param {Document} [options.doc]
  * @returns {{close: Function, element: Element}}
@@ -66,6 +68,8 @@ export const open = ({
     wwwroot,
     decode = (text) => text,
     sourceid = 0,
+    targetid: initialtarget = 0,
+    sourceids: initialsources = [],
     trigger,
     doc = document,
 }) => {
@@ -171,7 +175,9 @@ export const open = ({
     root.append(targetBox, sourceBox, actions, notice, folderLine, folderWarning, groupNotice, tablewrap, emptied);
 
     let targetid = 0;
-    const sources = new Set(sourceid > 0 ? [sourceid] : []);
+    const sources = new Set(sourceid > 0 ? [sourceid] : initialsources.map(Number));
+    // «Posibles repetidos» by key: the user confirms them one by one; until then nothing of them changes.
+    let possibles = new Map();
     // What the preview was made with: the hash only matches these values.
     let plan = null;
     let rows = [];
@@ -250,6 +256,8 @@ export const open = ({
         rows = [];
         tbody.textContent = '';
         tablewrap.hidden = true;
+        possibles = new Map();
+        possibleBox.hidden = true;
         folderLine.hidden = true;
         folderWarning.hidden = true;
         groupNotice.hidden = true;
@@ -331,6 +339,63 @@ export const open = ({
         return select;
     };
 
+    // Yes or no for a possible group: yes makes it a group like the sure ones (winner kept, others to Repetidos),
+    // no puts every course back to its default.
+    const confirmPossible = (key, yes) => {
+        const possible = possibles.get(key);
+        possible.confirmed = yes;
+        const keep = new Map(possible.courses.map((course) => [course.courseid, course.keep]));
+        rows.filter((row) => row.possible === key).forEach((row) => {
+            const winner = Boolean(keep.get(row.courseid));
+            row.group = yes ? key : '';
+            row.duplicate = yes;
+            row.winner = yes && winner;
+            row.action = yes && !winner ? 'repeated' : 'move';
+        });
+        // eslint-disable-next-line no-use-before-define
+        drawPossibles();
+        // eslint-disable-next-line no-use-before-define
+        drawRows();
+        refresh();
+    };
+
+    const possibleBox = create('section', 'tool-ceaorganizador-fusion-bloque');
+    possibleBox.dataset.region = 'possible';
+    possibleBox.hidden = true;
+    root.insertBefore(possibleBox, tablewrap);
+
+    const drawPossibles = () => {
+        possibleBox.textContent = '';
+        possibleBox.hidden = possibles.size === 0;
+        if (possibles.size === 0) {
+            return;
+        }
+        possibleBox.appendChild(create('h3', 'tool-ceaorganizador-sugerencias-titulo', strings.possible));
+        possibles.forEach((possible) => {
+            const item = create('div');
+            item.dataset.possibleKey = possible.key;
+            const names = possible.courses.map((course) => {
+                const text = decode(course.fullname);
+                return course.existing ? `${text} (${strings.mergeexisting})` : text;
+            });
+            item.appendChild(create('p', 'tool-ceaorganizador-nombre', `${strings.possibleask} ${names.join(' · ')}`));
+            const reason = create('p', possible.reason === 'group' ? 'tool-ceaorganizador-aviso' : 'tool-ceaorganizador-ruta',
+                strings[`possiblereason_${possible.reason}`] || possible.reason);
+            reason.dataset.region = 'reason';
+            item.appendChild(reason);
+            const yes = button('possibleyes', strings.possibleyes);
+            yes.setAttribute('aria-pressed', possible.confirmed ? 'true' : 'false');
+            yes.addEventListener('click', () => confirmPossible(possible.key, true));
+            const no = button('possibleno', strings.possibleno);
+            no.setAttribute('aria-pressed', possible.confirmed ? 'false' : 'true');
+            no.addEventListener('click', () => confirmPossible(possible.key, false));
+            const answers = create('div', 'tool-ceaorganizador-acciones');
+            answers.append(yes, no);
+            item.appendChild(answers);
+            possibleBox.appendChild(item);
+        });
+    };
+
     const drawRows = () => {
         tbody.textContent = '';
         rows.forEach((row) => {
@@ -343,6 +408,12 @@ export const open = ({
             const name = create('td', 'tool-ceaorganizador-nombre', decode(row.fullname));
             if (row.existing) {
                 name.appendChild(create('span', 'tool-ceaorganizador-etiqueta', strings.mergeexisting));
+            }
+            if (row.possible) {
+                tr.dataset.possible = row.possible;
+            }
+            if (row.duplicate || row.possible) {
+                name.appendChild(create('span', 'tool-ceaorganizador-ruta', ` · ${format(strings.activities, row.activities || 0)}`));
             }
             tr.appendChild(name);
             tr.appendChild(create('td', 'tool-ceaorganizador-ruta', decode(row.from)));
@@ -375,6 +446,8 @@ export const open = ({
                     state.appendChild(create('span', 'tool-ceaorganizador-ruta', ` ${reasons.join(', ')} `));
                 }
                 state.appendChild(choiceOf(row));
+            } else if (row.possible) {
+                state.appendChild(create('span', 'tool-ceaorganizador-insignia', strings.possible));
             } else {
                 state.textContent = strings.mergemove;
             }
@@ -423,6 +496,8 @@ export const open = ({
                 plan = wanted;
                 hash = result.hash;
                 rows = result.rows.map((row) => ({...row}));
+                possibles = new Map((result.possible || []).map((possible) => [possible.key, {...possible, confirmed: false}]));
+                drawPossibles();
                 drawRows();
                 showFolder(result.folder);
             }
@@ -476,6 +551,7 @@ export const open = ({
                 targetid: wanted.targetid,
                 sourceids: wanted.sourceids,
                 rows: rows.map((row) => ({courseid: row.courseid, action: row.action})),
+                confirmed: [...possibles.values()].filter((possible) => possible.confirmed).map((possible) => possible.key),
                 hash,
             });
         } catch (error) {
@@ -494,6 +570,8 @@ export const open = ({
         rows = [];
         tbody.textContent = '';
         tablewrap.hidden = true;
+        possibles = new Map();
+        possibleBox.hidden = true;
         folderLine.hidden = true;
         folderWarning.hidden = true;
         groupNotice.hidden = true;
@@ -567,5 +645,13 @@ export const open = ({
     drawSources();
     refresh();
     targetSearch.focus();
-    return {close: dialog.close, element: root};
+    // From the selection of the tree: target and sources are given, and the preview is made at once.
+    let ready = Promise.resolve();
+    if (initialtarget > 0) {
+        chooseTarget(Number(initialtarget));
+        if (sourceIds().length > 0) {
+            ready = load() || Promise.resolve();
+        }
+    }
+    return {close: dialog.close, element: root, ready};
 };
