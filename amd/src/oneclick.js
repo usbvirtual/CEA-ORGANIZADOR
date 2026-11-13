@@ -194,8 +194,9 @@ export const quickDedupe = async({api, strings, toast, onError, undo, reload, ca
  * «Unificar categorías» with the selected categories as sources, in one click.
  *
  * The target is the top-level category «Semillas» (normalized), created by create_seedroot when it is missing. The
- * selected categories inside it are left as they are; when all of them are inside it, there is nothing to merge
- * across roots and it does «Quitar repetidos» on them instead.
+ * selected categories inside it are left as they are. When all of them are inside it, the first one in the tree is
+ * the target and the others are merged into it; with only one, there is nothing to merge and it does «Quitar
+ * repetidos» on it instead.
  *
  * @param {Object} options
  * @param {Object} options.api createSeedroot, mergePreview, mergeApply, dedupePreview and dedupeApply.
@@ -208,12 +209,13 @@ export const quickDedupe = async({api, strings, toast, onError, undo, reload, ca
  * @param {Number[]} options.categoryids Selected categories.
  * @param {Function} options.openMergePanel Opens the merge panel with {targetid, sourceids}.
  * @param {Function} options.openDedupePanel Opens the «Quitar repetidos» panel with {categoryids, focus}.
+ * @param {Function} [options.decode] Turns a formatted name into plain text.
  * @param {Element} [options.trigger]
  * @param {Document} [options.doc]
  * @returns {Promise<String>} What happened, as quickDedupe().
  */
 export const quickMerge = async({api, strings, toast, onError, undo, reload, getModel, categoryids, openMergePanel,
-        openDedupePanel, trigger, doc = document}) => {
+        openDedupePanel, decode = (text) => text, trigger, doc = document}) => {
     let seed;
     try {
         seed = await api.createSeedroot({name: strings.mergeseeddefault});
@@ -228,15 +230,25 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
     const model = getModel();
     const ids = categoryids.map(Number);
     const inside = ids.filter((id) => id === seedid || model.isDescendant(seedid, id));
-    const outside = outerIds(model, ids.filter((id) => !inside.includes(id)));
+    let outside = outerIds(model, ids.filter((id) => !inside.includes(id)));
+    let targetid = seedid;
+    let leftinside = inside.length > 0;
     if (outside.length === 0) {
-        return quickDedupe({api, strings, toast, onError, undo, reload, categoryids: inside, openPanel: openDedupePanel,
-            intro: [strings.mergealreadyinseeds], trigger, doc});
+        // All inside Semillas: the first one in the tree receives the others.
+        const chosen = inTreeOrder(model, outerIds(model, inside));
+        if (chosen.length < 2) {
+            return quickDedupe({api, strings, toast, onError, undo, reload, categoryids: inside,
+                openPanel: openDedupePanel, intro: [strings.mergealreadyinseeds], trigger, doc});
+        }
+        [targetid, ...outside] = chosen;
+        leftinside = false;
     }
+    const target = model.get(targetid);
+    const targetname = target ? decode(target.name) : '';
 
     let preview;
     try {
-        preview = await api.mergePreview({targetid: seedid, sourceids: outside});
+        preview = await api.mergePreview({targetid, sourceids: outside});
     } catch (error) {
         onError(error);
         return 'error';
@@ -248,8 +260,8 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
         toast.show(strings.mergenothing);
         return 'none';
     }
-    const lines = [fill(strings.mergeconfirm, {moves, repeated})];
-    if (inside.length > 0) {
+    const lines = [fill(strings.mergeconfirm, {moves, repeated, target: targetname})];
+    if (leftinside) {
         lines.push(strings.mergeinsideleft);
     }
     if (possible > 0) {
@@ -258,7 +270,7 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
     const choice = await ask({strings, title: strings.merge, lines, canApply: moves + repeated > 0, review: possible > 0,
         trigger, doc});
     if (choice === 'detail' || choice === 'review') {
-        openMergePanel({targetid: seedid, sourceids: outside});
+        openMergePanel({targetid, sourceids: outside});
         return choice;
     }
     if (choice !== 'apply') {
@@ -267,7 +279,7 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
     let result;
     try {
         result = await api.mergeApply({
-            targetid: seedid,
+            targetid,
             sourceids: outside,
             rows: preview.rows.map((row) => ({courseid: row.courseid, action: row.action})),
             hash: preview.hash,
@@ -278,7 +290,7 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
         return 'error';
     }
     if (result.status === 'stale') {
-        openMergePanel({targetid: seedid, sourceids: outside});
+        openMergePanel({targetid, sourceids: outside});
         return 'stale';
     }
     if (result.logid > 0) {
@@ -296,6 +308,19 @@ export const quickMerge = async({api, strings, toast, onError, undo, reload, get
         toast.show(strings.mergenothing);
     }
     return 'apply';
+};
+
+/**
+ * Ids in the order of the tree (depth first, as drawn).
+ *
+ * @param {Object} model Tree model, with snapshot().
+ * @param {Number[]} ids
+ * @returns {Number[]}
+ */
+export const inTreeOrder = (model, ids) => {
+    const position = new Map(model.snapshot().map((row, index) => [row.id, index]));
+    const at = (id) => (position.has(id) ? position.get(id) : Number.MAX_SAFE_INTEGER);
+    return [...ids].sort((a, b) => at(a) - at(b));
 };
 
 /**

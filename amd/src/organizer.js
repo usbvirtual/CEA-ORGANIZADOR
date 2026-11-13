@@ -402,12 +402,6 @@ export const init = ({root}) => {
             }
             return runVisibilityTree({...panelOptions(trigger), categoryids, show, doc: document});
         });
-        // Every course of the category and of its subcategories, not only the ones drawn.
-        const contentsOf = async(id) => {
-            const own = createSelection();
-            own.addCategoryContents(ctx.model, id, await loadSubtreeCourses(api, ctx.model, id));
-            return own.items();
-        };
         // Loading many pages takes a while: one load at a time, with a visible busy state.
         const busyText = document.createElement('span');
         busyText.className = 'tool-ceaorganizador-ruta';
@@ -432,47 +426,17 @@ export const init = ({root}) => {
                 }
             }
         });
+        // The category menu only holds what the toolbar does not; the rest works on the selection.
         state.onAction = (action, item, trigger) => {
-            const dragged = describeItem(item);
-            if (action === 'moveto') {
-                moveTo(item, trigger);
-            } else if (action === 'sort') {
-                openSort({
-                    ...panelOptions(trigger),
-                    categoryid: dragged.id,
-                    path: ctx.model.pathOf(dragged.id).join(' / '),
-                });
-            } else if (action === 'rename') {
-                if (dragged.type !== 'category') {
-                    openRename({...panelOptions(trigger), items: [{type: 'course', id: dragged.id}]});
-                    return;
-                }
-                // Null when another load is running: the second click is ignored.
-                const pending = withLoading(trigger, () => contentsOf(dragged.id));
-                if (pending) {
-                    pending.then((items) => openRename({...panelOptions(trigger), items})).catch(Notification.exception);
-                }
-            } else if (action === 'suggest') {
-                openSuggest({...panelOptions(trigger), categoryid: dragged.id});
-            } else if (action === 'merge') {
-                openMerge({...mergeOptions(trigger), sourceid: dragged.id});
-            } else if (action === 'dedupe') {
-                openDedupe({...mergeOptions(trigger), categoryid: dragged.id});
-            } else if (action === 'clone') {
-                openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
-            } else if (action === 'delete') {
-                openDelete(deleteOptions(trigger, [dragged.id]));
-            } else if (action === 'hidetree' || action === 'showtree') {
-                visibilityTree(trigger, [dragged.id], action === 'showtree');
-            } else if (action === 'hide' || action === 'show') {
-                visibility.apply([dragged.id], action === 'show', trigger);
-            } else if (action === 'selectcontents') {
-                const pending = withLoading(trigger, () => loadSubtreeCourses(api, ctx.model, dragged.id));
-                if (pending) {
-                    pending
-                        .then((courses) => selection.addCategoryContents(ctx.model, dragged.id, courses))
-                        .catch(Notification.exception);
-                }
+            if (action !== 'selectcontents') {
+                return;
+            }
+            const id = describeItem(item).id;
+            const pending = withLoading(trigger, () => loadSubtreeCourses(api, ctx.model, id));
+            if (pending) {
+                pending
+                    .then((courses) => selection.addCategoryContents(ctx.model, id, courses))
+                    .catch(Notification.exception);
             }
         };
         let current = render(treeel, ctx.model, state);
@@ -519,7 +483,11 @@ export const init = ({root}) => {
         suggestButton.className = 'btn btn-secondary btn-sm';
         suggestButton.dataset.action = 'suggest';
         suggestButton.textContent = strings.suggest;
-        suggestButton.addEventListener('click', () => openSuggest({...panelOptions(suggestButton), categoryid: 0}));
+        // One category selected: that category and its descendants; otherwise the whole site.
+        suggestButton.addEventListener('click', () => {
+            const outer = outerIds(ctx.model, selectedCategoryIds(selection.items()));
+            openSuggest({...panelOptions(suggestButton), categoryid: outer.length === 1 ? outer[0] : 0});
+        });
         const mergeButton = document.createElement('button');
         mergeButton.type = 'button';
         mergeButton.className = 'btn btn-secondary btn-sm';

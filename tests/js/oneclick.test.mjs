@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { quickDedupe, quickMerge, fromSelection, outerIds, fill } from 'tool_ceaorganizador/oneclick';
+import { quickDedupe, quickMerge, fromSelection, outerIds, fill, inTreeOrder } from 'tool_ceaorganizador/oneclick';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 
 const strings = new Proxy({}, {
     get: (_, name) => ({
         dedupeconfirm: 'Mover {$a->moves} en {$a->categories}',
         dedupedone: 'Movidos: {$a}',
-        mergeconfirm: 'A Semillas {$a->moves}, a Repetidos {$a->repeated}',
+        mergeconfirm: 'A {$a->target} {$a->moves}, a Repetidos {$a->repeated}',
         mergedone: '{$a} unificados',
         mergedonerepeated: 'A Repetidos: {$a}',
         possiblecount: 'Posibles: {$a}',
@@ -204,6 +204,43 @@ test('Unificar con todo dentro de Semillas busca repetidos dentro y lo dice', as
     click(document, 'detail');
     assert.equal(await done, 'detail');
     assert.deepEqual(calls.panel, [{ categoryids: [2, 5], focus: '' }]);
+});
+
+test('Unificar con varias dentro de Semillas: la primera del árbol es el destino y recibe las demás', async () => {
+    // Semillas (3) › Programa (4), Maestría (6) › Cohorte (7), Especialización (8).
+    const model = createModel([
+        { id: 3, parent: 0, name: 'Semillas', sortorder: 1 },
+        { id: 4, parent: 3, name: 'Programa', sortorder: 1 },
+        { id: 6, parent: 3, name: 'Maestr&iacute;a', sortorder: 2 },
+        { id: 7, parent: 6, name: 'Cohorte', sortorder: 1 },
+        { id: 8, parent: 3, name: 'Especialización', sortorder: 3 },
+    ]);
+    const merge = {
+        rows: [{ courseid: 50, action: 'move', existing: false }, { courseid: 51, action: 'repeated', existing: true }],
+        emptied: [],
+        folder: { id: 0, visible: false, path: 'Maestría / Repetidos' },
+        possible: [{ key: '52-53' }],
+        hash: 'm2',
+    };
+    const { document, calls, options } = setup({ merge });
+    // Marked out of order, with a child inside a marked one: the child goes with its parent.
+    const done = quickMerge({ ...options, getModel: () => model, decode: (text) => text.replace('&iacute;', 'í'),
+        categoryids: [8, 7, 6] });
+    await flush();
+    await flush();
+    assert.deepEqual(calls.preview, [{ targetid: 6, sourceids: [8] }]);
+    const text = question(document).textContent;
+    assert.match(text, /A Maestría 1, a Repetidos 1/);
+    assert.doesNotMatch(text, /mergeinsideleft|mergealreadyinseeds/);
+    assert.match(text, /Posibles: 1/);
+    click(document, 'apply');
+    assert.equal(await done, 'apply');
+    assert.equal(calls.apply[0].targetid, 6);
+    assert.deepEqual(calls.apply[0].sourceids, [8]);
+});
+
+test('inTreeOrder ordena por el árbol y deja al final lo que no está', () => {
+    assert.deepEqual(inTreeOrder(tree(), [5, 99, 4, 2]), [2, 4, 5, 99]);
 });
 
 test('con el api real, los servicios reciben el nombre y los parámetros exactos', async () => {

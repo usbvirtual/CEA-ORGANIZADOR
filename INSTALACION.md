@@ -60,7 +60,15 @@ Valores por defecto:
 
 ### Atajos de teclado
 
-Con el foco en el árbol: flechas para navegar; **Espacio** toma el elemento y las flechas eligen el destino (Enter suelta, Esc cancela); **M** abre «Mover a…»; **S** selecciona o deselecciona; **Shift+F10** abre el menú del nodo.
+Con el foco en el árbol: flechas para navegar; **Espacio** toma el elemento y las flechas eligen el destino (Enter suelta, Esc cancela); **M** abre «Mover a…»; **S** selecciona o deselecciona; **Shift+F10** abre el menú de una categoría.
+
+### Dónde está cada opción
+
+Cada opción aparece en un solo lugar:
+
+- **Barra superior:** «Historial», «Sugerir correcciones», «Unificar categorías» y «Quitar repetidos». Al marcar algo aparece la barra de selección: «Renombrar», «Clonar a periodo…», «Auto ordenar seleccionadas», «Ocultar seleccionados», «Mostrar seleccionados», «Ocultar todo lo seleccionado», «Mostrar todo lo seleccionado», «Borrar seleccionadas» y «Limpiar». Para actuar sobre una sola categoría o un solo curso, márquelo con su casilla (o **S**) y use la barra.
+- **Cada fila:** el botón «Mover a…».
+- **Menú ⋯ de una categoría:** «Seleccionar contenido» (marca todos sus cursos, también los de sus subcategorías) y «Abrir en Moodle». Los cursos no tienen menú.
 
 ### Auto ordenar varias categorías
 
@@ -68,15 +76,13 @@ Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar selec
 
 ### Ocultar y mostrar cursos
 
-- **Un curso:** en el menú del curso (⋯ o Shift+F10) aparece «Ocultar» o «Mostrar», según su estado.
-- **Varios cursos:** seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
+- Seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
 
 Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso. Cada lote de 100 es todo o nada: si falta el permiso en un curso, no se cambia ninguno de su lote, pero los lotes anteriores ya quedaron aplicados (y el aviso «Deshacer» los deshace). Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
 
 ### Ocultar todo y mostrar todo
 
-- **Una categoría:** en su menú (⋯ o Shift+F10), «Ocultar todo» o «Mostrar todo».
-- **Varias:** seleccione las categorías y use «Ocultar todo lo seleccionado» o «Mostrar todo lo seleccionado». Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
+- Seleccione una o varias categorías y use «Ocultar todo lo seleccionado» o «Mostrar todo lo seleccionado». Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
 
 Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y a **todos** sus cursos. Antes de aplicar se cuenta lo que de verdad cambia de visibilidad y se pregunta una vez, por ejemplo «Se ocultarán 12 categorías y 340 cursos».
 
@@ -97,7 +103,7 @@ Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial
 
 Propone nombres corregidos para categorías y cursos y deja aplicarlos de una vez. No cambia nada hasta que se confirma.
 
-**Dónde está.** En la barra del organizador, «Sugerir correcciones» (revisa todo el sitio), y en el menú del nodo de una categoría (revisa esa categoría y lo que hay debajo). La casilla «Incluir cursos» decide si también se revisan los cursos. La lista muestra cada cambio con el nombre actual, el sugerido, el motivo y la categoría donde está; cada fila se puede desmarcar.
+**Dónde está.** En la barra del organizador, «Sugerir correcciones». Con una sola categoría seleccionada revisa esa categoría y lo que hay debajo; si no, todo el sitio. La casilla «Incluir cursos» decide si también se revisan los cursos. La lista muestra cada cambio con el nombre actual, el sugerido, el motivo y la categoría donde está; cada fila se puede desmarcar.
 
 **Las cuatro reglas.** Se aplican en este orden y el motivo queda marcado en la fila:
 
@@ -125,7 +131,7 @@ Reúne en una sola categoría de semillas los cursos que están repartidos en va
 
 **Orden recomendado.** Primero «Sugerir correcciones», luego «Unificar categorías» y al final «Clonar a periodo». Así se unifican nombres ya corregidos (los repetidos se detectan por el nombre) y las copias salen con los nombres bien escritos.
 
-**Dónde está.** En la barra del organizador, «Unificar categorías», y en el menú del nodo de una categoría, que queda marcada como origen.
+**Dónde está.** En la barra del organizador, «Unificar categorías».
 
 **Cómo se usa.**
 
@@ -169,7 +175,7 @@ Deshacer se rechaza, con los conflictos listados, si algún curso ya no está do
 
 Busca cursos repetidos en una categoría y en **todas sus subcategorías** y mueve los sobrantes a una carpeta oculta «Repetidos». Cada categoría se compara solo consigo misma: «Cálculo I» en dos programas distintos son dos cursos distintos y no se tocan.
 
-**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar categorías») y en el menú «⋯» de cada categoría.
+**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar categorías»); con categorías seleccionadas actúa sobre ellas.
 
 **Reglas.** Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
 
@@ -205,7 +211,8 @@ Nunca se sugieren cursos de distinto nivel («Cálculo I» y «Cálculo II», «
 Si hay categorías marcadas en el árbol, los botones de la barra no abren el panel:
 
 - **Quitar repetidos** analiza las categorías marcadas (cada una con sus subcategorías; una marcada dentro de otra marcada se cubre con esta) y pregunta «Se moverán N repetidos a Repetidos en M categorías» con [Aplicar] [Ver detalle] [Cancelar]. [Aplicar] mueve con los ganadores por defecto, en un solo registro del historial (un solo «Deshacer»); cada categoría marcada recibe su propia carpeta «Repetidos». [Ver detalle] abre el panel con esas categorías. Si no hay nada, avisa «No se encontraron cursos repetidos».
-- **Unificar categorías** usa las categorías marcadas como orígenes y como destino la categoría de nivel superior «Semillas» (sin importar tildes ni mayúsculas); si no existe, la crea al pulsar el botón, como «Crear categoría de semillas» (si luego se cancela, queda vacía y se puede borrar). Pregunta «Se moverán X cursos a Semillas, Y repetidos a Repetidos». Las marcadas que ya están dentro de Semillas no se tocan (el texto lo dice); si todas están dentro, no hay nada que unificar entre raíces y hace «Quitar repetidos» sobre ellas.
+- **Unificar categorías** usa las categorías marcadas como orígenes y como destino la categoría de nivel superior «Semillas» (sin importar tildes ni mayúsculas); si no existe, la crea al pulsar el botón, como «Crear categoría de semillas» (si luego se cancela, queda vacía y se puede borrar). Pregunta «Se moverán X cursos a «Semillas» y Y repetidos a Repetidos». Las marcadas que ya están dentro de Semillas no se tocan (el texto lo dice).
+- **Unificar categorías dentro de Semillas:** si todas las marcadas están dentro de Semillas y son dos o más, la primera en el árbol (la de más arriba) es el destino y las demás se unifican en ella, con la misma pregunta. Los cursos repetidos entre ellas van a la carpeta oculta «Repetidos» del destino (se puede deshacer) y los posibles repetidos se ven con [Revisar]. Una categoría marcada dentro de otra marcada va con ella. Con una sola, no hay nada que unificar y hace «Quitar repetidos» sobre ella.
 - Si hay posibles repetidos, la pregunta añade «Además hay K posibles repetidos que necesitan tu confirmación» con [Revisar], que abre el panel; [Aplicar] solo aplica los seguros.
 
 Sin categorías marcadas, los botones abren el panel como siempre. Se respetan los mismos límites (1000 cursos movidos; 5000 revisados en «Quitar repetidos») y la misma regla de que quede un curso en el destino.
@@ -224,7 +231,7 @@ Los posibles repetidos no se cuentan en «N repetidos» (son una pregunta, no un
 
 Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni contenido.
 
-**Dónde está.** «Borrar» en el menú «⋯» de una categoría, y «Borrar seleccionadas» en la barra de selección (actúa solo sobre las categorías seleccionadas; los cursos seleccionados se ignoran).
+**Dónde está.** «Borrar seleccionadas» en la barra de selección (actúa solo sobre las categorías seleccionadas; los cursos seleccionados se ignoran).
 
 **Qué es vacía.** Sin cursos, sin subcategorías y sin nada propio que Moodle borraría o movería al borrarla: elementos de la papelera de reciclaje, del banco de contenidos, eventos, letras de calificación, categorías de preguntas (cualquiera, incluso una «top» vacía), asignaciones de roles, permisos definidos en la categoría, cohortes, bloques, archivos (también las imágenes de la descripción), comentarios, filtros ni marcos o plantillas de competencias. Tampoco se borra la categoría por defecto de las solicitudes de curso. Así nunca se pierde nada. Si se seleccionan una categoría y todas sus subcategorías vacías, se borran juntas, de la más profunda a la más superficial.
 
@@ -242,11 +249,11 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
-**Dónde está.** En el menú del nodo de una categoría y en la barra de selección, la opción «Clonar a periodo…».
+**Dónde está.** En la barra de selección, la opción «Clonar a periodo…».
 
 **Cómo se usa.**
 
-1. Elegir las semillas: una categoría (menú de su nodo) o una selección. Para clonar un solo curso, seleccionarlo y usar «Clonar a periodo…» en la barra de selección.
+1. Elegir las semillas: una o varias categorías o cursos seleccionados. Para clonar un solo curso, seleccionarlo y usar «Clonar a periodo…» en la barra de selección.
 2. En el panel, elegir el «Periodo de destino», escribir la «Etiqueta del periodo» (formato AAAA-01 o AAAA-02, por ejemplo `2027-01`), revisar la «Carpeta bajo el periodo» (opcional, ver abajo) y, si se quiere, poner las fechas de inicio y de fin. Las fechas son opcionales: sin fechas, cada copia conserva las de su curso semilla; con solo la de inicio, el curso queda sin fecha de fin.
 3. Pulsar «Vista previa»: muestra, por cada curso, la semilla, el destino, el nombre de la copia y el estado («Nueva», o el motivo por el que se omite).
 4. Pulsar «Clonar cursos (N)». Solo se clonan las filas que el panel envía: una fila con un nombre vacío o con un motivo de omisión no se envía y no se clona. Se abre el panel «Copias en curso», que consulta el avance cada 15 segundos y marca cada copia como «Pendiente», «Listo» o «Fallido». Si una consulta falla, se reintenta a los 15, 30 y 60 segundos antes de mostrar el error. Para volver a ver el avance más tarde, abrir el historial y pulsar «Ver avance» en la entrada del clonado.

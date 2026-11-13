@@ -41,11 +41,24 @@ test('Shift+F10 y la tecla de menú contextual abren el menú del nodo y Esc dev
         const menu = item.querySelector('[role="menu"]');
         assert.ok(menu);
         assert.equal(document.activeElement.getAttribute('role'), 'menuitem');
-        assert.equal(document.activeElement.dataset.action, 'moveto');
+        assert.equal(document.activeElement.dataset.action, 'selectcontents');
         press(dom, document.activeElement, { key: 'Escape' });
         assert.equal(item.querySelector('[role="menu"]'), null);
         assert.equal(document.activeElement, item);
     }
+});
+
+test('el menú de la categoría solo tiene lo que no está en la barra ni en el botón Mover a…', () => {
+    const { container, actions } = setup();
+    const li = container.querySelector('[data-id="1"]');
+    li.querySelector('[data-action="menu"]').click();
+    const found = [...li.querySelectorAll('[role="menuitem"]')].map((item) => item.dataset.action);
+    assert.deepEqual(found, ['selectcontents', 'open']);
+    assert.equal(li.querySelector('[role="menuitem"][data-action="open"]').getAttribute('href'),
+        'https://example.org/course/management.php?categoryid=1');
+    li.querySelector('[role="menuitem"][data-action="selectcontents"]').click();
+    assert.deepEqual(actions, ['selectcontents']);
+    assert.equal(li.querySelectorAll('[data-action="moveto"]').length, 1);
 });
 
 test('F10 sin Shift no abre el menú y los nodos anuncian sus atajos', () => {

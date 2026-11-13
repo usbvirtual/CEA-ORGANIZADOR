@@ -41,24 +41,13 @@ const setup = async () => {
 };
 
 const course = (container, id) => container.querySelector(`[data-type="course"][data-id="${id}"]`);
-const menuActions = (container, id) => {
-    const li = course(container, id);
-    li.querySelector('[data-action="menu"]').click();
-    const found = [...li.querySelectorAll('[role="menuitem"]')].map((item) => item.dataset.action);
-    li.querySelector('[data-action="menu"]').click();
-    return found;
-};
-
-test('el menú del curso ofrece Ocultar o Mostrar según su visibilidad', async () => {
-    const { container, actions } = await setup();
-    assert.deepEqual(menuActions(container, 10), ['moveto', 'rename', 'hide']);
-    assert.deepEqual(menuActions(container, 11), ['moveto', 'rename', 'show']);
-    const li = course(container, 11);
-    li.querySelector('[data-action="menu"]').click();
-    const show = li.querySelector('[role="menuitem"][data-action="show"]');
-    assert.equal(show.textContent, 'showcourse');
-    show.click();
-    assert.deepEqual(actions, [['show', 11]]);
+test('los cursos no tienen menú: Ocultar y Mostrar están en la barra de la selección', async () => {
+    const { container } = await setup();
+    for (const id of [10, 11]) {
+        const li = course(container, id);
+        assert.equal(li.querySelector('[data-action="menu"]'), null);
+        assert.equal(li.getAttribute('aria-keyshortcuts'), 'Space S');
+    }
 });
 
 test('la barra envía solo los ids de los cursos seleccionados', async () => {
@@ -110,7 +99,7 @@ test('tras aplicar se actualiza la etiqueta Oculta en su lugar y el aviso ofrece
         assert.equal(document.getElementById(labels[0].id), labels[0]);
         assert.equal(li.dataset.visible, '0');
     }
-    assert.deepEqual(menuActions(container, 10), ['moveto', 'rename', 'show']);
+    assert.equal(course(container, 10).dataset.visible, '0');
     assert.equal(state.cache.get(1).items.find((item) => item.id === 10).visible, false);
     assert.equal(toasts.length, 1);
     assert.equal(toasts[0][0], 'visibilitychanged');
@@ -122,7 +111,7 @@ test('tras aplicar se actualiza la etiqueta Oculta en su lugar y el aviso ofrece
     const shown = course(container, 11);
     assert.equal(shown.querySelector('.tool-ceaorganizador-oculta'), null);
     assert.equal(shown.hasAttribute('aria-describedby'), false);
-    assert.deepEqual(menuActions(container, 11), ['moveto', 'rename', 'hide']);
+    assert.equal(shown.dataset.visible, '1');
 });
 
 test('sin cambios no hay Deshacer, y con otra escritura en curso no se envía nada', async () => {

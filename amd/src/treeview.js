@@ -212,9 +212,8 @@ const defaultStorage = (container) => {
  * @param {Object} [state.storage] Where the expanded ids are remembered.
  * @param {Function} [state.onError] Receives the errors of the web services.
  * @param {Object} [state.selection] Selection from selection.createSelection(); adds a checkbox per row.
- * @param {Function} [state.onAction] Called with (action, item, button) by the node menu: moveto, sort,
- *                   rename, suggest, merge, dedupe, clone, selectcontents, hidetree, showtree, delete, hide or show.
- *                   Adds the menu button.
+ * @param {Function} [state.onAction] Called with (action, item, button) by the category menu:
+ *                   selectcontents. Adds the menu button to the categories.
  * @param {String} [state.wwwroot] Site URL, for the "Open in Moodle" link of the menu.
  * @returns {{refresh: Function, toggle: Function, revealDuplicates: Function}}
  */
@@ -282,8 +281,10 @@ export const render = (container, model, state) => {
         row.appendChild(box);
     };
 
-    // Optional node menu; state.onAction(action, item, button) runs the chosen action.
-    const addMenu = (li, row, type, id, name) => {
+    // Optional category menu; state.onAction(action, item, button) runs the chosen action.
+    // It only holds what the toolbar does not: every other action works on the selection, from the toolbar,
+    // and «Mover a…» is the button of the row.
+    const addMenu = (li, row, id, name) => {
         if (!state.onAction) {
             return;
         }
@@ -317,38 +318,17 @@ export const render = (container, model, state) => {
                 closeMenu(false);
             }
         }
-        const entries = [['moveto', strings.moveto]];
-        if (type === 'category') {
-            entries.push(
-                ['sort', strings.autosort],
-                ['rename', strings.rename],
-                ['suggest', strings.suggest],
-                ['merge', strings.merge],
-                ['dedupe', strings.dedupe],
-                ['clone', strings.clonetoperiod],
-                ['open', strings.opencategory],
-                ['selectcontents', strings.selectcontents],
-                ['hidetree', strings.hidetree],
-                ['showtree', strings.showtree],
-                ['delete', strings.deletecategory]
-            );
-        } else {
-            entries.push(['rename', strings.rename], ['visibility']);
-        }
-        // A course offers "Show" or "Hide" from its state when the menu opens: it may change in place.
-        const resolve = ([action, label]) => {
-            if (action !== 'visibility') {
-                return [action, label];
-            }
-            return li.dataset.visible === '0' ? ['show', strings.showcourse] : ['hide', strings.hidecourse];
-        };
+        const entries = [
+            ['selectcontents', strings.selectcontents],
+            ['open', strings.opencategory],
+        ];
         const openMenu = () => {
             if (state.closeMenu) {
                 state.closeMenu(false);
             }
             menu = create('ul', 'tool-ceaorganizador-menu');
             menu.setAttribute('role', 'menu');
-            entries.map(resolve).forEach(([action, label]) => {
+            entries.forEach(([action, label]) => {
                 if (action === 'open' && state.wwwroot === undefined) {
                     return;
                 }
@@ -412,8 +392,13 @@ export const render = (container, model, state) => {
     };
 
     // Keys that work on a focused node, announced to assistive technology.
-    const shortcuts = () => ['Space']
-        .concat(state.onMoveTo ? ['M'] : [], state.selection ? ['S'] : [], state.onAction ? ['Shift+F10'] : [])
+    // Only categories have a node menu.
+    const shortcuts = (type) => ['Space']
+        .concat(
+            state.onMoveTo ? ['M'] : [],
+            state.selection ? ['S'] : [],
+            state.onAction && type === 'category' ? ['Shift+F10'] : []
+        )
         .join(' ');
 
     const hiddenLabel = () => createHiddenLabel(doc, strings.hidden);
@@ -456,7 +441,7 @@ export const render = (container, model, state) => {
             const li = create('li', 'tool-ceaorganizador-curso');
             li.setAttribute('role', 'treeitem');
             li.setAttribute('aria-level', String(level));
-            li.setAttribute('aria-keyshortcuts', shortcuts());
+            li.setAttribute('aria-keyshortcuts', shortcuts('course'));
             li.dataset.id = String(course.id);
             li.dataset.type = 'course';
             li.dataset.visible = course.visible ? '1' : '0';
@@ -483,7 +468,6 @@ export const render = (container, model, state) => {
                 li.setAttribute('aria-describedby', described.join(' '));
             }
             addMoveButton(li, row, decodeEntities(course.fullname));
-            addMenu(li, row, 'course', course.id, decodeEntities(course.fullname));
             li.appendChild(row);
             group.appendChild(li);
         });
@@ -536,7 +520,7 @@ export const render = (container, model, state) => {
         li.setAttribute('role', 'treeitem');
         li.setAttribute('aria-level', String(level));
         li.setAttribute('aria-expanded', 'false');
-        li.setAttribute('aria-keyshortcuts', shortcuts());
+        li.setAttribute('aria-keyshortcuts', shortcuts('category'));
         li.dataset.id = String(row.id);
         li.dataset.type = 'category';
         li.tabIndex = -1;
@@ -587,7 +571,7 @@ export const render = (container, model, state) => {
         }
         li.setAttribute('aria-describedby', described.join(' '));
         addMoveButton(li, line, decodeEntities(row.name));
-        addMenu(li, line, 'category', row.id, decodeEntities(row.name));
+        addMenu(li, line, row.id, decodeEntities(row.name));
         line.addEventListener('click', () => toggle(li));
         li.appendChild(line);
         if (expanded.has(row.id) || forcedOpen(row)) {

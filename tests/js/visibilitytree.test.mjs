@@ -55,7 +55,7 @@ test('fill reemplaza los marcadores {$a->nombre}', () => {
         'Se ocultarán 2 y 5; 2');
 });
 
-test('el menú de la categoría ofrece Ocultar todo y Mostrar todo, y los envía con la categoría', async () => {
+test('Ocultar todo y Mostrar todo no se repiten en el menú de la categoría', async () => {
     const document = page();
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -73,16 +73,11 @@ test('el menú de la categoría ofrece Ocultar todo y Mostrar todo, y los envía
     const li = container.querySelector('[data-type="category"][data-id="1"]');
     li.querySelector('[data-action="menu"]').click();
     const found = [...li.querySelectorAll('[role="menuitem"]')].map((item) => item.dataset.action);
-    assert.ok(found.includes('hidetree'));
-    assert.ok(found.includes('showtree'));
-    assert.ok(found.indexOf('hidetree') < found.indexOf('delete'));
-    const hide = li.querySelector('[role="menuitem"][data-action="hidetree"]');
-    assert.equal(hide.textContent, 'hidetree');
-    assert.equal(li.querySelector('[role="menuitem"][data-action="showtree"]').textContent, 'showtree');
-    hide.click();
-    li.querySelector('[data-action="menu"]').click();
-    li.querySelector('[role="menuitem"][data-action="showtree"]').click();
-    assert.deepEqual(actions, [['hidetree', 1], ['showtree', 1]]);
+    // They live in the selection bar only.
+    for (const action of ['hidetree', 'showtree', 'delete']) {
+        assert.ok(!found.includes(action), action);
+    }
+    assert.deepEqual(actions, []);
 });
 
 test('confirma con los conteos, aplica con el hash y muestra el aviso con Deshacer, y recarga', async () => {

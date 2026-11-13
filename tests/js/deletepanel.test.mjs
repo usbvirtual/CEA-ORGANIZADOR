@@ -185,7 +185,7 @@ test('el panel funciona con el api.js real', async () => {
     ]);
 });
 
-test('el menú de una categoría ofrece Borrar', () => {
+test('Borrar está solo en la barra de la selección, no en el menú de la categoría', () => {
     const dom = new JSDOM('<!doctype html><div id="c"></div>');
     const { document } = dom.window;
     globalThis.DOMParser = dom.window.DOMParser;
@@ -202,10 +202,8 @@ test('el menú de una categoría ofrece Borrar', () => {
     });
     const li = container.querySelector('[data-type="category"][data-id="1"]');
     li.querySelector('[data-action="menu"]').click();
-    const entry = li.querySelector('[role="menuitem"][data-action="delete"]');
-    assert.equal(entry.textContent, 'deletecategory');
-    entry.click();
-    assert.deepEqual(actions, [['delete', 1]]);
+    assert.equal(li.querySelector('[role="menuitem"][data-action="delete"]'), null);
+    assert.deepEqual(actions, []);
 });
 
 test('una entrada de borrado del historial se puede deshacer', async () => {
