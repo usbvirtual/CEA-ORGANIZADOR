@@ -358,4 +358,27 @@ final class duplicates_test extends \advanced_testcase {
         $this->assertCount(1, $groups);
         $this->assertSame([], duplicates::candidates($courses, $groups));
     }
+
+    /**
+     * The repeated count is every course of a group but one; it needs only ids and names, and the vetoes hold.
+     */
+    public function test_repeated_count(): void {
+        $this->assertSame(0, duplicates::repeated_count([]));
+        $this->assertSame(0, duplicates::repeated_count([['id' => 1, 'fullname' => 'Ética', 'shortname' => 'E']]));
+        $courses = [
+            ['id' => 1, 'fullname' => 'Ética', 'shortname' => 'ETI'],
+            ['id' => 2, 'fullname' => 'Ética (copia)', 'shortname' => 'ETI2'],
+            ['id' => 3, 'fullname' => 'Ética 2025-2', 'shortname' => 'ETI3'],
+            ['id' => 4, 'fullname' => 'Física', 'shortname' => 'FIS'],
+            ['id' => 5, 'fullname' => 'Física', 'shortname' => 'FIS2'],
+            ['id' => 6, 'fullname' => 'Cálculo I', 'shortname' => 'CAL-2025-1'],
+            ['id' => 7, 'fullname' => 'Cálculo II', 'shortname' => 'CAL-2025-2'],
+            ['id' => 8, 'fullname' => 'Inglés G1', 'shortname' => 'ING-2025-1'],
+            ['id' => 9, 'fullname' => 'Inglés G2', 'shortname' => 'ING-2025-2'],
+            ['id' => 10, 'fullname' => 'Programación de computadores', 'shortname' => 'PROG1'],
+            ['id' => 11, 'fullname' => 'Programación de computadoras', 'shortname' => 'PROG2'],
+        ];
+        // Three courses of Ética, 2 repeated; two of Física, 1 repeated; levels, groups and possible repeats: none.
+        $this->assertSame(3, duplicates::repeated_count($courses));
+    }
 }

@@ -25,7 +25,10 @@
 namespace tool_ceaorganizador\local;
 
 /**
- * Reads the category tree, with paths and sort recommendations, and the courses.
+ * Reads the category tree, with paths, sort recommendations and counts of repeated courses, and the courses.
+ *
+ * The repeated courses follow the rules of «Quitar repetidos» (duplicates, dedupeplan): each category is compared only
+ * with itself, and a «Repetidos» folder and everything under it are never analysed. It writes nothing.
  */
 class tree {
     /**
@@ -59,27 +62,46 @@ class tree {
     }
 
     /**
-     * Loads the course ids and names grouped by category, in sortorder.
+     * Loads the courses grouped by category, in sortorder: one query for the whole site.
      *
-     * @return array[] Lists of ['id' => int, 'name' => string] by category id.
+     * @return array [array[] lists of ['id' => int, 'name' => string (formatted)] by category id, for the sorter,
+     *      array[] lists of ['id' => int, 'fullname' => string, 'shortname' => string] (raw) by category id, for
+     *      duplicates::repeated_count()].
      */
     private static function load_courses_by_category(): array {
         global $DB;
         $records = $DB->get_records_sql(
-            'SELECT id, category, fullname
+            'SELECT id, category, fullname, shortname
                FROM {course}
               WHERE id <> :site
            ORDER BY category, sortorder, id',
             ['site' => SITEID]
         );
         $bycategory = [];
+        $raw = [];
         foreach ($records as $record) {
-            $bycategory[(int) $record->category][] = [
+            $categoryid = (int) $record->category;
+            $bycategory[$categoryid][] = [
                 'id' => (int) $record->id,
                 'name' => self::format($record->fullname),
             ];
+            $raw[$categoryid][] = [
+                'id' => (int) $record->id,
+                'fullname' => (string) $record->fullname,
+                'shortname' => (string) $record->shortname,
+            ];
         }
-        return $bycategory;
+        return [$bycategory, $raw];
+    }
+
+    /**
+     * Whether a category name is the «Repetidos» folder (normalized, so «repetidos» or «REPETIDOS» are too).
+     *
+     * @param string $name Raw name.
+     * @return bool
+     */
+    private static function is_folder(string $name): bool {
+        return sorter::normalize($name) === sorter::normalize(duplicates::FOLDER);
     }
 
     /**
@@ -113,14 +135,20 @@ class tree {
     /**
      * Lists all categories in tree order: parent first, then its children by sortorder.
      *
-     * @return array[] Rows with id, parent, name, path, depth, sortorder, visible, coursecount and needsort.
+     * 'dupcount' is the number of repeated courses directly in the category (in each sure group of
+     * duplicates::groups(), every course but the one that stays; possible groups do not count) and 'dupcounttotal'
+     * adds those of all its subcategories. Both are 0 for a «Repetidos» folder and everything under it, which never
+     * count.
+     *
+     * @return array[] Rows with id, parent, name, path, depth, sortorder, visible, coursecount, needsort, dupcount
+     *      and dupcounttotal.
      */
     public static function categories(): array {
         $byparent = self::load_children();
-        $bycourses = self::load_courses_by_category();
+        [$bycourses, $raw] = self::load_courses_by_category();
         $patterns = sorter::patterns();
         $rows = [];
-        self::walk(0, '', $byparent, $bycourses, $patterns, $rows);
+        self::walk(0, '', $byparent, $bycourses, $raw, $patterns, false, $rows);
         return $rows;
     }
 
@@ -130,18 +158,24 @@ class tree {
      * @param int $parentid
      * @param string $parentpath
      * @param array $byparent
-     * @param array $bycourses
+     * @param array $bycourses Formatted course names by category, for the sorter.
+     * @param array $raw Raw course names by category, for the repeated courses.
      * @param array $patterns
+     * @param bool $inrepeated The parent is a «Repetidos» folder or lies under one.
      * @param array $rows Output rows.
+     * @return int Repeated courses of the children of the parent and of all their subcategories.
      */
     private static function walk(
         int $parentid,
         string $parentpath,
         array $byparent,
         array $bycourses,
+        array $raw,
         array $patterns,
+        bool $inrepeated,
         array &$rows
-    ): void {
+    ): int {
+        $total = 0;
         foreach ($byparent[$parentid] ?? [] as $category) {
             $id = (int) $category->id;
             $name = self::format($category->name);
@@ -151,6 +185,9 @@ class tree {
             $currentcourses = array_column($courses, 'id');
             $needsort = self::children_differ($children, false, $patterns)
                 || sorter::differs($currentcourses, sorter::propose_courses($courses));
+            $excluded = $inrepeated || self::is_folder((string) $category->name);
+            $dupcount = $excluded ? 0 : duplicates::repeated_count($raw[$id] ?? []);
+            $index = count($rows);
             $rows[] = [
                 'id' => $id,
                 'parent' => (int) $category->parent,
@@ -161,9 +198,14 @@ class tree {
                 'visible' => (bool) $category->visible,
                 'coursecount' => (int) $category->coursecount,
                 'needsort' => $needsort,
+                'dupcount' => $dupcount,
+                'dupcounttotal' => 0,
             ];
-            self::walk($id, $path, $byparent, $bycourses, $patterns, $rows);
+            $below = self::walk($id, $path, $byparent, $bycourses, $raw, $patterns, $excluded, $rows);
+            $rows[$index]['dupcounttotal'] = $excluded ? 0 : $dupcount + $below;
+            $total += $rows[$index]['dupcounttotal'];
         }
+        return $total;
     }
 
     /**
@@ -228,7 +270,8 @@ class tree {
      * @param string $search Case-insensitive text in the full or short name.
      * @param int $page Zero-based page.
      * @param int $perpage
-     * @return array With 'courses' and the 'total' count.
+     * @return array With 'courses' and the 'total' count. Each course carries 'dup', 'dupreasons' and 'dupbase' (see
+     *      duplicate_marks()); in a site-wide list (id 0) they are always empty.
      */
     public static function courses(int $categoryid, string $search = '', int $page = 0, int $perpage = 100): array {
         global $DB;
@@ -265,6 +308,9 @@ class tree {
             $categoryids[(int) $record->category] = (int) $record->category;
         }
         $paths = self::paths(array_values($categoryids));
+        // The marks come from all the courses of the category, not only from this page.
+        $marks = ($categoryid > 0 && $records) ? self::duplicate_marks($categoryid) : [];
+        $nomark = ['dup' => '', 'dupreasons' => [], 'dupbase' => ''];
         $courses = [];
         foreach ($records as $record) {
             $courses[] = [
@@ -275,9 +321,139 @@ class tree {
                 'sortorder' => (int) $record->sortorder,
                 'visible' => (bool) $record->visible,
                 'path' => $paths[(int) $record->category] ?? '',
-            ];
+            ] + ($marks[(int) $record->id] ?? $nomark);
         }
         return ['courses' => $courses, 'total' => (int) $total];
+    }
+
+    /**
+     * Marks of the repeated courses of one category, with the rules of «Quitar repetidos».
+     *
+     * All the courses of the category are compared (duplicates::groups() and candidates()), and the activities of the
+     * courses in a group are counted with one grouped query (dedupeplan::activities()), so that the base is the course
+     * that «Quitar repetidos» would keep: [visible, activities, timemodified, id]. Nothing is marked in a «Repetidos»
+     * folder or under one.
+     *
+     * @param int $categoryid
+     * @return array Map course id => ['dup' => 'base'|'repeated'|'possible', 'dupreasons' => string[] (rules of
+     *      duplicates::RULES, or one of POSSIBLE_REASONS for 'possible'), 'dupbase' => string (formatted name of the
+     *      course that stays, '' for the base; for a possible repeat, the course it may repeat)]. Courses in no group
+     *      are missing.
+     */
+    public static function duplicate_marks(int $categoryid): array {
+        global $DB;
+        if (self::in_folder($categoryid)) {
+            return [];
+        }
+        $records = $DB->get_records_sql(
+            'SELECT id, fullname, shortname, timemodified, visible
+               FROM {course}
+              WHERE category = :category AND id <> :site
+           ORDER BY sortorder, id',
+            ['category' => $categoryid, 'site' => SITEID]
+        );
+        $courses = [];
+        foreach ($records as $record) {
+            $courses[] = [
+                'id' => (int) $record->id,
+                'fullname' => (string) $record->fullname,
+                'shortname' => (string) $record->shortname,
+                'timemodified' => (int) $record->timemodified,
+                'visible' => (int) $record->visible,
+            ];
+        }
+        if (count($courses) < 2) {
+            return [];
+        }
+        $sure = duplicates::groups($courses);
+        $possible = duplicates::candidates($courses, $sure);
+        if (!$sure && !$possible) {
+            return [];
+        }
+        // The groups do not depend on the activities, only which course stays: they are counted for the members only.
+        $members = [];
+        foreach (array_merge($sure, $possible) as $group) {
+            foreach ($group['ids'] as $id) {
+                $members[] = $id;
+            }
+        }
+        $activities = dedupeplan::activities($members);
+        foreach ($courses as &$course) {
+            $course['activities'] = $activities[$course['id']] ?? 0;
+        }
+        unset($course);
+        $sure = duplicates::groups($courses);
+        $possible = duplicates::candidates($courses, $sure);
+
+        $names = [];
+        $name = static function (int $id) use (&$names, $records): string {
+            if (!isset($names[$id])) {
+                $names[$id] = self::format((string) $records[$id]->fullname);
+            }
+            return $names[$id];
+        };
+        $marks = [];
+        foreach ($sure as $group) {
+            $all = [];
+            foreach ($group['courses'] as $member) {
+                $all += array_fill_keys($member['reasons'], true);
+            }
+            // The base shows every reason of its group, in the order of the rules.
+            $basereasons = array_values(array_filter(duplicates::RULES, static function (string $rule) use ($all): bool {
+                return isset($all[$rule]);
+            }));
+            foreach ($group['courses'] as $member) {
+                $marks[$member['id']] = [
+                    'dup' => $member['keep'] ? 'base' : 'repeated',
+                    'dupreasons' => $member['keep'] ? $basereasons : $member['reasons'],
+                    'dupbase' => $member['keep'] ? '' : $name($group['keep']),
+                ];
+            }
+        }
+        foreach ($possible as $group) {
+            foreach ($group['courses'] as $member) {
+                // The course it may repeat: the one that would stay or, for that one, the first other course.
+                $other = $group['keep'];
+                if ($member['id'] === $other) {
+                    foreach ($group['courses'] as $candidate) {
+                        if ($candidate['id'] !== $other) {
+                            $other = $candidate['id'];
+                            break;
+                        }
+                    }
+                }
+                $marks[$member['id']] = [
+                    'dup' => 'possible',
+                    'dupreasons' => [$group['reason']],
+                    'dupbase' => $name($other),
+                ];
+            }
+        }
+        return $marks;
+    }
+
+    /**
+     * Whether a category is a «Repetidos» folder or lies under one.
+     *
+     * @param int $categoryid
+     * @return bool
+     */
+    private static function in_folder(int $categoryid): bool {
+        global $DB;
+        $path = $DB->get_field('course_categories', 'path', ['id' => $categoryid]);
+        if ($path === false) {
+            return false;
+        }
+        $ids = array_values(array_filter(array_map('intval', explode('/', (string) $path))));
+        if (!$ids) {
+            return false;
+        }
+        foreach ($DB->get_records_list('course_categories', 'id', $ids, '', 'id, name') as $record) {
+            if (self::is_folder((string) $record->name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

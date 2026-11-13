@@ -504,6 +504,38 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * get_tree counts the repeated courses and get_courses marks them, with the exact types they declare.
+     */
+    public function test_tree_services_return_repeated(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $parent = $this->category('Facultad');
+        $child = $this->category('Programa', $parent);
+        $first = $this->course('Cálculo I', 'CAL1', $child);
+        $copy = $this->course('Cálculo I (copia)', 'CAL1_1', $child);
+        $other = $this->course('Cálculo II', 'CAL2', $child);
+        $DB->set_field('course', 'timemodified', 100, ['id' => $first]);
+        $DB->set_field('course', 'timemodified', 200, ['id' => $copy]);
+
+        $tree = external_api::clean_returnvalue(get_tree::execute_returns(), get_tree::execute());
+        $rows = array_column($tree['categories'], null, 'id');
+        $this->assertSame(1, $rows[$child]['dupcount']);
+        $this->assertSame(1, $rows[$child]['dupcounttotal']);
+        $this->assertSame(0, $rows[$parent]['dupcount']);
+        $this->assertSame(1, $rows[$parent]['dupcounttotal']);
+
+        $courses = external_api::clean_returnvalue(get_courses::execute_returns(), get_courses::execute($child, '', 0));
+        $byid = array_column($courses['courses'], null, 'id');
+        $this->assertSame('base', $byid[$copy]['dup']);
+        $this->assertSame(['key', 'shortname'], $byid[$copy]['dupreasons']);
+        $this->assertSame('', $byid[$copy]['dupbase']);
+        $this->assertSame('repeated', $byid[$first]['dup']);
+        $this->assertSame('Cálculo I (copia)', $byid[$first]['dupbase']);
+        $this->assertSame(['', [], ''], [$byid[$other]['dup'], $byid[$other]['dupreasons'], $byid[$other]['dupbase']]);
+    }
+
+    /**
      * Moving a top-level category needs category:manage in the system context, as core requires.
      */
     public function test_move_category_checks_top_level_source(): void {

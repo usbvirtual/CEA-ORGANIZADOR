@@ -188,9 +188,9 @@ class duplicates {
      * (rule, then course order), so the result does not depend on chance. A short name match links two courses only
      * when their name keys share a significant word (words()).
      *
-     * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int,
-     *      'visible' => int (optional, 1 when missing), 'activities' => int (optional, 0 when missing)], raw names. The
-     *      order is kept inside each group and between groups.
+     * @param array $courses List of ['id' => int, 'fullname' => string, 'shortname' => string, 'timemodified' => int
+     *      (optional, 0 when missing), 'visible' => int (optional, 1 when missing), 'activities' => int (optional, 0
+     *      when missing)], raw names. The order is kept inside each group and between groups.
      * @return array List of ['key' => string (sorted ids joined by '-'), 'ids' => int[] (sorted), 'keep' => int,
      *      'courses' => [['id' => int, 'reasons' => string[], 'keep' => bool]]], only groups of two or more.
      */
@@ -303,6 +303,26 @@ class duplicates {
             $groups[] = self::group_of($courses, $memberreasons);
         }
         return $groups;
+    }
+
+    /**
+     * How many courses of one category are repeated: in each group of groups(), every course but the one that stays.
+     *
+     * Only the sizes of the groups count, not which course stays, so the courses need no activities nor
+     * timemodified. Possible groups (candidates()) are not counted: they are a question, not a fact.
+     *
+     * @param array $courses As groups() takes them: the courses of one category.
+     * @return int
+     */
+    public static function repeated_count(array $courses): int {
+        if (count($courses) < 2) {
+            return 0;
+        }
+        $count = 0;
+        foreach (self::groups($courses) as $group) {
+            $count += count($group['ids']) - 1;
+        }
+        return $count;
     }
 
     /**
@@ -463,7 +483,7 @@ class duplicates {
             $rank = [
                 (int) ($course['visible'] ?? 1) ? 1 : 0,
                 (int) ($course['activities'] ?? 0),
-                (int) $course['timemodified'],
+                (int) ($course['timemodified'] ?? 0),
                 (int) $course['id'],
             ];
             if ($keep === null || $rank > $keep[0]) {

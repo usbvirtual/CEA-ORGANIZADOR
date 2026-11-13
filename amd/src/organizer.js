@@ -27,7 +27,7 @@ import Config from 'core/config';
 import * as api from 'tool_ceaorganizador/api';
 import {createModel} from 'tool_ceaorganizador/treemodel';
 import {decodeEntities} from 'tool_ceaorganizador/text';
-import {render, format, syncSelection} from 'tool_ceaorganizador/treeview';
+import {render, format, syncSelection, siteDuplicates, showDupSummary} from 'tool_ceaorganizador/treeview';
 import * as toast from 'tool_ceaorganizador/toast';
 import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
@@ -159,6 +159,17 @@ const REQUESTS = [
     {key: 'dropbefore', component: 'tool_ceaorganizador'},
     {key: 'dropcancelled', component: 'tool_ceaorganizador'},
     {key: 'dropinside', component: 'tool_ceaorganizador'},
+    {key: 'dupbase', component: 'tool_ceaorganizador'},
+    {key: 'dupbasetitle', component: 'tool_ceaorganizador'},
+    {key: 'dupcount', component: 'tool_ceaorganizador'},
+    {key: 'dupcountone', component: 'tool_ceaorganizador'},
+    {key: 'dupcounttitle', component: 'tool_ceaorganizador'},
+    {key: 'duppossible', component: 'tool_ceaorganizador'},
+    {key: 'duppossibletitle', component: 'tool_ceaorganizador'},
+    {key: 'duprepeated', component: 'tool_ceaorganizador'},
+    {key: 'duprepeatedtitle', component: 'tool_ceaorganizador'},
+    {key: 'dupsummary', component: 'tool_ceaorganizador'},
+    {key: 'dupsummaryone', component: 'tool_ceaorganizador'},
     {key: 'error_generic', component: 'tool_ceaorganizador'},
     {key: 'error_groupwithoutwinner', component: 'tool_ceaorganizador'},
     {key: 'error_toomanydelete', component: 'tool_ceaorganizador'},
@@ -292,6 +303,7 @@ export const init = ({root}) => {
     const treeel = rootel.querySelector('[data-region="tree"]');
     const summary = rootel.querySelector('[data-region="summary"]');
     const summarytext = rootel.querySelector('[data-region="summarytext"]');
+    const dupsummary = rootel.querySelector('[data-region="dupsummary"]');
     const input = rootel.querySelector('[data-region="search"]');
     const results = rootel.querySelector('[data-region="courseresults"]');
 
@@ -319,6 +331,7 @@ export const init = ({root}) => {
                 state.cache.clear();
                 current = render(treeel, ctx.model, state);
                 showSummary(fresh.needsortcount);
+                showDupSummary(dupsummary, siteDuplicates(fresh.categories), strings);
                 return null;
             }),
         };
@@ -455,6 +468,12 @@ export const init = ({root}) => {
             }
         };
         showSummary(tree.needsortcount);
+        showDupSummary(dupsummary, siteDuplicates(tree.categories), strings);
+        // «Revisar» the repeated courses: opens the top-level categories that have some and focuses the first.
+        const reviewDups = rootel.querySelector('[data-action="reviewdups"]');
+        if (reviewDups) {
+            reviewDups.addEventListener('click', () => current.revealDuplicates());
+        }
 
         // Toolbar: history and the selection bar.
         const toolbar = document.createElement('div');

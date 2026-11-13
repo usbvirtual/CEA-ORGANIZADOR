@@ -194,6 +194,16 @@ Si hay categorías marcadas en el árbol, los botones de la barra no abren el pa
 
 Sin categorías marcadas, los botones abren el panel como siempre. Se respetan los mismos límites (1000 cursos movidos; 5000 revisados en «Quitar repetidos») y la misma regla de que quede un curso en el destino.
 
+### Ver los repetidos en el árbol
+
+Sin abrir «Quitar repetidos», el árbol señala los cursos repetidos con las mismas reglas (solo se lee, no se mueve nada):
+
+- **En cada curso**, al abrir su categoría: «Base» en el curso que se conservaría (el mismo orden de «Quitar repetidos»: visible, más actividades, más reciente), «Repetido» en los demás de su grupo y «¿Repetido?» en los posibles repetidos. Al pasar el puntero, la insignia dice por qué («mismo nombre», «mismo nombre sin copia, periodo ni grupo», «mismo nombre corto») y de qué curso es repetido; los lectores de pantalla lo leen también. Se compara toda la categoría, no solo la página de 100 cursos que se ve.
+- **En cada categoría**, «N repetidos» cuenta los repetidos seguros de la categoría y de todas sus subcategorías. Así se sigue el rastro desde la facultad hasta el semestre donde están. Un clic en la insignia abre esa categoría y, por debajo, las que tienen repetidos (hasta 25 a la vez), con sus cursos.
+- **En la barra superior**, «M cursos repetidos en el sitio» con [Revisar], que abre las categorías de nivel superior que tienen repetidos.
+
+Los posibles repetidos no se cuentan en «N repetidos» (son una pregunta, no un hecho). Cada categoría se compara solo consigo misma, y las carpetas «Repetidos» y lo que tienen dentro nunca se cuentan ni se marcan. En una búsqueda en todo el sitio los cursos no llevan insignia. Los números se calculan cada vez que se carga o recarga el árbol: con unos 6000 cursos, el cálculo agrega del orden de 150 ms.
+
 ### Borrar categorías
 
 Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni contenido.
