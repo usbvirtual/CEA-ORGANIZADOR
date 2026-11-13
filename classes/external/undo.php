@@ -143,14 +143,16 @@ class undo extends external_api {
 
     /**
      * Native capabilities of undoing «Ocultar todo» / «Mostrar todo», as for the operation: moodle/category:manage on
-     * every category and moodle/course:visibility on every course it changed (contexts loaded in bulk).
+     * every category it wrote and on its parent, and moodle/course:visibility on every course (contexts loaded in bulk).
      *
      * @param array $payload
      */
     private static function check_visibilitytree(array $payload): void {
+        $categories = [];
         foreach ($payload['categories'] ?? [] as $item) {
-            self::check_category((int) $item['id']);
+            $categories[] = (int) $item['id'];
         }
+        mover::check_categories_and_parents($categories);
         $courses = [];
         foreach ($payload['courses'] ?? [] as $item) {
             $courses[] = (int) $item['id'];

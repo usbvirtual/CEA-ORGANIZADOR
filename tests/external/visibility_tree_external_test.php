@@ -121,6 +121,7 @@ final class visibility_tree_external_test extends \advanced_testcase {
      */
     public function test_requires_plugin_capability(): void {
         $this->resetAfterTest();
+        $this->setAdminUser();
         $ids = $this->fixture();
         $this->setUser($this->getDataGenerator()->create_user());
         $calls = [

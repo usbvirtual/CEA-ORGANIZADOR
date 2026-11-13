@@ -49,6 +49,13 @@ test('Deshacer llama a undo con el logid y recarga el árbol si salió bien', as
     assert.deepEqual(calls.slice(1), [['undo', 7], ['reload']]);
 });
 
+test('con reload: false, Deshacer no recarga el árbol (el que llama recarga una vez)', async () => {
+    const { mover, calls } = setup();
+    const result = await mover.undo(7, { reload: false });
+    assert.equal(result.ok, true);
+    assert.deepEqual(calls, [['undo', 7]]);
+});
+
 test('si undo devuelve conflictos los muestra y no recarga', async () => {
     const { mover, toasts, calls } = setup({ undo: async () => ({ ok: false, conflicts: ['uno', 'dos'] }) });
     await mover.move({ type: 'category', id: 3 }, { parent: 1, afterid: 0 });

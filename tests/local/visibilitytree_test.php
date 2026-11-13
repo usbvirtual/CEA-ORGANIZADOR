@@ -112,7 +112,8 @@ final class visibilitytree_test extends \advanced_testcase {
     }
 
     /**
-     * The preview counts only what would change; a chosen category inside another chosen one adds nothing.
+     * The plan lists what is written: the visibility changes and, when hiding, the hidden items that a core «Show»
+     * would bring back (cs2, 0/1); it counts only the visibility changes. A chosen category inside another adds nothing.
      */
     public function test_plan_counts_only_changes(): void {
         $this->resetAfterTest();
@@ -123,11 +124,23 @@ final class visibilitytree_test extends \advanced_testcase {
         $hide = visibilitytree::plan([$ids['r']], false);
         $this->assertSame([$ids['r']], $hide['roots']);
         $this->assertEqualsCanonicalizing([$ids['r'], $ids['s1'], $ids['s11']], array_keys($hide['categories']));
-        $this->assertEqualsCanonicalizing([$ids['cr1'], $ids['cs1'], $ids['cs11']], array_keys($hide['courses']));
+        $this->assertEqualsCanonicalizing(
+            [$ids['cr1'], $ids['cs1'], $ids['cs11'], $ids['cs2']],
+            array_keys($hide['courses'])
+        );
+        $this->assertSame(['categories' => 3, 'courses' => 3], $hide['changes']);
+        $this->assertSame(
+            ['category' => $ids['s2'], 'visible' => 0, 'visibleold' => 1, 'tovisible' => 0, 'tovisibleold' => 0],
+            $hide['courses'][$ids['cs2']]
+        );
+        $root = $hide['categories'][$ids['r']];
+        $this->assertSame([0, 0], [$root['tovisible'], $root['tovisibleold']]);
+        $this->assertSame(1, $hide['categories'][$ids['s1']]['tovisibleold']);
 
         $show = visibilitytree::plan([$ids['r']], true);
         $this->assertEqualsCanonicalizing([$ids['s2']], array_keys($show['categories']));
         $this->assertEqualsCanonicalizing([$ids['cr2'], $ids['cs2']], array_keys($show['courses']));
+        $this->assertSame(['categories' => 1, 'courses' => 2], $show['changes']);
 
         $nested = visibilitytree::plan([$ids['s1'], $ids['r'], -5, 999999], false);
         $this->assertSame([$ids['r']], $nested['roots']);
@@ -139,8 +152,8 @@ final class visibilitytree_test extends \advanced_testcase {
     }
 
     /**
-     * «Ocultar todo» hides the category, every subcategory and every course below it; what was hidden stays as it was;
-     * undo gives every item its exact state back, visibleold included.
+     * «Ocultar todo» hides the category, every subcategory and every course below it, as hide_raw() would leave them;
+     * what was hidden on purpose stays as it was; undo gives every item its exact state back, visibleold included.
      */
     public function test_hide_all_and_undo(): void {
         global $DB;
@@ -165,10 +178,12 @@ final class visibilitytree_test extends \advanced_testcase {
         foreach (['cr1', 'cs1', 'cs11'] as $name) {
             $this->assertSame('0/1', $this->state('course', $ids[$name]));
         }
-        // Already hidden: untouched.
-        $this->assertSame($before['categories'][$ids['s2']], $this->state('course_categories', $ids['s2']));
-        $this->assertSame($before['courses'][$ids['cr2']], $this->state('course', $ids['cr2']));
-        $this->assertSame($before['courses'][$ids['cs2']], $this->state('course', $ids['cs2']));
+        // Hidden on purpose (0/0): untouched. Hidden with its category (0/1): now 0/0, without counting as hidden.
+        $this->assertSame('0/0', $before['categories'][$ids['s2']]);
+        $this->assertSame('0/0', $this->state('course_categories', $ids['s2']));
+        $this->assertSame('0/0', $this->state('course', $ids['cr2']));
+        $this->assertSame('0/1', $before['courses'][$ids['cs2']]);
+        $this->assertSame('0/0', $this->state('course', $ids['cs2']));
         $this->assertSame($before['categories'][$ids['o']], $this->state('course_categories', $ids['o']));
         $this->assertSame($before['courses'][$ids['co']], $this->state('course', $ids['co']));
         // The core API reads the new state (the caches were purged).
@@ -184,19 +199,62 @@ final class visibilitytree_test extends \advanced_testcase {
         $this->assertSame('visibilitytree', $DB->get_field(journal::TABLE, 'action', ['id' => $result['logid']]));
         $this->assertSame([$ids['r']], $payload['categoryids']);
         $this->assertSame(0, $payload['show']);
+        $now = $this->snapshot();
         foreach (['categories', 'courses'] as $kind) {
             foreach ($payload[$kind] as $item) {
                 $this->assertSame($before[$kind][$item['id']], $item['visible'] . '/' . $item['visibleold']);
+                $this->assertSame($now[$kind][$item['id']], $item['tovisible'] . '/' . $item['tovisibleold']);
             }
         }
         $this->assertCount(3, $payload['categories']);
-        $this->assertCount(3, $payload['courses']);
+        $this->assertCount(4, $payload['courses']);
+        $this->assertSame($ids['s2'], array_column($payload['courses'], 'category', 'id')[$ids['cs2']]);
 
         $undo = journal::undo($result['logid']);
 
         $this->assertTrue($undo['ok']);
         $this->assertSame($before, $this->snapshot());
         $this->assertTrue((bool) \core_course_category::get($ids['s1'], MUST_EXIST, true)->visible);
+    }
+
+    /**
+     * After «Ocultar todo», the core «Show» of the chosen category brings back only what was visible: a course hidden
+     * with a subcategory hidden by the core «Hide», a course hidden on purpose and that subcategory stay hidden. A chosen
+     * category already hidden by its parent (0/1) ends hidden on purpose too, so the core «Show» of the parent keeps it.
+     */
+    public function test_hide_all_then_core_show(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $ids = $this->fixture();
+        $original = $this->snapshot();
+
+        // Undo first restores the exact original states.
+        $result = visibilitytree::run([$ids['r']], false, visibilitytree::plan([$ids['r']], false)['hash']);
+        $this->assertTrue(journal::undo($result['logid'])['ok']);
+        $this->assertSame($original, $this->snapshot());
+
+        visibilitytree::run([$ids['r']], false, visibilitytree::plan([$ids['r']], false)['hash']);
+        \core_course_category::get($ids['r'], MUST_EXIST, true)->show();
+
+        $this->assertSame('1', $this->state('course_categories', $ids['s1'])[0]);
+        $this->assertSame('1', $this->state('course', $ids['cr1'])[0]);
+        $this->assertSame('1', $this->state('course', $ids['cs11'])[0]);
+        $this->assertSame('0', $this->state('course_categories', $ids['s2'])[0]);
+        $this->assertSame('0', $this->state('course', $ids['cs2'])[0]);
+        $this->assertSame('0', $this->state('course', $ids['cr2'])[0]);
+
+        // A chosen category hidden only by its parent.
+        $generator = $this->getDataGenerator();
+        $parent = (int) $generator->create_category(['name' => 'Padre'])->id;
+        $child = (int) $generator->create_category(['name' => 'Hija', 'parent' => $parent])->id;
+        \core_course_category::get($parent, MUST_EXIST, true)->hide();
+        $this->assertSame('0/1', $this->state('course_categories', $child));
+        $plan = visibilitytree::plan([$child], false);
+        $this->assertSame(['categories' => 0, 'courses' => 0], $plan['changes']);
+        visibilitytree::run([$child], false, $plan['hash']);
+        $this->assertSame('0/0', $this->state('course_categories', $child));
+        \core_course_category::get($parent, MUST_EXIST, true)->show();
+        $this->assertSame('0', $this->state('course_categories', $child)[0]);
     }
 
     /**
@@ -253,6 +311,67 @@ final class visibilitytree_test extends \advanced_testcase {
     }
 
     /**
+     * The undo compares the whole state the operation wrote: a visibleold changed since is a conflict, and so is a
+     * course moved to another category.
+     */
+    public function test_undo_conflict_visibleold_and_moved(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $ids = $this->fixture();
+        $result = visibilitytree::run([$ids['r']], false, visibilitytree::plan([$ids['r']], false)['hash']);
+
+        // Still hidden, but no longer «hidden with its category».
+        $DB->set_field('course', 'visibleold', 0, ['id' => $ids['cs1']]);
+        $undo = journal::undo($result['logid']);
+        $this->assertFalse($undo['ok']);
+        $this->assertSame(
+            [get_string('conflict_visibility', 'tool_ceaorganizador', 'Curso cs1')],
+            $undo['conflicts']
+        );
+
+        $DB->set_field('course', 'visibleold', 1, ['id' => $ids['cs1']]);
+        mover::move_courses_into([$ids['cs11']], $ids['o']);
+        $undo = journal::undo($result['logid']);
+        $this->assertFalse($undo['ok']);
+        $this->assertContains(get_string('conflict_moved', 'tool_ceaorganizador', 'Curso cs11'), $undo['conflicts']);
+        $this->assertSame('0/1', $this->state('course', $ids['cs1']));
+    }
+
+    /**
+     * Beyond CONFLICTS_SHOWN conflicts, the list ends with one line that counts the rest.
+     */
+    public function test_undo_conflicts_capped(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $courses = [];
+        for ($i = 1; $i <= 25; $i++) {
+            $courses[] = [
+                'id' => 900000 + $i,
+                'category' => 1,
+                'visible' => 1,
+                'visibleold' => 1,
+                'tovisible' => 0,
+                'tovisibleold' => 1,
+            ];
+        }
+        $logid = journal::record('visibilitytree', 'Ocultar todo', [
+            'categoryids' => [],
+            'show' => 0,
+            'categories' => [],
+            'courses' => $courses,
+        ]);
+
+        $undo = journal::undo($logid);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertSame(20, journal::CONFLICTS_SHOWN);
+        $this->assertCount(21, $undo['conflicts']);
+        $this->assertSame(get_string('conflict_missing', 'tool_ceaorganizador', 900001), $undo['conflicts'][0]);
+        $this->assertSame(get_string('conflictmore', 'tool_ceaorganizador', 5), $undo['conflicts'][20]);
+    }
+
+    /**
      * A preview that no longer matches is refused as stale, before any write.
      */
     public function test_stale(): void {
@@ -272,7 +391,8 @@ final class visibilitytree_test extends \advanced_testcase {
     }
 
     /**
-     * Beyond the limits the preview and the apply are refused with the counts, before any write.
+     * Beyond the limits (items written, the silent visibleold fixes too) the preview and the apply are refused with the
+     * counts, before any write.
      */
     public function test_caps(): void {
         global $DB;
@@ -281,11 +401,11 @@ final class visibilitytree_test extends \advanced_testcase {
         $ids = $this->fixture();
         $before = $this->snapshot();
         $courses = new class extends visibilitytree {
-            /** @var int Most courses changed in one operation. */
-            public const MAX_COURSES = 2;
+            /** @var int Most courses written in one operation. */
+            public const MAX_COURSES = 3;
         };
         $categories = new class extends visibilitytree {
-            /** @var int Most categories changed in one operation. */
+            /** @var int Most categories written in one operation. */
             public const MAX_CATEGORIES = 2;
         };
 
@@ -296,7 +416,7 @@ final class visibilitytree_test extends \advanced_testcase {
             } catch (\moodle_exception $e) {
                 $this->assertSame('error_toomanyvisibilitytree', $e->errorcode);
                 $this->assertSame(3, $e->a->categories);
-                $this->assertSame(3, $e->a->courses);
+                $this->assertSame(4, $e->a->courses);
             }
             try {
                 $limited::run([$ids['r']], false, 'whatever');
@@ -307,12 +427,12 @@ final class visibilitytree_test extends \advanced_testcase {
         }
         // Exactly at the limit it is accepted.
         $exact = new class extends visibilitytree {
-            /** @var int Most courses changed in one operation. */
-            public const MAX_COURSES = 3;
-            /** @var int Most categories changed in one operation. */
+            /** @var int Most courses written in one operation. */
+            public const MAX_COURSES = 4;
+            /** @var int Most categories written in one operation. */
             public const MAX_CATEGORIES = 3;
         };
-        $this->assertCount(3, $exact::plan([$ids['r']], false)['courses']);
+        $this->assertCount(4, $exact::plan([$ids['r']], false)['courses']);
         $this->assertSame($before, $this->snapshot());
         $this->assertSame(0, $DB->count_records(journal::TABLE));
     }
@@ -350,6 +470,73 @@ final class visibilitytree_test extends \advanced_testcase {
             $this->assertSame($before, $this->snapshot());
             $this->assertSame(0, $DB->count_records(journal::TABLE));
         }
+    }
+
+    /**
+     * moodle/category:manage is needed on the parent of every category written too (the system context for the top
+     * level), as in the core: having it only on the chosen category is not enough.
+     */
+    public function test_category_manage_needed_on_parent(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $ids = $this->fixture();
+        $before = $this->snapshot();
+        $generator = $this->getDataGenerator();
+        $user = $generator->create_user();
+        $roleid = $generator->create_role();
+        $system = \context_system::instance();
+        assign_capability('moodle/course:visibility', CAP_ALLOW, $roleid, $system->id, true);
+        assign_capability('moodle/category:manage', CAP_ALLOW, $roleid, \context_coursecat::instance($ids['r'])->id, true);
+        role_assign($roleid, $user->id, $system->id);
+        $this->setUser($user);
+        $plan = visibilitytree::plan([$ids['r']], false);
+
+        try {
+            visibilitytree::run([$ids['r']], false, $plan['hash']);
+            $this->fail('moodle/category:manage on the parent is required');
+        } catch (\required_capability_exception $e) {
+            $this->assertSame(get_capability_string('moodle/category:manage'), $e->a);
+        }
+        $this->assertSame($before, $this->snapshot());
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
+
+        // A subcategory, whose parent is inside the allowed one, is accepted.
+        $subplan = visibilitytree::plan([$ids['s1']], false);
+        $this->assertSame('ok', visibilitytree::run([$ids['s1']], false, $subplan['hash'])['status']);
+        $this->assertSame('0/0', $this->state('course_categories', $ids['s1']));
+    }
+
+    /**
+     * When the first chunk fails, nothing was written: the empty journal row is deleted and the failure goes up.
+     */
+    public function test_first_chunk_failure_leaves_no_row(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->preventResetByRollback();
+        $this->setAdminUser();
+        $ids = $this->fixture();
+        $before = $this->snapshot();
+        $runner = new class extends visibilitytree {
+            /**
+             * Fails on the first chunk.
+             *
+             * @param int $logid
+             * @param array $payload
+             */
+            protected static function update_batch(int $logid, array $payload): void {
+                throw new \coding_exception('Simulated failure');
+            }
+        };
+
+        try {
+            $runner::run([$ids['r']], false, $runner::plan([$ids['r']], false)['hash']);
+            $this->fail('The failure must reach the caller');
+        } catch (\coding_exception $e) {
+            $this->assertStringContainsString('Simulated failure', $e->getMessage());
+        }
+        $this->assertSame($before, $this->snapshot());
+        $this->assertSame(0, $DB->count_records(journal::TABLE));
     }
 
     /**
@@ -393,7 +580,7 @@ final class visibilitytree_test extends \advanced_testcase {
         $this->setAdminUser();
         $ids = $this->fixture();
         $before = $this->snapshot();
-        // Chunks of two: [R, S1] and [S11] for the categories, then the courses. The second chunk fails.
+        // Chunks of two: [R, S1] and [S11] for the categories, then two of courses. The second chunk fails.
         $runner = new class extends visibilitytree {
             /** @var int Most items written in one transaction. */
             public const CHUNK = 2;
@@ -423,7 +610,7 @@ final class visibilitytree_test extends \advanced_testcase {
         } catch (partial_exception $e) {
             $this->assertSame('error_partialbatch', $e->errorcode);
             $this->assertSame(2, $e->moved);
-            $this->assertSame(6, $e->total);
+            $this->assertSame(7, $e->total);
             $this->assertStringContainsString('Simulated failure', (string) $e->debuginfo);
             $logid = $e->logid;
         }

@@ -442,6 +442,27 @@ class mover {
     }
 
     /**
+     * Requires moodle/category:manage on many categories and on their parents (the system context for the top
+     * level), as core_course_category::can_change_visibility() does. Categories that no longer exist are left out.
+     *
+     * @param int[] $ids
+     */
+    public static function check_categories_and_parents(array $ids): void {
+        global $DB;
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $check = [];
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            foreach ($DB->get_records_list('course_categories', 'id', $chunk, '', 'id, parent') as $record) {
+                $check[(int) $record->id] = true;
+                $check[(int) $record->parent] = true;
+            }
+        }
+        foreach (array_keys($check) as $id) {
+            self::check_category((int) $id);
+        }
+    }
+
+    /**
      * Requires a capability on many courses, loading their contexts in one query per 1000 ids.
      *
      * Courses that no longer exist are left out: the caller reports them.

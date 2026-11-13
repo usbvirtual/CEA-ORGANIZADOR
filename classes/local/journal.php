@@ -53,10 +53,11 @@ namespace tool_ceaorganizador\local;
  *   reverse order, with new ids: a parent deleted in the same batch is created first and its children go under
  *   the new id. Each one goes back right after its old previous sibling when that one is still there; otherwise
  *   it goes last. A category with the same normalized name under the old parent is a conflict.
- * - visibilitytree: {categoryids, show: 0|1, categories: [{id, visible, visibleold}], courses: [{id, visible,
- *   visibleold}]}, the state BEFORE «Ocultar todo» / «Mostrar todo» of every item it changed; after it every item has
- *   visible = show. Written in steps like merge (see visibilitytree). Undo writes each state back exactly, visibleold
- *   included, and is refused when an item no longer has visible = show.
+ * - visibilitytree: {categoryids, show: 0|1, categories: [{id, visible, visibleold, tovisible, tovisibleold}],
+ *   courses: [{id, category, visible, visibleold, tovisible, tovisibleold}]}: the state of every item that «Ocultar
+ *   todo» / «Mostrar todo» wrote, before and after. Written in steps like merge (see visibilitytree). Undo writes each
+ *   state before back exactly, visibleold included, and is refused when an item no longer has the state after, or a
+ *   course is in another category; the caches are purged and the events triggered after the commit.
  *
  * Undo first compares the live state with the 'to'/'after' state of every item (position,
  * order, names and visibility) and writes nothing when anything differs; only then it
@@ -82,6 +83,9 @@ class journal {
 
     /** @var int Length of the summary column. */
     public const SUMMARY_MAX = 255;
+
+    /** @var int Most conflicts listed one by one for «Ocultar todo» / «Mostrar todo»; the rest are counted. */
+    public const CONFLICTS_SHOWN = 20;
 
     /** @var int Days the journal keeps a row. */
     public const RETENTION_DAYS = 90;
@@ -124,6 +128,16 @@ class journal {
             'summary' => \core_text::substr($summary, 0, self::SUMMARY_MAX),
             'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
         ]);
+    }
+
+    /**
+     * Deletes a row that recorded nothing: «Ocultar todo» / «Mostrar todo» when its first chunk failed.
+     *
+     * @param int $id Row returned by record().
+     */
+    public static function discard(int $id): void {
+        global $DB;
+        $DB->delete_records(self::TABLE, ['id' => $id]);
     }
 
     /**
@@ -271,6 +285,9 @@ class journal {
             $transaction->allow_commit();
         } catch (\Throwable $e) {
             guard::rollback($transaction, $e);
+        }
+        if ($log->action === 'visibilitytree') {
+            self::visibilitytree_after_undo($payload);
         }
         return ['ok' => true, 'conflicts' => []];
     }
@@ -856,17 +873,21 @@ class journal {
     }
 
     /**
-     * Conflicts of «Ocultar todo» / «Mostrar todo»: every item must exist and still have the visibility the operation
-     * left (visible = show).
+     * Conflicts of «Ocultar todo» / «Mostrar todo»: every item must exist and still have exactly the state the
+     * operation wrote (visible and visibleold), and every course must still be in its category. At most
+     * CONFLICTS_SHOWN messages, then one that counts the rest.
      *
      * @param array $payload
      * @return string[]
      */
     private static function conflicts_visibilitytree(array $payload): array {
         global $DB;
-        $target = (int) (bool) ($payload['show'] ?? 0);
+        $show = (int) (bool) ($payload['show'] ?? 0);
         $conflicts = [];
-        $tables = ['categories' => ['course_categories', 'id, name, visible'], 'courses' => ['course', 'id, fullname, visible']];
+        $tables = [
+            'categories' => ['course_categories', 'id, name, visible, visibleold'],
+            'courses' => ['course', 'id, category, fullname, visible, visibleold'],
+        ];
         foreach ($tables as $kind => [$table, $fields]) {
             $ids = array_map(static function (array $item): int {
                 return (int) $item['id'];
@@ -875,21 +896,36 @@ class journal {
             foreach (array_chunk($ids, 1000) as $chunk) {
                 $records += $DB->get_records_list($table, 'id', $chunk, '', $fields);
             }
-            foreach ($ids as $id) {
+            foreach ($payload[$kind] ?? [] as $item) {
+                $id = (int) $item['id'];
                 $record = $records[$id] ?? null;
                 if (!$record || ($kind === 'courses' && $id === (int) SITEID)) {
                     $conflicts[] = self::conflict('missing', $id);
-                } else if ((int) $record->visible !== $target) {
-                    $name = $kind === 'courses' ? $record->fullname : $record->name;
-                    $conflicts[] = self::conflict('visibility', self::course_name((string) $name));
+                    continue;
+                }
+                $name = self::course_name((string) ($kind === 'courses' ? $record->fullname : $record->name));
+                $tovisible = (int) ($item['tovisible'] ?? $show);
+                $changed = (int) $record->visible !== $tovisible
+                    || (isset($item['tovisibleold']) && (int) $record->visibleold !== (int) $item['tovisibleold']);
+                if ($changed) {
+                    $conflicts[] = self::conflict('visibility', $name);
+                }
+                if ($kind === 'courses' && isset($item['category']) && (int) $record->category !== (int) $item['category']) {
+                    $conflicts[] = self::conflict('moved', $name);
                 }
             }
+        }
+        if (count($conflicts) > self::CONFLICTS_SHOWN) {
+            $more = count($conflicts) - self::CONFLICTS_SHOWN;
+            $conflicts = array_slice($conflicts, 0, self::CONFLICTS_SHOWN);
+            $conflicts[] = get_string('conflictmore', 'tool_ceaorganizador', $more);
         }
         return $conflicts;
     }
 
     /**
-     * Undoes «Ocultar todo» / «Mostrar todo»: every item gets back its exact visible and visibleold.
+     * Undoes «Ocultar todo» / «Mostrar todo»: every item gets back its exact visible and visibleold. The caches are
+     * purged and the events triggered by undo(), after the commit (see visibilitytree_after_undo()).
      *
      * @param array $payload
      */
@@ -905,8 +941,24 @@ class journal {
         }
         mover::set_visibility_states('course_categories', $states['categories']);
         mover::set_visibility_states('course', $states['courses']);
-        mover::category_updated_events(array_keys($states['categories']));
+    }
+
+    /**
+     * After an undo of «Ocultar todo» / «Mostrar todo» is committed: the caches are purged, then one
+     * course_category_updated per category whose visibility changed back, as core_course_category::hide() does.
+     *
+     * @param array $payload
+     */
+    private static function visibilitytree_after_undo(array $payload): void {
+        $show = (int) (bool) ($payload['show'] ?? 0);
+        $changed = [];
+        foreach ($payload['categories'] ?? [] as $item) {
+            if ((int) $item['visible'] !== (int) ($item['tovisible'] ?? $show)) {
+                $changed[] = (int) $item['id'];
+            }
+        }
         mover::purge_visibility_caches();
+        mover::category_updated_events($changed);
     }
 
     /**

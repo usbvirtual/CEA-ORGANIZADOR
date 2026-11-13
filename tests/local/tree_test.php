@@ -201,6 +201,13 @@ final class tree_test extends \advanced_testcase {
         $held = $DB->record_exists_select('course', 'shortname = :shortname', ['shortname' => 'TS-C']);
         $this->assertSame($held, isset($taken['TS-C']));
         $this->assertSame([], tree::taken_shortnames([], [$mine]));
+
+        // Two wanted names equal for the collation, one of them held exactly: each gets the answer of the database.
+        $generator->create_course(['category' => $category, 'shortname' => 'TS-D']);
+        $both = tree::taken_shortnames(['TS-D', 'ts-d'], [$mine]);
+        $this->assertTrue(isset($both['TS-D']));
+        $lower = $DB->record_exists_select('course', 'shortname = :shortname', ['shortname' => 'ts-d']);
+        $this->assertSame($lower, isset($both['ts-d']));
     }
 
     /**

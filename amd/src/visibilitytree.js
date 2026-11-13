@@ -110,7 +110,9 @@ export const run = async({api, strings, toast, onError, undo, reload, categoryid
         return null;
     }
     const counts = {categories: preview.categories, courses: preview.courses};
-    if (preview.categories + preview.courses === 0) {
+    // Nothing to write at all; hidden items whose visibleold is fixed count as work, not as hidden items.
+    const total = preview.total === undefined ? preview.categories + preview.courses : preview.total;
+    if (total === 0) {
         toast.show(strings.visibilitytreenothing);
         return null;
     }

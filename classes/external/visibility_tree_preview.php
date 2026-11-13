@@ -52,7 +52,7 @@ class visibility_tree_preview extends external_api {
      *
      * @param int[] $categoryids
      * @param bool $show
-     * @return array ['categories' => int, 'courses' => int, 'hash' => string]
+     * @return array ['categories' => int, 'courses' => int, 'total' => int, 'hash' => string]
      */
     public static function execute(array $categoryids, bool $show): array {
         $params = self::validate_parameters(self::execute_parameters(), [
@@ -65,8 +65,9 @@ class visibility_tree_preview extends external_api {
 
         $plan = visibilitytree::plan($params['categoryids'], (bool) $params['show']);
         return [
-            'categories' => count($plan['categories']),
-            'courses' => count($plan['courses']),
+            'categories' => $plan['changes']['categories'],
+            'courses' => $plan['changes']['courses'],
+            'total' => count($plan['categories']) + count($plan['courses']),
             'hash' => $plan['hash'],
         ];
     }
@@ -80,6 +81,7 @@ class visibility_tree_preview extends external_api {
         return new external_single_structure([
             'categories' => new external_value(PARAM_INT, 'Categories whose visibility would change'),
             'courses' => new external_value(PARAM_INT, 'Courses whose visibility would change'),
+            'total' => new external_value(PARAM_INT, 'Items written, with the hidden ones whose visibleold is fixed'),
             'hash' => new external_value(PARAM_ALPHANUM, 'Send it to visibility_tree_apply'),
         ]);
     }

@@ -78,12 +78,13 @@ class visibility_tree_apply extends external_api {
         } catch (partial_exception $e) {
             // Half done: what changed is recorded under logid, and the interface offers to undo it.
             $payload = json_decode((string) $DB->get_field(journal::TABLE, 'payload', ['id' => $e->logid]), true);
-            return [
-                'status' => 'partial',
-                'logid' => $e->logid,
-                'categories' => count($payload['categories'] ?? []),
-                'courses' => count($payload['courses'] ?? []),
-            ];
+            $counts = ['categories' => 0, 'courses' => 0];
+            foreach (array_keys($counts) as $kind) {
+                foreach ($payload[$kind] ?? [] as $item) {
+                    $counts[$kind] += (int) $item['visible'] !== (int) $item['tovisible'] ? 1 : 0;
+                }
+            }
+            return ['status' => 'partial', 'logid' => $e->logid] + $counts;
         } finally {
             $lock->release();
         }

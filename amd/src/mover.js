@@ -144,6 +144,8 @@ export const createMover = (ctx) => {
      * @param {Number} logid
      * @param {Object} [options]
      * @param {Boolean} [options.quiet] Do not show the conflicts in a notice (the caller shows them).
+     * @param {Boolean} [options.reload=true] Reload the tree when it was undone; false when the caller reloads once
+     *                                        after several undos.
      * @returns {Promise<Object|null>} {ok, conflicts}; null when busy or when the request failed.
      */
     const undoMove = async(logid, options = {}) => {
@@ -153,7 +155,7 @@ export const createMover = (ctx) => {
         busy = true;
         try {
             const result = await ctx.api.undo(logid);
-            if (result.ok) {
+            if (result.ok && options.reload !== false) {
                 await ctx.reload();
             } else if (!options.quiet) {
                 // The conflicts carry formatted names: decode them before they become text.

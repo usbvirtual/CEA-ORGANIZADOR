@@ -137,6 +137,20 @@ test('cancelar no aplica nada; sin nada que cambiar no se pregunta', async () =>
     assert.equal(two.calls.preview.length, 1);
 });
 
+test('con solo arreglos silenciosos de visibleold (total > 0) también se pregunta y se aplica', async () => {
+    const { document, calls, options } = setup({ preview: { categories: 0, courses: 0, total: 2, hash: 's' } });
+    const pending = run({ ...options, categoryids: [4], show: false });
+    await flush();
+    assert.equal(dialogOf(document).querySelector('[data-region="counts"]').textContent,
+        'Se ocultarán 0 categorías y 0 cursos');
+    click(document, 'apply');
+    await pending;
+    assert.deepEqual(calls.apply, [[[4], false, 's']]);
+    const none = setup({ preview: { categories: 0, courses: 0, total: 0, hash: 'n' } });
+    assert.equal(await run({ ...none.options, categoryids: [4], show: false }), null);
+    assert.deepEqual(none.calls.toasts, [['visibilitytreenothing', {}]]);
+});
+
 test('si cambió desde la vista previa se avisa sin Deshacer; si se interrumpió se ofrece Deshacer', async () => {
     const stale = setup({ apply: { status: 'stale', logid: 0, categories: 0, courses: 0 } });
     let pending = run({ ...stale.options, categoryids: [4], show: false });

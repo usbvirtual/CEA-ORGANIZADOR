@@ -172,6 +172,7 @@ test('una entrada de visibilidad del historial se puede deshacer', async () => {
 
 test('más de 100 cursos se envían en lotes de 100, con un solo aviso y un Deshacer que deshace todos', async () => {
     const { container, state } = await setup();
+    let reloads = 0;
     const sent = [];
     const toasts = [];
     const undone = [];
@@ -186,9 +187,12 @@ test('más de 100 cursos se envían en lotes de 100, con un solo aviso y un Desh
         container,
         strings,
         toast: { show: (message, options) => toasts.push([message, options]) },
-        undo: async (logid) => {
-            undone.push(logid);
+        undo: async (logid, options) => {
+            undone.push([logid, options]);
             return { ok: true, conflicts: [] };
+        },
+        reload: async () => {
+            reloads += 1;
         },
         onError: (error) => { throw error; },
     });
@@ -199,7 +203,9 @@ test('más de 100 cursos se envían en lotes de 100, con un solo aviso y un Desh
     assert.equal(toasts.length, 1);
     toasts[0][1].onAction();
     await flush();
-    assert.deepEqual(undone, [23, 22, 21]);
+    // Every batch undone without its own reload, and the tree reloaded once at the end.
+    assert.deepEqual(undone, [[23, { reload: false }], [22, { reload: false }], [21, { reload: false }]]);
+    assert.equal(reloads, 1);
 });
 
 test('si un lote falla, los anteriores quedan con su etiqueta y su Deshacer, y se informa el error', async () => {

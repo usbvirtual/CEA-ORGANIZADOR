@@ -368,6 +368,7 @@ export const init = ({root}) => {
             strings,
             toast,
             undo: mover.undo,
+            reload: ctx.reload,
             onError: Notification.exception,
             isBusy: mover.busy,
         });

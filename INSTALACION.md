@@ -71,23 +71,23 @@ Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar selec
 - **Un curso:** en el menú del curso (⋯ o Shift+F10) aparece «Ocultar» o «Mostrar», según su estado.
 - **Varios cursos:** seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
 
-Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso; si falta en uno solo, no se cambia ninguno. Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
+Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso. Cada lote de 100 es todo o nada: si falta el permiso en un curso, no se cambia ninguno de su lote, pero los lotes anteriores ya quedaron aplicados (y el aviso «Deshacer» los deshace). Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
 
 ### Ocultar todo y mostrar todo
 
 - **Una categoría:** en su menú (⋯ o Shift+F10), «Ocultar todo» o «Mostrar todo».
 - **Varias:** seleccione las categorías y use «Ocultar todo lo seleccionado» o «Mostrar todo lo seleccionado». Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
 
-Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y a **todos** sus cursos. Antes de aplicar se cuenta lo que de verdad cambia y se pregunta una vez, por ejemplo «Se ocultarán 12 categorías y 340 cursos»; lo que ya está en ese estado no se toca.
+Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y a **todos** sus cursos. Antes de aplicar se cuenta lo que de verdad cambia de visibilidad y se pregunta una vez, por ejemplo «Se ocultarán 12 categorías y 340 cursos».
 
-- «Ocultar todo» deja la categoría elegida oculta a propósito, igual que el ojo de Moodle: si después alguien la muestra desde «Gestionar cursos y categorías», reaparece lo que se ocultó con ella, y lo que ya estaba oculto sigue oculto.
+- «Ocultar todo» deja todo como lo dejaría el ojo de Moodle sobre la categoría: la categoría elegida queda oculta a propósito, y si después alguien la muestra desde «Gestionar cursos y categorías», reaparece solo lo que estaba visible antes de ocultar todo; lo que ya estaba oculto (a propósito o porque su categoría estaba oculta) sigue oculto. Para eso, a lo que ya estaba oculto pero habría reaparecido se le ajusta en silencio esa marca; no cuenta como «se ocultará», pero queda en el historial y el deshacer la devuelve. Lo oculto a propósito no se toca.
 - «Mostrar todo» deja **todo visible**, también lo que estaba oculto a propósito.
 
-**Permisos.** `moodle/category:manage` en cada categoría que cambia y `moodle/course:visibility` en cada curso que cambia; si falta uno solo, no se cambia nada.
+**Permisos.** `moodle/category:manage` en cada categoría que cambia **y en su categoría padre** (en el sistema para las del nivel superior), como en Moodle, y `moodle/course:visibility` en cada curso que cambia; si falta uno solo, no se cambia nada.
 
-**Límites.** Como máximo **500** categorías y **2000** cursos que cambien por operación; si son más, se rechaza con los números: trabaje por facultad, programa o semestre. Se escribe en tandas de 200 elementos para no bloquear la tabla de cursos; si se interrumpe a mitad, lo cambiado queda en el historial y el aviso ofrece «Deshacer».
+**Límites.** Como máximo **500** categorías y **2000** cursos que se escriban por operación (contando los ajustes silenciosos); si son más, se rechaza con los números: trabaje por facultad, programa o semestre. Se escribe en tandas de 200 elementos para no bloquear la tabla de cursos; si se interrumpe a mitad, lo cambiado queda en el historial y el aviso ofrece «Deshacer».
 
-**Deshacer.** El aviso y el historial («Ocultar todo: … · categorías: N, cursos: M») ofrecen «Deshacer», que devuelve a cada categoría y curso su estado exacto anterior. Se rechaza, con los conflictos listados, si alguien cambió después la visibilidad de alguno.
+**Deshacer.** El aviso y el historial («Ocultar todo: … · categorías: N, cursos: M») ofrecen «Deshacer», que devuelve a cada categoría y curso su estado exacto anterior. Se rechaza entero, con los conflictos listados (los 20 primeros y cuántos más), si alguien cambió después la visibilidad de alguno o movió alguno de sus cursos a otra categoría. Por ejemplo, si después de ocultar todo un docente vuelve a mostrar su curso, el «Deshacer» de la operación masiva se rechaza; en ese caso, use «Mostrar todo».
 
 ### Historial y deshacer
 
@@ -117,7 +117,7 @@ Propone nombres corregidos para categorías y cursos y deja aplicarlos de una ve
 
 **Qué no cambia.** Solo cambian los **nombres completos**. Los nombres cortos de los cursos nunca se tocan, y los nombres de curso conservan su docente, grupo y periodo. Los nombres con etiquetas multilenguaje tampoco se tocan.
 
-**Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **100**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar».
+**Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **100**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar». Cada lote es todo o nada: si un cambio de un lote falla (por ejemplo, falta un permiso o un nombre corto se ocupó), no se aplica nada de ese lote, pero los lotes anteriores ya quedaron aplicados. Lo mismo vale para «Renombrar» con más de 100 elementos.
 
 ### Unificar categorías
 

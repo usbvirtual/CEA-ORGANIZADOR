@@ -47,12 +47,23 @@ export const selectedCourseIds = (items) => items.filter((item) => item.type ===
  * @param {Element} options.container Tree element.
  * @param {Object} options.strings hidden, visibilitychanged and undo.
  * @param {Object} options.toast Object with show(message, options).
- * @param {Function} options.undo Undoes a journal entry (mover.undo), which reloads the tree.
+ * @param {Function} options.undo Undoes a journal entry (mover.undo); called with {reload: false}.
+ * @param {Function} [options.reload] Reloads the tree once after the batches are undone.
  * @param {Function} options.onError Receives the exceptions of the web services.
  * @param {Function} [options.isBusy] Whether another write is running (the mover); then nothing is sent.
  * @returns {{apply: Function}}
  */
-export const createVisibility = ({api, state, container, strings, toast, undo, onError, isBusy = () => false}) => {
+export const createVisibility = ({
+    api,
+    state,
+    container,
+    strings,
+    toast,
+    undo,
+    onError,
+    reload = () => Promise.resolve(),
+    isBusy = () => false,
+}) => {
     // Keeps the loaded lists in step, so a later redraw of the tree shows the same labels.
     const remember = (ids, visible) => {
         const wanted = new Set(ids);
@@ -66,11 +77,24 @@ export const createVisibility = ({api, state, container, strings, toast, undo, o
     };
 
     // One undo that goes back through the batches, the last one first, and stops at the first conflict.
+    // The tree is reloaded once at the end, when at least one batch was undone.
     const undoAll = async(logids) => {
-        for (const logid of [...logids].reverse()) {
-            const result = await undo(logid);
-            if (!result || !result.ok) {
-                return;
+        let undone = 0;
+        try {
+            for (const logid of [...logids].reverse()) {
+                const result = await undo(logid, {reload: false});
+                if (!result || !result.ok) {
+                    break;
+                }
+                undone += 1;
+            }
+        } finally {
+            if (undone > 0) {
+                try {
+                    await reload();
+                } catch (error) {
+                    onError(error);
+                }
             }
         }
     };
