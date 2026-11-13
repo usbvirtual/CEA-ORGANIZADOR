@@ -25,6 +25,10 @@
 
 import {setCourseVisible} from 'tool_ceaorganizador/treeview';
 import {exclusive} from 'tool_ceaorganizador/selection';
+import {splitBatches} from 'tool_ceaorganizador/renamepanel';
+
+/** @var {Number} Most courses per request; the server refuses more (set_visibility::MAXITEMS). */
+export const MAX_BATCH = 100;
 
 /**
  * Ids of the courses among the items of a selection, in their order.
@@ -61,29 +65,54 @@ export const createVisibility = ({api, state, container, strings, toast, undo, o
         });
     };
 
+    // One undo that goes back through the batches, the last one first, and stops at the first conflict.
+    const undoAll = async(logids) => {
+        for (const logid of [...logids].reverse()) {
+            const result = await undo(logid);
+            if (!result || !result.ok) {
+                return;
+            }
+        }
+    };
+
+    // Batches of MAX_BATCH, one after another; one notice and one undo for all of them.
     const run = exclusive(async(ids, visible, trigger) => {
         const button = trigger && trigger.tagName === 'BUTTON' ? trigger : null;
         if (button) {
             button.disabled = true;
         }
+        const logids = [];
+        const done = [];
+        let failure = null;
         try {
-            const result = await api.setVisibility(ids, visible);
-            // Every course asked for now has that visibility: the skipped ones already had it.
-            remember(ids, visible);
-            ids.forEach((id) => setCourseVisible(container, id, visible, strings.hidden));
-            const options = result.logid > 0
-                ? {actionLabel: strings.undo, onAction: () => undo(result.logid)}
-                : {};
-            toast.show(strings.visibilitychanged, options);
-            return result;
+            for (const batch of splitBatches(ids, MAX_BATCH)) {
+                const result = await api.setVisibility(batch, visible);
+                if (result.logid > 0) {
+                    logids.push(result.logid);
+                }
+                // Every course asked for now has that visibility: the skipped ones already had it.
+                done.push(...batch);
+            }
         } catch (error) {
-            onError(error);
-            return null;
+            failure = error;
         } finally {
             if (button) {
                 button.disabled = false;
             }
         }
+        remember(done, visible);
+        done.forEach((id) => setCourseVisible(container, id, visible, strings.hidden));
+        if (done.length > 0) {
+            const options = logids.length > 0
+                ? {actionLabel: strings.undo, onAction: () => undoAll(logids)}
+                : {};
+            toast.show(strings.visibilitychanged, options);
+        }
+        if (failure) {
+            onError(failure);
+            return null;
+        }
+        return {logids};
     });
 
     /**
@@ -92,8 +121,8 @@ export const createVisibility = ({api, state, container, strings, toast, undo, o
      * @param {Number[]} ids Courses only.
      * @param {Boolean} visible
      * @param {Element} [trigger] Button disabled while the request runs.
-     * @returns {Promise<Object|null>|null} The web service result; null when there is nothing to send,
-     *                                      when it failed or when another write is running.
+     * @returns {Promise<Object|null>|null} {logids} of the batches recorded; null when there is nothing to send,
+     *                                      when a batch failed or when another write is running.
      */
     const apply = (ids, visible, trigger) => {
         if (!ids.length || isBusy()) {

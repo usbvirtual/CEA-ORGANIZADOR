@@ -69,7 +69,7 @@ Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar selec
 ### Ocultar y mostrar cursos
 
 - **Un curso:** en el menú del curso (⋯ o Shift+F10) aparece «Ocultar» o «Mostrar», según su estado.
-- **Varios cursos:** seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Máximo 500 cursos por vez.
+- **Varios cursos:** seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
 
 Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso; si falta en uno solo, no se cambia ninguno. Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
 
@@ -101,7 +101,7 @@ Propone nombres corregidos para categorías y cursos y deja aplicarlos de una ve
 
 **Qué no cambia.** Solo cambian los **nombres completos**. Los nombres cortos de los cursos nunca se tocan, y los nombres de curso conservan su docente, grupo y periodo. Los nombres con etiquetas multilenguaje tampoco se tocan.
 
-**Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **500**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar».
+**Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **100**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar».
 
 ### Unificar categorías
 
@@ -263,6 +263,18 @@ Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «202
 Si falta un permiso en una semilla, esa fila se omite y las demás se clonan. Si falta un permiso en el destino, la petición se rechaza entera y no se crea nada.
 
 **Si una copia falla.** El panel la marca «Fallido» y las demás siguen. Moodle puede dejar un curso provisional «Copiando curso…» en la categoría de destino; hay que borrarlo a mano. Mientras ese curso provisional exista, la copia sigue contando como en curso y aparece como «Ya está clonado en este periodo.»; por eso hay que borrarlo antes de relanzar. Después se puede relanzar el lote: solo se reintentan las que fallaron.
+
+### Rendimiento: buenas prácticas
+
+En un sitio grande y con mucho uso (como eCampus, con miles de cursos y muchos docentes y estudiantes conectados a la vez):
+
+- **Operaciones masivas fuera de las horas pico.** «Unificar categorías», «Auto ordenar» del nivel superior (o de todo el sitio) y «Clonar a periodo» reescriben el orden de muchas categorías, mueven muchos cursos o encolan copias; cada una purga cachés de cursos y categorías de todo el sitio. Conviene hacerlas temprano, de noche o en fin de semana.
+- **Renombrar y ocultar o mostrar cursos va en lotes de 100.** Cada curso pasa por la función del núcleo que actualiza el curso y purga cachés; los lotes cortos evitan peticiones largas. El panel parte la lista solo.
+- **Clonar en lotes.** Cada copia es una tarea en segundo plano (copia de seguridad y restauración). Para que el cron no corra varias copias a la vez y no cargue el servidor, se recomienda limitarlas a una a la vez en `config.php`:
+
+  ```php
+  $CFG->task_concurrency_limit = ['\core\task\asynchronous_copy_task' => 1];
+  ```
 
 ### Pruebas seguras
 

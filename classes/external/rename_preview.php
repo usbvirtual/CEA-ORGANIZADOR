@@ -30,6 +30,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use tool_ceaorganizador\local\renamer;
+use tool_ceaorganizador\local\tree;
 
 /**
  * Applies the operations to the raw names of the items and flags the rows that cannot be applied.
@@ -112,9 +113,10 @@ class rename_preview extends external_api {
      * @return array Rows keyed by "type:id".
      */
     private static function shortnames(array $records, array $ops, array $rows): array {
-        global $DB;
         // Final short name of every course of the batch, changed or not.
         $final = [];
+        // Rows whose new short name must be free outside the batch, checked together after the loop.
+        $tocheck = [];
         foreach ($records as $record) {
             if ($record['type'] !== 'course') {
                 continue;
@@ -145,10 +147,14 @@ class rename_preview extends external_api {
             } else if (\core_text::strlen($new) > renamer::MAXLEN) {
                 $rows[$key]['error'] = 'toolong';
             } else {
-                // Held by a course outside the batch; holders inside the batch are checked as duplicates.
-                [$notin, $sqlparams] = $DB->get_in_or_equal(self::course_ids($records), SQL_PARAMS_NAMED, 'batch', false);
-                $sqlparams['shortname'] = $new;
-                if ($DB->record_exists_select('course', "shortname = :shortname AND id $notin", $sqlparams)) {
+                $tocheck[$key] = $new;
+            }
+        }
+        // Held by a course outside the batch, in one query; holders inside the batch are checked as duplicates.
+        if ($tocheck) {
+            $taken = tree::taken_shortnames(array_values($tocheck), self::course_ids($records));
+            foreach ($tocheck as $key => $new) {
+                if (isset($taken[$new])) {
                     $rows[$key]['error'] = 'shortnametaken';
                 }
             }

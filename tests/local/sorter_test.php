@@ -204,6 +204,37 @@ final class sorter_test extends \advanced_testcase {
     }
 
     /**
+     * The keys computed once per item give exactly the order of comparing the names every time (compare()).
+     */
+    public function test_precomputed_keys_same_order_as_compare(): void {
+        $names = [
+            'Cálculo II', 'calculo ii', 'Cálculo 2', 'Cálculo I', 'Cálculo IX', 'Cálculo 10', 'Cálculo 010',
+            'Semestre XII', 'Semestre Xll', 'Semestre 3', '<b>Física</b> I', 'FISICA I', 'Física  I', 'Álgebra',
+            'Algebra lineal', 'Electiva 2026', 'Electiva 2025', 'Grupo 1 - A', 'Grupo 1-A', 'Grupo 01 - A',
+            'Zoología', 'zoologia', '', 'Mix 99999999999999999999 b', 'Mix 100000000000000000000 a',
+        ];
+        // Ids in reverse, so the tie on the id is not the order of the list.
+        $items = [];
+        foreach ($names as $i => $name) {
+            $items[] = ['id' => 100 - $i, 'name' => $name];
+        }
+        $reference = $items;
+        usort($reference, function (array $a, array $b): int {
+            return sorter::compare($a['name'], $b['name']) ?: ($a['id'] <=> $b['id']);
+        });
+        $this->assertSame(array_column($reference, 'id'), sorter::propose_courses($items));
+        // Below the top level, with no period in the names, every name ranks the same: the natural order too.
+        $this->assertSame(array_column($reference, 'id'), sorter::propose($items, false, sorter::default_patterns_parsed()));
+
+        // The top level groups first (periods newest first), then the same natural order within each group.
+        $top = self::items(['Semillas', 'Facultad de Ingeniería', '2025-2', '2026-1', 'Centro 2', 'Centro 10']);
+        $this->assertSame(
+            ['2026-1', '2025-2', 'Centro 2', 'Centro 10', 'Semillas', 'Facultad de Ingeniería'],
+            self::names($top, sorter::propose($top, true, sorter::default_patterns_parsed()))
+        );
+    }
+
+    /**
      * Builds items with consecutive ids.
      *
      * @param string[] $names

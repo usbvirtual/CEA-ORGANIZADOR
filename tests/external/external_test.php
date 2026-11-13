@@ -382,6 +382,43 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * With several courses checked in one query: a short name held outside the batch is taken, a free one is not,
+     * one held only inside the batch is a duplicate, and one that differs only in case follows the database.
+     */
+    public function test_rename_preview_shortname_checks_in_one_batch(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $category = $this->category('K');
+        $taken = $this->course('Uno', 'A-1', $category);
+        $free = $this->course('Dos', 'A-2', $category);
+        $dup = $this->course('Tres', 'A-3', $category);
+        $holder = $this->course('Cuatro', 'Z-3', $category);
+        $cased = $this->course('Cinco', 'A-5', $category);
+        $outside = $this->course('Otro', 'Z-1', $category);
+        $this->course('Otro más', 'z-5', $category);
+        $ops = json_encode([['type' => 'replace', 'search' => 'A-', 'replace' => 'Z-', 'casesensitive' => true]]);
+        $items = [];
+        foreach ([$taken, $free, $dup, $holder, $cased] as $id) {
+            $items[] = ['type' => 'course', 'id' => $id];
+        }
+
+        $result = rename_preview::execute($items, $ops, '{}', true);
+        $result = external_api::clean_returnvalue(rename_preview::execute_returns(), $result);
+
+        $errors = array_column($result['rows'], 'error', 'id');
+        $this->assertCount(5, $errors);
+        $this->assertSame('shortnametaken', $errors[$taken]);
+        $this->assertNull($errors[$free]);
+        $this->assertSame('shortnameduplicate', $errors[$dup]);
+        $this->assertSame('shortnameduplicate', $errors[$holder]);
+        // A collation that ignores case (MariaDB) holds «Z-5» with «z-5»; PostgreSQL does not. Same answer as update_course().
+        $held = $DB->record_exists_select('course', 'shortname = :shortname AND id <> :id', ['shortname' => 'Z-5', 'id' => $cased]);
+        $this->assertSame($held ? 'shortnametaken' : null, $errors[$cased]);
+        $this->assertGreaterThan(0, $outside);
+    }
+
+    /**
      * Operations with keys the renamer does not know are rejected.
      */
     public function test_rename_preview_rejects_unknown_op_key(): void {
@@ -451,21 +488,23 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * More than 500 rows are refused before anything is read or written.
+     * More than 100 rows are refused before anything is read or written.
      */
-    public function test_rename_apply_rejects_over_500(): void {
+    public function test_rename_apply_rejects_over_100(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
+        $this->assertSame(100, rename_apply::MAXITEMS);
         $changes = [];
-        for ($id = 1; $id <= 501; $id++) {
+        for ($id = 1; $id <= 101; $id++) {
             $changes[] = ['type' => 'category', 'id' => $id, 'old' => 'a', 'new' => 'b'];
         }
 
         try {
             rename_apply::execute($changes);
-            $this->fail('More than 500 rows must be refused');
+            $this->fail('More than 100 rows must be refused');
         } catch (\moodle_exception $e) {
             $this->assertSame('error_toomany', $e->errorcode);
+            $this->assertSame(100, $e->a);
         }
     }
 
@@ -724,17 +763,19 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * More than 500 courses, or the site course, are refused before anything is written.
+     * More than 100 courses, or the site course, are refused before anything is written.
      */
-    public function test_set_visibility_rejects_over_500_and_site(): void {
+    public function test_set_visibility_rejects_over_100_and_site(): void {
         $this->resetAfterTest();
         $this->setAdminUser();
+        $this->assertSame(100, set_visibility::MAXITEMS);
 
         try {
-            set_visibility::execute(range(2, 502), false);
-            $this->fail('More than 500 courses must be refused');
+            set_visibility::execute(range(2, 102), false);
+            $this->fail('More than 100 courses must be refused');
         } catch (\moodle_exception $e) {
             $this->assertSame('error_toomany', $e->errorcode);
+            $this->assertSame(100, $e->a);
         }
         $this->expectException(\invalid_parameter_exception::class);
         set_visibility::execute([SITEID], false);

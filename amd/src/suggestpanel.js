@@ -31,7 +31,7 @@ import {format} from 'tool_ceaorganizador/treeview';
 import {exclusive} from 'tool_ceaorganizador/selection';
 import {splitBatches} from 'tool_ceaorganizador/renamepanel';
 
-const MAX_BATCH = 500;
+const MAX_BATCH = 100;
 const MAX_NAME = 254;
 const REASONS = ['formato', 'glosario', 'tilde', 'variante'];
 

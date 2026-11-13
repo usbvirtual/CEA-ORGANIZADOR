@@ -30,7 +30,7 @@
 import {openDialog} from 'tool_ceaorganizador/dialog';
 import {format} from 'tool_ceaorganizador/treeview';
 
-const MAX_BATCH = 500;
+const MAX_BATCH = 100;
 const MAX_OPS = 50;
 const MAX_NAME = 254;
 const ERROR_CODES = ['empty', 'toolong', 'multilang', 'shortnametaken', 'shortnameduplicate'];

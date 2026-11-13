@@ -55,8 +55,10 @@ class get_tree extends external_api {
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
 
-        $categories = tree::categories();
-        $rootneedsort = tree::root_needsort();
+        // One read of the categories for both.
+        $overview = tree::overview();
+        $categories = $overview['categories'];
+        $rootneedsort = $overview['rootneedsort'];
         $count = count(array_filter(array_column($categories, 'needsort')));
         return [
             'categories' => $categories,

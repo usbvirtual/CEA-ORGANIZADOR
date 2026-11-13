@@ -30,10 +30,10 @@ test('buildOps respeta el orden, cubre limpiar y afijos y omite las operaciones 
     ]);
 });
 
-test('splitBatches parte en lotes de 500', () => {
-    const list = Array.from({ length: 1001 }, (_, i) => i);
-    assert.deepEqual(splitBatches(list, 500).map((b) => b.length), [500, 500, 1]);
-    assert.deepEqual(splitBatches([], 500), []);
+test('splitBatches parte en lotes de 100', () => {
+    const list = Array.from({ length: 201 }, (_, i) => i);
+    assert.deepEqual(splitBatches(list, 100).map((b) => b.length), [100, 100, 1]);
+    assert.deepEqual(splitBatches([], 100), []);
 });
 
 const strings = new Proxy({}, { get: (_, name) => (name === 'batchsplit' ? 'lotes {$a}' : String(name)) });
@@ -159,26 +159,26 @@ test('un nombre manual con < queda marcado como multilang y no se envía', async
     assert.deepEqual(calls.apply[0].changes, [{ type: 'course', id: 6, old: 'C', new: 'D' }]);
 });
 
-test('más de 500 filas se aplican en lotes secuenciales con aviso y un solo Deshacer que deshace todos', async () => {
-    const rows = Array.from({ length: 501 }, (_, i) => ({
+test('más de 100 filas se aplican en lotes secuenciales con aviso y un solo Deshacer que deshace todos', async () => {
+    const rows = Array.from({ length: 201 }, (_, i) => ({
         type: 'category', id: i + 1, old: `a${i}`, new: `b${i}`, error: null,
     }));
     const { document, calls } = setup(rows, { items: rows.map((r) => ({ type: 'category', id: r.id })) });
     click(document, 'preview');
     await flush();
-    assert.match(document.querySelector('[data-region="notice"]').textContent, /lotes 2/);
+    assert.match(document.querySelector('[data-region="notice"]').textContent, /lotes 3/);
     click(document, 'apply');
     await flush();
-    assert.deepEqual(calls.apply.map((c) => c.changes.length), [500, 1]);
+    assert.deepEqual(calls.apply.map((c) => c.changes.length), [100, 100, 1]);
     assert.equal(calls.toasts.length, 1);
     calls.toasts[0].options.onAction();
     await flush();
-    assert.deepEqual(calls.undo, [42, 41]);
+    assert.deepEqual(calls.undo, [43, 42, 41]);
 });
 
 test('el Deshacer de varios lotes se detiene si un deshacer falla o no responde', async () => {
     for (const undoResult of [{ ok: false, conflicts: ['x'] }, null]) {
-        const rows = Array.from({ length: 501 }, (_, i) => ({
+        const rows = Array.from({ length: 101 }, (_, i) => ({
             type: 'category', id: i + 1, old: `a${i}`, new: `b${i}`, error: null,
         }));
         const { document, calls } = setup(rows, { items: rows.map((r) => ({ type: 'category', id: r.id })), undoResult });

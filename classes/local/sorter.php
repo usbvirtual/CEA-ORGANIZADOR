@@ -58,8 +58,30 @@ class sorter {
      * @return int
      */
     public static function compare(string $a, string $b): int {
-        $ta = self::tokenize(self::clean($a));
-        $tb = self::tokenize(self::clean($b));
+        return self::compare_keys(self::key($a), self::key($b));
+    }
+
+    /**
+     * Sort key of a name for compare_keys(): its tokens and its normalized form, computed once.
+     *
+     * @param string $name
+     * @return array ['tokens' => array, 'normalized' => string]
+     */
+    private static function key(string $name): array {
+        $clean = self::clean($name);
+        return ['tokens' => self::tokenize($clean), 'normalized' => \core_text::strtolower($clean)];
+    }
+
+    /**
+     * Natural comparison of two sort keys; the same result as compare() on their names.
+     *
+     * @param array $ka Key from key().
+     * @param array $kb
+     * @return int
+     */
+    private static function compare_keys(array $ka, array $kb): int {
+        $ta = $ka['tokens'];
+        $tb = $kb['tokens'];
         $count = min(count($ta), count($tb));
         for ($i = 0; $i < $count; $i++) {
             $result = self::compare_tokens($ta[$i], $tb[$i]);
@@ -70,7 +92,7 @@ class sorter {
         if (count($ta) !== count($tb)) {
             return count($ta) <=> count($tb);
         }
-        return strcmp(self::normalize($a), self::normalize($b)) <=> 0;
+        return strcmp($ka['normalized'], $kb['normalized']) <=> 0;
     }
 
     /**
@@ -224,11 +246,12 @@ class sorter {
             $group = self::classify($item['name'], $toplevel, $patterns);
             $rows[] = [
                 'id' => (int) $item['id'],
-                'name' => $item['name'],
+                'key' => self::key($item['name']),
                 'rank' => self::GROUP_ORDER[$group] ?? 4,
                 'period' => $group === 'periodo' ? self::parse_period($item['name']) : null,
             ];
         }
+        // The keys are computed once per item, not in every comparison.
         usort($rows, function (array $a, array $b): int {
             if ($a['rank'] !== $b['rank']) {
                 return $a['rank'] <=> $b['rank'];
@@ -239,7 +262,7 @@ class sorter {
                     return $result;
                 }
             }
-            return self::compare($a['name'], $b['name']) ?: ($a['id'] <=> $b['id']);
+            return self::compare_keys($a['key'], $b['key']) ?: ($a['id'] <=> $b['id']);
         });
         return array_column($rows, 'id');
     }
@@ -251,10 +274,15 @@ class sorter {
      * @return int[]
      */
     public static function propose_courses(array $items): array {
-        usort($items, function (array $a, array $b): int {
-            return self::compare($a['name'], $b['name']) ?: ((int) $a['id'] <=> (int) $b['id']);
+        $rows = [];
+        foreach ($items as $item) {
+            $rows[] = ['id' => (int) $item['id'], 'key' => self::key($item['name'])];
+        }
+        // The keys are computed once per course, not in every comparison.
+        usort($rows, function (array $a, array $b): int {
+            return self::compare_keys($a['key'], $b['key']) ?: ($a['id'] <=> $b['id']);
         });
-        return array_map('intval', array_column($items, 'id'));
+        return array_column($rows, 'id');
     }
 
     /**

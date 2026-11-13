@@ -139,8 +139,16 @@ class mover {
             if ($newparent !== $oldparent) {
                 $category->change_parent($newparent);
             }
-            $others = array_values(array_diff(tree::sibling_categories($newparent), [$id]));
-            self::apply_category_order($newparent, self::insert_after($others, $id, $afterid));
+            $current = tree::sibling_categories($newparent);
+            $order = self::insert_after(array_values(array_diff($current, [$id])), $id, $afterid);
+            // The core change_parent() already ran fix_course_sortorder() and purged the caches, leaving the category
+            // last. When the list is already the order asked for (always when it goes last), a second pass would only
+            // write the same order and repeat the site-wide cleanup: fix_course_sortorder() numbers the categories from
+            // their order alone, so skipping it leaves exactly the same sortorders. Otherwise the order is written and
+            // cleaned up once more: skipping that cleanup would leave the local sortorders of apply_category_order().
+            if ($current !== $order) {
+                self::apply_category_order($newparent, $order);
+            }
             $transaction->allow_commit();
         } catch (\Throwable $e) {
             guard::rollback($transaction, $e);

@@ -169,3 +169,67 @@ test('una entrada de visibilidad del historial se puede deshacer', async () => {
     await flush();
     assert.ok(document.querySelector('[data-id="5"] [data-action="undo"]'));
 });
+
+test('más de 100 cursos se envían en lotes de 100, con un solo aviso y un Deshacer que deshace todos', async () => {
+    const { container, state } = await setup();
+    const sent = [];
+    const toasts = [];
+    const undone = [];
+    const visibility = createVisibility({
+        api: {
+            setVisibility: async (ids, visible) => {
+                sent.push([ids.length, visible]);
+                return { changed: ids.length, skipped: 0, logid: 20 + sent.length };
+            },
+        },
+        state,
+        container,
+        strings,
+        toast: { show: (message, options) => toasts.push([message, options]) },
+        undo: async (logid) => {
+            undone.push(logid);
+            return { ok: true, conflicts: [] };
+        },
+        onError: (error) => { throw error; },
+    });
+    const ids = Array.from({ length: 201 }, (_, i) => i + 100);
+    const result = await visibility.apply(ids, false);
+    assert.deepEqual(sent, [[100, false], [100, false], [1, false]]);
+    assert.deepEqual(result.logids, [21, 22, 23]);
+    assert.equal(toasts.length, 1);
+    toasts[0][1].onAction();
+    await flush();
+    assert.deepEqual(undone, [23, 22, 21]);
+});
+
+test('si un lote falla, los anteriores quedan con su etiqueta y su Deshacer, y se informa el error', async () => {
+    const { container, state } = await setup();
+    const toasts = [];
+    const errors = [];
+    let calls = 0;
+    const visibility = createVisibility({
+        api: {
+            setVisibility: async () => {
+                calls += 1;
+                if (calls === 2) {
+                    throw new Error('falló');
+                }
+                return { changed: 100, skipped: 0, logid: 30 };
+            },
+        },
+        state,
+        container,
+        strings,
+        toast: { show: (message, options) => toasts.push(options) },
+        undo: async () => ({ ok: true, conflicts: [] }),
+        onError: (error) => errors.push(error.message),
+    });
+    const ids = [10, ...Array.from({ length: 150 }, (_, i) => i + 100)];
+    const result = await visibility.apply(ids, false);
+    assert.equal(result, null);
+    assert.deepEqual(errors, ['falló']);
+    assert.equal(toasts.length, 1);
+    assert.equal(toasts[0].actionLabel, 'undo');
+    // The course of the first batch shows its label; the second batch was not applied.
+    assert.equal(course(container, 10).dataset.visible, '0');
+});

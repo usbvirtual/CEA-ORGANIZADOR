@@ -165,6 +165,42 @@ final class tree_test extends \advanced_testcase {
         $generator->create_category(['name' => 'Facultad de Ingeniería']);
         $generator->create_category(['name' => '2026-02']);
         $this->assertTrue(tree::root_needsort());
+        // The overview reads the categories once and gives the same two answers.
+        $overview = tree::overview();
+        $this->assertTrue($overview['rootneedsort']);
+        $this->assertSame(tree::categories(), $overview['categories']);
+
+        // In the proposed order, the top level no longer needs sorting.
+        mover::apply_category_order(0, sorter::propose(array_map(function (int $id): array {
+            global $DB;
+            return ['id' => $id, 'name' => format_string($DB->get_field('course_categories', 'name', ['id' => $id]))];
+        }, tree::sibling_categories(0)), true, sorter::patterns()));
+        $this->assertFalse(tree::root_needsort());
+        $this->assertFalse(tree::overview()['rootneedsort']);
+    }
+
+    /**
+     * The short names taken outside a set, in one query, with the answer of the database.
+     */
+    public function test_taken_shortnames(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $category = (int) $generator->create_category(['name' => 'K'])->id;
+        $generator->create_course(['category' => $category, 'shortname' => 'TS-A']);
+        $mine = (int) $generator->create_course(['category' => $category, 'shortname' => 'TS-B'])->id;
+        $generator->create_course(['category' => $category, 'shortname' => 'ts-c']);
+
+        $taken = tree::taken_shortnames(['TS-A', 'TS-B', 'TS-Z', 'TS-C', 'TS-A'], [$mine]);
+
+        $this->assertTrue(isset($taken['TS-A']));
+        $this->assertFalse(isset($taken['TS-B']));
+        $this->assertFalse(isset($taken['TS-Z']));
+        // Held only through a collation that ignores case (MariaDB): whatever the database says.
+        $held = $DB->record_exists_select('course', 'shortname = :shortname', ['shortname' => 'TS-C']);
+        $this->assertSame($held, isset($taken['TS-C']));
+        $this->assertSame([], tree::taken_shortnames([], [$mine]));
     }
 
     /**

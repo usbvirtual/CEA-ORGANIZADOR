@@ -45,8 +45,11 @@ use tool_ceaorganizador\local\renamer;
  * whole call fails, so the journal entry always matches what was written and the undo is exact.
  */
 class rename_apply extends external_api {
-    /** @var int Maximum number of rows in one call. */
-    public const MAXITEMS = 500;
+    /**
+     * @var int Maximum number of rows in one call. Every course goes through update_course(), which purges caches
+     *      of the whole site: small batches keep each request short on a busy site.
+     */
+    public const MAXITEMS = 100;
 
     /**
      * Parameters: the explicit changes.
@@ -73,7 +76,7 @@ class rename_apply extends external_api {
      * @return array ['results' => [['type', 'id', 'status', 'message']], 'logid' => int]; logid is 0 when nothing was applied.
      */
     public static function execute(array $changes): array {
-        // A batch of up to 500 renames can take a while.
+        // A batch of up to 100 renames can take a while.
         \core_php_time_limit::raise();
         raise_memory_limit(MEMORY_EXTRA);
         $params = self::validate_parameters(self::execute_parameters(), ['changes' => $changes]);
@@ -82,7 +85,7 @@ class rename_apply extends external_api {
         require_capability('tool/ceaorganizador:manage', $context);
         $changes = $params['changes'];
         if (count($changes) > self::MAXITEMS) {
-            throw new \moodle_exception('error_toomany', 'tool_ceaorganizador');
+            throw new \moodle_exception('error_toomany', 'tool_ceaorganizador', '', self::MAXITEMS);
         }
         $seen = [];
         foreach ($changes as $change) {

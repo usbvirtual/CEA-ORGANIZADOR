@@ -228,6 +228,67 @@ final class journal_test extends \advanced_testcase {
     }
 
     /**
+     * With several courses, an old short name taken by a course outside the batch blocks the undo, named in the order
+     * of the items; one held by another course of the batch does not, since the undo gives it back first.
+     */
+    public function test_undo_rename_shortname_conflicts_in_batch(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $cat = (int) $generator->create_category(['name' => 'K'])->id;
+        $first = (int) $generator->create_course(['fullname' => 'Primero', 'shortname' => 'P1', 'category' => $cat])->id;
+        $second = (int) $generator->create_course(['fullname' => 'Segundo', 'shortname' => 'S1', 'category' => $cat])->id;
+        $third = (int) $generator->create_course(['fullname' => 'Tercero', 'shortname' => 'T1', 'category' => $cat])->id;
+        // The second takes the old short name of the first, inside the same batch.
+        mover::rename_course($first, 'Primero', 'P2');
+        mover::rename_course($second, 'Segundo', 'P1');
+        mover::rename_course($third, 'Tercero', 'T2');
+        $logid = journal::record('rename', 'Renombrar', [
+            'items' => [
+                [
+                    'type' => 'course',
+                    'id' => $first,
+                    'before' => ['fullname' => 'Primero', 'shortname' => 'P1'],
+                    'after' => ['fullname' => 'Primero', 'shortname' => 'P2'],
+                ],
+                [
+                    'type' => 'course',
+                    'id' => $second,
+                    'before' => ['fullname' => 'Segundo', 'shortname' => 'S1'],
+                    'after' => ['fullname' => 'Segundo', 'shortname' => 'P1'],
+                ],
+                [
+                    'type' => 'course',
+                    'id' => $third,
+                    'before' => ['fullname' => 'Tercero', 'shortname' => 'T1'],
+                    'after' => ['fullname' => 'Tercero', 'shortname' => 'T2'],
+                ],
+                ['type' => 'category', 'id' => $cat, 'before' => ['name' => 'K'], 'after' => ['name' => 'K']],
+            ],
+        ]);
+        // Courses outside the batch take the old short names of the second and the third.
+        $other = (int) $generator->create_course(['fullname' => 'Otro', 'shortname' => 'S1', 'category' => $cat])->id;
+        $another = (int) $generator->create_course(['fullname' => 'Otro más', 'shortname' => 'T1', 'category' => $cat])->id;
+
+        $undo = journal::undo($logid);
+
+        $this->assertFalse($undo['ok']);
+        $this->assertCount(2, $undo['conflicts']);
+        $this->assertStringContainsString('Segundo', $undo['conflicts'][0]);
+        $this->assertStringContainsString('Tercero', $undo['conflicts'][1]);
+        $this->assertSame('P2', $DB->get_field('course', 'shortname', ['id' => $first]));
+
+        // Once they are free, the undo goes through, the first course included.
+        $DB->set_field('course', 'shortname', 'OTRO1', ['id' => $other]);
+        $DB->set_field('course', 'shortname', 'OTRO2', ['id' => $another]);
+        $this->assertTrue(journal::undo($logid)['ok']);
+        $this->assertSame('P1', $DB->get_field('course', 'shortname', ['id' => $first]));
+        $this->assertSame('S1', $DB->get_field('course', 'shortname', ['id' => $second]));
+        $this->assertSame('T1', $DB->get_field('course', 'shortname', ['id' => $third]));
+    }
+
+    /**
      * An operation is undone only once, and an unknown row is an error.
      */
     public function test_undo_twice_throws(): void {

@@ -103,6 +103,58 @@ final class mover_test extends \advanced_testcase {
     }
 
     /**
+     * Category sortorders and the course order of every category, to compare two ways of reaching one tree.
+     *
+     * @return array
+     */
+    private function tree_state(): array {
+        global $DB;
+        $categories = array_map('intval', $DB->get_records_menu('course_categories', null, 'id', 'id, sortorder'));
+        $courses = [];
+        foreach (array_keys($categories) as $id) {
+            $courses[$id] = tree::category_courses((int) $id);
+        }
+        return ['categories' => $categories, 'courses' => $courses];
+    }
+
+    /**
+     * Moving to another parent ends with the same sortorders as the reference path (change_parent() and then
+     * apply_category_order() with its cleanup), whether the category goes last (the second pass is skipped) or
+     * in the middle (it is written).
+     */
+    public function test_move_category_to_new_parent_same_final_order(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $a = (int) $generator->create_category(['name' => 'A'])->id;
+        $b = (int) $generator->create_category(['name' => 'B'])->id;
+        $a1 = (int) $generator->create_category(['name' => 'A1', 'parent' => $a])->id;
+        $a2 = (int) $generator->create_category(['name' => 'A2', 'parent' => $a])->id;
+        $c = (int) $generator->create_category(['name' => 'C', 'parent' => $b])->id;
+        // Courses make the sortorders interleave, as on a real site.
+        foreach ([$a, $a1, $a2, $b, $c] as $category) {
+            $generator->create_course(['category' => $category]);
+            $generator->create_course(['category' => $category]);
+        }
+
+        foreach ([$a2 => [$a1, $a2, $c], $a1 => [$a1, $c, $a2]] as $afterid => $expected) {
+            $result = mover::move_category($c, $a, $afterid);
+            $this->assertSame($expected, tree::sibling_categories($a));
+            $this->assertSame(['parent' => $a, 'afterid' => $afterid], $result['to']);
+            $moved = $this->tree_state();
+
+            // Back under B, then the reference path from there.
+            mover::move_category($c, $b, 0);
+            $this->assertSame([$a1, $a2], tree::sibling_categories($a));
+            \core_course_category::get($c, MUST_EXIST, true)->change_parent($a);
+            mover::apply_category_order($a, $expected);
+
+            $this->assertSame($moved, $this->tree_state());
+            mover::move_category($c, $b, 0);
+        }
+    }
+
+    /**
      * The descendant check uses the tree at the time of the move, not an older view.
      */
     public function test_move_category_into_own_descendant_after_external_change(): void {

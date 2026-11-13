@@ -144,12 +144,24 @@ class tree {
      *      and dupcounttotal.
      */
     public static function categories(): array {
+        return self::overview()['categories'];
+    }
+
+    /**
+     * The categories of categories() and the flag of root_needsort(), reading the categories once.
+     *
+     * @return array ['categories' => array[] as categories(), 'rootneedsort' => bool as root_needsort()]
+     */
+    public static function overview(): array {
         $byparent = self::load_children();
         [$bycourses, $raw] = self::load_courses_by_category();
         $patterns = sorter::patterns();
         $rows = [];
         self::walk(0, '', $byparent, $bycourses, $raw, $patterns, false, $rows);
-        return $rows;
+        return [
+            'categories' => $rows,
+            'rootneedsort' => self::children_differ($byparent[0] ?? [], true, $patterns),
+        ];
     }
 
     /**
@@ -454,6 +466,52 @@ class tree {
             }
         }
         return false;
+    }
+
+    /**
+     * Which of some short names are used by a course outside a set, with one query per 500 names.
+     *
+     * The database compares the names, as update_course() does: with a collation that ignores case or accents
+     * (MariaDB), «ABC» holds «abc» too. Holders are matched to the names in memory; when a holder matches none of
+     * them exactly (only through the collation), the names of its chunk not matched yet are asked one by one, so
+     * the answer is always the one of the database.
+     *
+     * @param string[] $shortnames
+     * @param int[] $excludeids Courses that do not count (the batch itself).
+     * @return bool[] Map short name => true for the names taken; the others are missing.
+     */
+    public static function taken_shortnames(array $shortnames, array $excludeids): array {
+        global $DB;
+        $shortnames = array_values(array_unique(array_map('strval', $shortnames)));
+        $excludeids = array_values(array_unique(array_map('intval', $excludeids))) ?: [0];
+        $taken = [];
+        foreach (array_chunk($shortnames, 500) as $chunk) {
+            [$in, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED, 'short');
+            [$notin, $notparams] = $DB->get_in_or_equal($excludeids, SQL_PARAMS_NAMED, 'batch', false);
+            $holders = $DB->get_records_select('course', "shortname $in AND id $notin", $params + $notparams, '', 'id, shortname');
+            $wanted = array_fill_keys($chunk, true);
+            $unmatched = false;
+            foreach ($holders as $holder) {
+                if (isset($wanted[(string) $holder->shortname])) {
+                    $taken[(string) $holder->shortname] = true;
+                } else {
+                    $unmatched = true;
+                }
+            }
+            if (!$unmatched) {
+                continue;
+            }
+            foreach ($chunk as $shortname) {
+                if (isset($taken[$shortname])) {
+                    continue;
+                }
+                $notparams['shortname'] = $shortname;
+                if ($DB->record_exists_select('course', "shortname = :shortname AND id $notin", $notparams)) {
+                    $taken[$shortname] = true;
+                }
+            }
+        }
+        return $taken;
     }
 
     /**

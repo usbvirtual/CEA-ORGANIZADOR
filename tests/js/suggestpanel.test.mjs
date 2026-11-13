@@ -165,13 +165,13 @@ test('el aviso de truncado aparece solo cuando el servidor lo indica', async () 
     assert.equal(two.document.querySelector('[data-region="notice"]').hidden, true);
 });
 
-test('más de 500 cambios se envían en lotes de 500, uno tras otro', async () => {
-    const rows = Array.from({ length: 1001 }, (_, i) => rowOf('course', i + 1, `n${i}`, `m${i}`));
-    const { document, calls } = setup({ rows, total: 1001, truncated: false });
+test('más de 100 cambios se envían en lotes de 100, uno tras otro', async () => {
+    const rows = Array.from({ length: 201 }, (_, i) => rowOf('course', i + 1, `n${i}`, `m${i}`));
+    const { document, calls } = setup({ rows, total: 201, truncated: false });
     await flush();
     action(document, 'apply').click();
     await flush();
-    assert.deepEqual(calls.apply.map((c) => c.changes.length), [500, 500, 1]);
+    assert.deepEqual(calls.apply.map((c) => c.changes.length), [100, 100, 1]);
     calls.toasts[0].options.onAction();
     await flush();
     assert.deepEqual(calls.undo, [53, 52, 51]);

@@ -41,8 +41,11 @@ use tool_ceaorganizador\local\mover;
  * visibility, or that no longer exist, are skipped and left out of the journal.
  */
 class set_visibility extends external_api {
-    /** @var int Maximum number of courses in one call. */
-    public const MAXITEMS = 500;
+    /**
+     * @var int Maximum number of courses in one call. Every course goes through update_course(), which purges caches
+     *      of the whole site: small batches keep each request short on a busy site.
+     */
+    public const MAXITEMS = 100;
 
     /**
      * Parameters: the courses and the visibility to give them.
@@ -73,7 +76,7 @@ class set_visibility extends external_api {
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
         if (count($params['courseids']) > self::MAXITEMS) {
-            throw new \moodle_exception('error_toomany', 'tool_ceaorganizador');
+            throw new \moodle_exception('error_toomany', 'tool_ceaorganizador', '', self::MAXITEMS);
         }
         $ids = array_values(array_unique(array_map('intval', $params['courseids'])));
         foreach ($ids as $id) {
@@ -82,7 +85,7 @@ class set_visibility extends external_api {
             }
         }
         $visible = (bool) $params['visible'];
-        // Up to 500 course updates, each with its event and cache purge.
+        // Up to 100 course updates, each with its event and cache purge.
         \core_php_time_limit::raise();
         raise_memory_limit(MEMORY_EXTRA);
 

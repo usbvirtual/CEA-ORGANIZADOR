@@ -552,51 +552,67 @@ class journal {
      */
     private static function conflicts_rename(array $payload): array {
         global $DB;
-        $conflicts = [];
+        $items = array_values($payload['items'] ?? []);
         // Courses of the batch give their names back during the undo, so they do not block one another.
-        $batchcourses = [];
-        foreach ($payload['items'] ?? [] as $item) {
-            if (($item['type'] ?? '') === 'course') {
-                $batchcourses[] = (int) $item['id'];
+        $ids = ['category' => [], 'course' => []];
+        foreach ($items as $item) {
+            if (isset($ids[$item['type'] ?? ''])) {
+                $ids[$item['type']][] = (int) $item['id'];
             }
         }
-        foreach ($payload['items'] ?? [] as $item) {
+        // Every item in one query per type and 1000 ids, not one per item.
+        $categories = [];
+        foreach (array_chunk($ids['category'], 1000) as $chunk) {
+            $categories += $DB->get_records_list('course_categories', 'id', $chunk, '', 'id, name');
+        }
+        $courses = [];
+        foreach (array_chunk($ids['course'], 1000) as $chunk) {
+            $courses += $DB->get_records_list('course', 'id', $chunk, '', 'id, fullname, shortname');
+        }
+
+        // Conflicts by item, so they keep the order of the items; the old short names are checked together.
+        $byitem = [];
+        $oldshort = [];
+        foreach ($items as $index => $item) {
             $id = (int) $item['id'];
             $after = $item['after'];
             $before = $item['before'];
+            $byitem[$index] = [];
             if ($item['type'] === 'category') {
-                $name = $DB->get_field('course_categories', 'name', ['id' => $id]);
-                if ($name === false) {
-                    $conflicts[] = self::conflict('missing', $id);
-                } else if ($name !== (string) $after['name']) {
-                    $conflicts[] = self::conflict('renamed', self::category_name($id));
+                if (!isset($categories[$id])) {
+                    $byitem[$index][] = self::conflict('missing', $id);
+                } else if ($categories[$id]->name !== (string) $after['name']) {
+                    $byitem[$index][] = self::conflict('renamed', self::category_name($id));
                 }
             } else if ($item['type'] === 'course') {
-                $course = $DB->get_record('course', ['id' => $id], 'id, fullname, shortname', IGNORE_MISSING);
+                $course = $courses[$id] ?? null;
                 if (!$course) {
-                    $conflicts[] = self::conflict('missing', $id);
+                    $byitem[$index][] = self::conflict('missing', $id);
                     continue;
                 }
-                $name = self::course_name($course->fullname);
                 $shortchanged = isset($after['shortname']) && $course->shortname !== (string) $after['shortname'];
                 if ($course->fullname !== (string) $after['fullname'] || $shortchanged) {
-                    $conflicts[] = self::conflict('renamed', $name);
+                    $byitem[$index][] = self::conflict('renamed', self::course_name($course->fullname));
                     continue;
                 }
                 // Another course may have taken the old short name since.
                 if (isset($before['shortname']) && (string) $before['shortname'] !== $course->shortname) {
-                    [$notin, $params] = $DB->get_in_or_equal($batchcourses, SQL_PARAMS_NAMED, 'batch', false);
-                    $params['shortname'] = (string) $before['shortname'];
-                    $taken = $DB->record_exists_select('course', "shortname = :shortname AND id $notin", $params);
-                    if ($taken) {
-                        $conflicts[] = self::conflict('shortnametaken', $name);
-                    }
+                    $oldshort[$index] = (string) $before['shortname'];
                 }
             } else {
                 throw new \coding_exception('Unknown item type in rename payload: ' . $item['type']);
             }
         }
-        return $conflicts;
+        if ($oldshort) {
+            $taken = tree::taken_shortnames(array_values($oldshort), $ids['course']);
+            foreach ($oldshort as $index => $shortname) {
+                if (isset($taken[$shortname])) {
+                    $name = self::course_name($courses[(int) $items[$index]['id']]->fullname);
+                    $byitem[$index][] = self::conflict('shortnametaken', $name);
+                }
+            }
+        }
+        return $byitem ? array_merge(...array_values($byitem)) : [];
     }
 
     /**
