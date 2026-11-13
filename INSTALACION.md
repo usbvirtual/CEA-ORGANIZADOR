@@ -73,6 +73,22 @@ Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar selec
 
 Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso; si falta en uno solo, no se cambia ninguno. Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
 
+### Ocultar todo y mostrar todo
+
+- **Una categoría:** en su menú (⋯ o Shift+F10), «Ocultar todo» o «Mostrar todo».
+- **Varias:** seleccione las categorías y use «Ocultar todo lo seleccionado» o «Mostrar todo lo seleccionado». Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
+
+Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y a **todos** sus cursos. Antes de aplicar se cuenta lo que de verdad cambia y se pregunta una vez, por ejemplo «Se ocultarán 12 categorías y 340 cursos»; lo que ya está en ese estado no se toca.
+
+- «Ocultar todo» deja la categoría elegida oculta a propósito, igual que el ojo de Moodle: si después alguien la muestra desde «Gestionar cursos y categorías», reaparece lo que se ocultó con ella, y lo que ya estaba oculto sigue oculto.
+- «Mostrar todo» deja **todo visible**, también lo que estaba oculto a propósito.
+
+**Permisos.** `moodle/category:manage` en cada categoría que cambia y `moodle/course:visibility` en cada curso que cambia; si falta uno solo, no se cambia nada.
+
+**Límites.** Como máximo **500** categorías y **2000** cursos que cambien por operación; si son más, se rechaza con los números: trabaje por facultad, programa o semestre. Se escribe en tandas de 200 elementos para no bloquear la tabla de cursos; si se interrumpe a mitad, lo cambiado queda en el historial y el aviso ofrece «Deshacer».
+
+**Deshacer.** El aviso y el historial («Ocultar todo: … · categorías: N, cursos: M») ofrecen «Deshacer», que devuelve a cada categoría y curso su estado exacto anterior. Se rechaza, con los conflictos listados, si alguien cambió después la visibilidad de alguno.
+
 ### Historial y deshacer
 
 Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial, y aparece un aviso «Deshacer» durante 8 segundos. El historial se conserva 90 días; una tarea programada borra lo más viejo. Deshacer devuelve el estado anterior, incluida la visibilidad si el movimiento la cambió. **Se rechaza si algo cambió después de la operación** (por ejemplo, otra persona movió o renombró el elemento) y se indica qué cambió; en ese caso no se modifica nada.

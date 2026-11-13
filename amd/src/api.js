@@ -154,3 +154,18 @@ export const deletePreview = (ids) => call('delete_preview', {ids});
  * @returns {Promise} {status, logid, deleted, skipped: [{id, name, reason}]}.
  */
 export const deleteApply = (ids) => call('delete_apply', {ids});
+
+/**
+ * @param {Number[]} categoryids Categories only; each one with all its subcategories and courses.
+ * @param {Boolean} show True for «Mostrar todo», false for «Ocultar todo».
+ * @returns {Promise} {categories, courses, hash}: what would change.
+ */
+export const visibilityTreePreview = (categoryids, show) => call('visibility_tree_preview', {categoryids, show});
+
+/**
+ * @param {Number[]} categoryids As in visibilityTreePreview.
+ * @param {Boolean} show
+ * @param {String} hash Hash of the preview.
+ * @returns {Promise} {status: ok|stale|partial, logid, categories, courses}.
+ */
+export const visibilityTreeApply = (categoryids, show, hash) => call('visibility_tree_apply', {categoryids, show, hash});

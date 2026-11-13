@@ -373,6 +373,104 @@ class mover {
     }
 
     /**
+     * Writes the visibility of many categories or courses at once: one UPDATE per (visible, visibleold) pair and
+     * 1000 ids, as core_course_category::hide_raw() and show_raw() write the courses of a category.
+     *
+     * It is the write of «Ocultar todo» / «Mostrar todo» and of their undo. It checks no capability, triggers no
+     * event and purges no cache: the caller checks first, triggers course_category_updated with
+     * category_updated_events() and calls purge_visibility_caches() once at the end. course_updated is not triggered
+     * per course, as the core does not when it hides or shows a category with its courses.
+     *
+     * @param string $table 'course_categories' or 'course'.
+     * @param array $states Map id => ['visible' => 0|1, 'visibleold' => 0|1].
+     */
+    public static function set_visibility_states(string $table, array $states): void {
+        global $DB;
+        if (!in_array($table, ['course_categories', 'course'], true)) {
+            throw new \coding_exception('Invalid table for set_visibility_states: ' . $table);
+        }
+        $groups = [];
+        foreach ($states as $id => $state) {
+            $id = (int) $id;
+            if ($table === 'course' && $id === (int) SITEID) {
+                throw new \moodle_exception('invalidcourseid', 'error');
+            }
+            $visible = (int) (bool) $state['visible'];
+            $visibleold = (int) (bool) $state['visibleold'];
+            $groups[$visible . '|' . $visibleold][] = $id;
+        }
+        if (!$groups) {
+            return;
+        }
+        $transaction = $DB->start_delegated_transaction();
+        try {
+            foreach ($groups as $pair => $ids) {
+                [$visible, $visibleold] = array_map('intval', explode('|', $pair));
+                foreach (array_chunk($ids, 1000) as $chunk) {
+                    [$in, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED, 'vis');
+                    $params['visible'] = $visible;
+                    $params['visibleold'] = $visibleold;
+                    $DB->execute("UPDATE {{$table}} SET visible = :visible, visibleold = :visibleold WHERE id $in", $params);
+                }
+            }
+            $transaction->allow_commit();
+        } catch (\Throwable $e) {
+            guard::rollback($transaction, $e);
+        }
+    }
+
+    /**
+     * Triggers course_category_updated for every category whose visibility changed, as hide() and show() do.
+     *
+     * @param int[] $ids
+     */
+    public static function category_updated_events(array $ids): void {
+        foreach ($ids as $id) {
+            \core\event\course_category_updated::create([
+                'objectid' => (int) $id,
+                'context' => \context_coursecat::instance((int) $id),
+            ])->trigger();
+        }
+    }
+
+    /**
+     * Purges the category and course caches once, after set_visibility_states().
+     */
+    public static function purge_visibility_caches(): void {
+        \cache_helper::purge_by_event('changesincoursecat');
+        \cache_helper::purge_by_event('changesincourse');
+    }
+
+    /**
+     * Requires a capability on many courses, loading their contexts in one query per 1000 ids.
+     *
+     * Courses that no longer exist are left out: the caller reports them.
+     *
+     * @param int[] $ids
+     * @param string $cap Such as 'moodle/course:visibility'.
+     */
+    public static function check_courses(array $ids, string $cap): void {
+        global $DB;
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $select = \context_helper::get_preload_record_columns_sql('ctx');
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            [$in, $params] = $DB->get_in_or_equal($chunk, SQL_PARAMS_NAMED, 'course');
+            $params['level'] = CONTEXT_COURSE;
+            $records = $DB->get_records_sql(
+                "SELECT c.id, $select
+                   FROM {course} c
+                   JOIN {context} ctx ON ctx.instanceid = c.id AND ctx.contextlevel = :level
+                  WHERE c.id $in",
+                $params
+            );
+            foreach ($records as $record) {
+                \context_helper::preload_from_record($record);
+                self::check_course((int) $record->id, $cap);
+            }
+        }
+    }
+
+    /**
      * Creates the missing categories level by level, once each, and sets the final destination of every row.
      *
      * Names are matched by parent and normalized name, so rows that need the same path share its categories.

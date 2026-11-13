@@ -201,4 +201,20 @@ $functions = [
         'loginrequired' => true,
         'capabilities' => 'tool/ceaorganizador:manage',
     ],
+    'tool_ceaorganizador_visibility_tree_preview' => [
+        'classname' => \tool_ceaorganizador\external\visibility_tree_preview::class,
+        'description' => 'Counts the categories and courses a hide-all or show-all of some categories would change.',
+        'type' => 'read',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
+    'tool_ceaorganizador_visibility_tree_apply' => [
+        'classname' => \tool_ceaorganizador\external\visibility_tree_apply::class,
+        'description' => 'Hides or shows some categories with all their subcategories and courses.',
+        'type' => 'write',
+        'ajax' => true,
+        'loginrequired' => true,
+        'capabilities' => 'tool/ceaorganizador:manage',
+    ],
 ];

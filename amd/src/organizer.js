@@ -45,6 +45,7 @@ import {open as openDelete} from 'tool_ceaorganizador/deletepanel';
 import {open as openDedupe} from 'tool_ceaorganizador/dedupepanel';
 import {quickDedupe, quickMerge, fromSelection, outerIds} from 'tool_ceaorganizador/oneclick';
 import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
+import {run as runVisibilityTree, treeButtons} from 'tool_ceaorganizador/visibilitytree';
 
 const SEARCH_DELAY = 250;
 const MIN_COURSE_SEARCH = 3;
@@ -177,6 +178,9 @@ const REQUESTS = [
     {key: 'hidden', component: 'tool_ceaorganizador'},
     {key: 'hidecourse', component: 'tool_ceaorganizador'},
     {key: 'hideselected', component: 'tool_ceaorganizador'},
+    {key: 'hidetree', component: 'tool_ceaorganizador'},
+    {key: 'hidetreeconfirm', component: 'tool_ceaorganizador'},
+    {key: 'hidetreeselected', component: 'tool_ceaorganizador'},
     {key: 'history', component: 'tool_ceaorganizador'},
     {key: 'history_empty', component: 'tool_ceaorganizador'},
     {key: 'historypage', component: 'tool_ceaorganizador'},
@@ -271,6 +275,9 @@ const REQUESTS = [
     {key: 'shortname', component: 'tool_ceaorganizador'},
     {key: 'showcourse', component: 'tool_ceaorganizador'},
     {key: 'showselected', component: 'tool_ceaorganizador'},
+    {key: 'showtree', component: 'tool_ceaorganizador'},
+    {key: 'showtreeconfirm', component: 'tool_ceaorganizador'},
+    {key: 'showtreeselected', component: 'tool_ceaorganizador'},
     {key: 'sortselectedcount', component: 'tool_ceaorganizador'},
     {key: 'stale', component: 'tool_ceaorganizador'},
     {key: 'suffix', component: 'tool_ceaorganizador'},
@@ -284,6 +291,10 @@ const REQUESTS = [
     {key: 'undo', component: 'tool_ceaorganizador'},
     {key: 'undoconflicts', component: 'tool_ceaorganizador'},
     {key: 'visibilitychanged', component: 'tool_ceaorganizador'},
+    {key: 'visibilitytreedone', component: 'tool_ceaorganizador'},
+    {key: 'visibilitytreenothing', component: 'tool_ceaorganizador'},
+    {key: 'visibilitytreepartial', component: 'tool_ceaorganizador'},
+    {key: 'visibilitytreestale', component: 'tool_ceaorganizador'},
     {key: 'wholeword', component: 'tool_ceaorganizador'},
     {key: 'winnerhidden', component: 'tool_ceaorganizador'},
 ];
@@ -383,6 +394,13 @@ export const init = ({root}) => {
             ids,
             onApplied: (deletedids) => selection.removeCategories(deletedids),
         });
+        // «Ocultar todo» / «Mostrar todo»: one at a time, and never while another write runs.
+        const visibilityTree = exclusive((trigger, categoryids, show) => {
+            if (mover.busy()) {
+                return null;
+            }
+            return runVisibilityTree({...panelOptions(trigger), categoryids, show, doc: document});
+        });
         // Every course of the category and of its subcategories, not only the ones drawn.
         const contentsOf = async(id) => {
             const own = createSelection();
@@ -443,6 +461,8 @@ export const init = ({root}) => {
                 openClone({...panelOptions(trigger), model: ctx.model, items: [{type: 'category', id: dragged.id}]});
             } else if (action === 'delete') {
                 openDelete(deleteOptions(trigger, [dragged.id]));
+            } else if (action === 'hidetree' || action === 'showtree') {
+                visibilityTree(trigger, [dragged.id], action === 'showtree');
             } else if (action === 'hide' || action === 'show') {
                 visibility.apply([dragged.id], action === 'show', trigger);
             } else if (action === 'selectcontents') {
@@ -582,13 +602,26 @@ export const init = ({root}) => {
         });
         const hideButton = visibilityButton('hideselection', strings.hideselected, false);
         const showButton = visibilityButton('showselection', strings.showselected, true);
+        // Whole categories of the selection, with everything below them; the courses of the selection are left out.
+        const treeBar = treeButtons({strings, categoryIds: selectedOuter, apply: visibilityTree, doc: document});
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-secondary btn-sm';
         clearButton.dataset.action = 'clearselection';
         clearButton.textContent = strings.clearselection;
         clearButton.addEventListener('click', () => selection.clear());
-        bar.append(barText, renameButton, cloneButton, sortButton, hideButton, showButton, deleteButton, clearButton);
+        bar.append(
+            barText,
+            renameButton,
+            cloneButton,
+            sortButton,
+            hideButton,
+            showButton,
+            treeBar.hide,
+            treeBar.show,
+            deleteButton,
+            clearButton
+        );
         toolbar.append(historyButton, suggestButton, mergeButton, dedupeButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
@@ -606,6 +639,7 @@ export const init = ({root}) => {
             const nocategories = selectedCategoryIds(selection.items()).length === 0;
             sortButton.disabled = nocategories;
             deleteButton.disabled = nocategories;
+            treeBar.sync();
             const nocourses = selectedCourseIds(selection.items()).length === 0;
             hideButton.disabled = nocourses;
             showButton.disabled = nocourses;
