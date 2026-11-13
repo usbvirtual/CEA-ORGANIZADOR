@@ -14,7 +14,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Merge panel ("Unificar semillas"): a target category, one or more source categories, a preview of the
+ * Merge panel ("Unificar categorías"): a target category, one or more source categories, a preview of the
  * courses that move and the apply step, which lists the categories that were left empty. Repeated courses come
  * in groups: for each course of a group the user chooses to keep it (move it to, or leave it in, the destination),
  * send it to the hidden «Repetidos» folder under the target, or leave it in the source; by default the most recent

@@ -103,13 +103,13 @@ Propone nombres corregidos para categorías y cursos y deja aplicarlos de una ve
 
 **Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **500**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar».
 
-### Unificar semillas
+### Unificar categorías
 
 Reúne en una sola categoría de semillas los cursos que están repartidos en varias categorías de origen (por ejemplo, las semillas de cada sede), conservando la estructura de carpetas.
 
-**Orden recomendado.** Primero «Sugerir correcciones», luego «Unificar semillas» y al final «Clonar a periodo». Así se unifican nombres ya corregidos (los repetidos se detectan por el nombre) y las copias salen con los nombres bien escritos.
+**Orden recomendado.** Primero «Sugerir correcciones», luego «Unificar categorías» y al final «Clonar a periodo». Así se unifican nombres ya corregidos (los repetidos se detectan por el nombre) y las copias salen con los nombres bien escritos.
 
-**Dónde está.** En la barra del organizador, «Unificar semillas», y en el menú del nodo de una categoría, que queda marcada como origen.
+**Dónde está.** En la barra del organizador, «Unificar categorías», y en el menú del nodo de una categoría, que queda marcada como origen.
 
 **Cómo se usa.**
 
@@ -153,7 +153,7 @@ Deshacer se rechaza, con los conflictos listados, si algún curso ya no está do
 
 Busca cursos repetidos en una categoría y en **todas sus subcategorías** y mueve los sobrantes a una carpeta oculta «Repetidos». Cada categoría se compara solo consigo misma: «Cálculo I» en dos programas distintos son dos cursos distintos y no se tocan.
 
-**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar semillas») y en el menú «⋯» de cada categoría.
+**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar categorías») y en el menú «⋯» de cada categoría.
 
 **Reglas.** Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
 
@@ -175,7 +175,7 @@ La agrupación es transitiva: si A se parece a B por el nombre y B a C por el no
 
 ### Posibles repetidos
 
-Además de los repetidos seguros, «Quitar repetidos» y «Unificar semillas» señalan **posibles repetidos**: cursos de la misma categoría (o que van al mismo destino) con nombres iguales o muy parecidos que las reglas seguras no juntan. La herramienta no decide: pregunta «¿Son el mismo curso?» con [Sí, es repetido] y [No]; por defecto es **No** y no se mueve nada. Con «Sí» pasan a ser un grupo como los demás, con el ganador por defecto, que se puede cambiar. Motivos:
+Además de los repetidos seguros, «Quitar repetidos» y «Unificar categorías» señalan **posibles repetidos**: cursos de la misma categoría (o que van al mismo destino) con nombres iguales o muy parecidos que las reglas seguras no juntan. La herramienta no decide: pregunta «¿Son el mismo curso?» con [Sí, es repetido] y [No]; por defecto es **No** y no se mueve nada. Con «Sí» pasan a ser un grupo como los demás, con el ganador por defecto, que se puede cambiar. Motivos:
 
 - **Grupos distintos** (mismo nombre con «G1» y «G2», «Grupo A» y «Grupo B»), con el aviso «son grupos distintos; normalmente NO son repetidos».
 - **Mismo nombre corto** con nombres que no comparten ninguna palabra.
@@ -189,7 +189,7 @@ Nunca se sugieren cursos de distinto nivel («Cálculo I» y «Cálculo II», «
 Si hay categorías marcadas en el árbol, los botones de la barra no abren el panel:
 
 - **Quitar repetidos** analiza las categorías marcadas (cada una con sus subcategorías; una marcada dentro de otra marcada se cubre con esta) y pregunta «Se moverán N repetidos a Repetidos en M categorías» con [Aplicar] [Ver detalle] [Cancelar]. [Aplicar] mueve con los ganadores por defecto, en un solo registro del historial (un solo «Deshacer»); cada categoría marcada recibe su propia carpeta «Repetidos». [Ver detalle] abre el panel con esas categorías. Si no hay nada, avisa «No se encontraron cursos repetidos».
-- **Unificar semillas** usa las categorías marcadas como orígenes y como destino la categoría de nivel superior «Semillas» (sin importar tildes ni mayúsculas); si no existe, la crea al pulsar el botón, como «Crear categoría de semillas» (si luego se cancela, queda vacía y se puede borrar). Pregunta «Se moverán X cursos a Semillas, Y repetidos a Repetidos». Las marcadas que ya están dentro de Semillas no se tocan (el texto lo dice); si todas están dentro, no hay nada que unificar entre raíces y hace «Quitar repetidos» sobre ellas.
+- **Unificar categorías** usa las categorías marcadas como orígenes y como destino la categoría de nivel superior «Semillas» (sin importar tildes ni mayúsculas); si no existe, la crea al pulsar el botón, como «Crear categoría de semillas» (si luego se cancela, queda vacía y se puede borrar). Pregunta «Se moverán X cursos a Semillas, Y repetidos a Repetidos». Las marcadas que ya están dentro de Semillas no se tocan (el texto lo dice); si todas están dentro, no hay nada que unificar entre raíces y hace «Quitar repetidos» sobre ellas.
 - Si hay posibles repetidos, la pregunta añade «Además hay K posibles repetidos que necesitan tu confirmación» con [Revisar], que abre el panel; [Aplicar] solo aplica los seguros.
 
 Sin categorías marcadas, los botones abren el panel como siempre. Se respetan los mismos límites (1000 cursos movidos; 5000 revisados en «Quitar repetidos») y la misma regla de que quede un curso en el destino.
@@ -212,7 +212,7 @@ Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni cont
 
 ### Clonar semillas a un periodo
 
-Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno. Se recomienda hacerlo después de «Sugerir correcciones» y «Unificar semillas».
+Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno. Se recomienda hacerlo después de «Sugerir correcciones» y «Unificar categorías».
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 

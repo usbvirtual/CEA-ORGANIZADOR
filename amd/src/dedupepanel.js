@@ -110,7 +110,7 @@ export const open = ({
     });
     const root = dialog.element;
 
-    // The category: a searchable list, as the target of «Unificar semillas».
+    // The category: a searchable list, as the target of «Unificar categorías».
     const search = create('input', 'form-control');
     search.type = 'search';
     search.setAttribute('aria-label', strings.dedupecategory);

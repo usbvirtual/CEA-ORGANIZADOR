@@ -14,7 +14,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * One click from the selection of the tree: «Quitar repetidos» and «Unificar semillas» run the preview of the
+ * One click from the selection of the tree: «Quitar repetidos» and «Unificar categorías» run the preview of the
  * selected categories and ask one short question, [Aplicar] [Ver detalle] [Cancelar], instead of opening the panel.
  *
  * [Aplicar] applies the sure groups only, with the default course that stays, and the hash of the preview it just
@@ -191,7 +191,7 @@ export const quickDedupe = async({api, strings, toast, onError, undo, reload, ca
 };
 
 /**
- * «Unificar semillas» with the selected categories as sources, in one click.
+ * «Unificar categorías» with the selected categories as sources, in one click.
  *
  * The target is the top-level category «Semillas» (normalized), created by create_seedroot when it is missing. The
  * selected categories inside it are left as they are; when all of them are inside it, there is nothing to merge
