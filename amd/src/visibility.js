@@ -24,7 +24,7 @@
  */
 
 import {setCourseVisible} from 'tool_ceaorganizador/treeview';
-import {exclusive} from 'tool_ceaorganizador/selection';
+import {exclusive, outerIds, selectedCategoryIds} from 'tool_ceaorganizador/selection';
 import {splitBatches} from 'tool_ceaorganizador/renamepanel';
 
 /** @var {Number} Most courses per request; the server refuses more (set_visibility::MAXITEMS). */
@@ -37,6 +37,40 @@ export const MAX_BATCH = 100;
  * @returns {Number[]}
  */
 export const selectedCourseIds = (items) => items.filter((item) => item.type === 'course').map((item) => item.id);
+
+/**
+ * What «Ocultar seleccionados» / «Mostrar seleccionados» writes: the outer categories of the selection, with
+ * everything below them, and the selected courses that are not already inside one of them.
+ *
+ * @param {Object[]} items Items {type, id}, as selection.items() gives them.
+ * @param {Object} model Tree model, with isDescendant(ancestor, id).
+ * @param {Function} categoryOf Returns the category of a course, or undefined when it is not known.
+ * @returns {{categoryids: Number[], courseids: Number[]}}
+ */
+export const visibilityTargets = (items, model, categoryOf) => {
+    const categoryids = outerIds(model, selectedCategoryIds(items));
+    const covered = (category) => categoryids.some((id) => id === category || model.isDescendant(id, category));
+    const courseids = selectedCourseIds(items).filter((id) => {
+        const category = categoryOf(id);
+        return category === undefined || !covered(category);
+    });
+    return {categoryids, courseids};
+};
+
+/**
+ * Category of each course already loaded in the tree.
+ *
+ * @param {Map} cache The cache of the tree view: categoryid → {items}.
+ * @returns {Function} courseid → categoryid, or undefined.
+ */
+export const loadedCategoryOf = (cache) => (courseid) => {
+    for (const [categoryid, entry] of cache) {
+        if (entry.items.some((course) => course.id === courseid)) {
+            return categoryid;
+        }
+    }
+    return undefined;
+};
 
 /**
  * Builds the action.

@@ -35,7 +35,7 @@ namespace tool_ceaorganizador\local;
  * «Mostrar todo» is not the core «Show»: every hidden item ends 1/1; the visible ones are not touched.
  *
  * The writes are bulk updates through mover::set_visibility_states(), CHUNK items per transaction (categories first,
- * then courses), with the journal row rewritten in the same transaction, as batchrunner does: a failure rolls back
+ * then courses), with the journal row rewritten in the same transaction: a failure rolls back
  * only its chunk, and what was committed before stays recorded and can be undone (partial_exception); when the first
  * chunk fails, the empty row is deleted. After the chunks, once: the purge of the category and course caches, then one
  * course_category_updated per changed category (no course_updated per course, as the core hide() and show()). The

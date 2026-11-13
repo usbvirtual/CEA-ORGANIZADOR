@@ -93,11 +93,6 @@ class get_courses extends external_api {
                 'sortorder' => new external_value(PARAM_INT, 'Sort order'),
                 'visible' => new external_value(PARAM_BOOL, 'Visible'),
                 'path' => new external_value(PARAM_RAW, 'Formatted path of its category'),
-                'dup' => new external_value(PARAM_ALPHA, 'base, repeated, possible or empty (only within one category)'),
-                'dupreasons' => new external_multiple_structure(
-                    new external_value(PARAM_ALPHA, 'Rule of a repeated course, or reason of a possible one')
-                ),
-                'dupbase' => new external_value(PARAM_RAW, 'Formatted name of the course that stays, or of the one it may repeat'),
             ])),
             'total' => new external_value(PARAM_INT, 'Number of matching courses'),
             'perpage' => new external_value(PARAM_INT, 'Courses per page'),

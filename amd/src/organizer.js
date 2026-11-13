@@ -27,25 +27,24 @@ import Config from 'core/config';
 import * as api from 'tool_ceaorganizador/api';
 import {createModel} from 'tool_ceaorganizador/treemodel';
 import {decodeEntities} from 'tool_ceaorganizador/text';
-import {render, format, syncSelection, siteDuplicates, showDupSummary} from 'tool_ceaorganizador/treeview';
+import {render, format, syncSelection} from 'tool_ceaorganizador/treeview';
 import * as toast from 'tool_ceaorganizador/toast';
 import {createMover} from 'tool_ceaorganizador/mover';
 import {attach as attachDrag, describeItem, courseIds} from 'tool_ceaorganizador/dragdrop';
 import {attach as attachKeyboard} from 'tool_ceaorganizador/keyboard';
 import {open as openPicker} from 'tool_ceaorganizador/movepicker';
-import {createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCategoryIds} from 'tool_ceaorganizador/selection';
+import {
+    createSelection, loadSubtreeCourses, loadAllPages, exclusive, selectedCategoryIds, outerIds,
+} from 'tool_ceaorganizador/selection';
 import {open as openSort} from 'tool_ceaorganizador/sortpanel';
 import {open as openRename} from 'tool_ceaorganizador/renamepanel';
 import {open as openSuggest} from 'tool_ceaorganizador/suggestpanel';
-import {open as openMerge} from 'tool_ceaorganizador/mergepanel';
 import {open as openClone} from 'tool_ceaorganizador/clonepanel';
 import {open as openCloneProgress} from 'tool_ceaorganizador/cloneprogress';
 import {open as openHistory} from 'tool_ceaorganizador/historypanel';
 import {open as openDelete} from 'tool_ceaorganizador/deletepanel';
-import {open as openDedupe} from 'tool_ceaorganizador/dedupepanel';
-import {quickDedupe, quickMerge, fromSelection, outerIds} from 'tool_ceaorganizador/oneclick';
-import {createVisibility, selectedCourseIds} from 'tool_ceaorganizador/visibility';
-import {run as runVisibilityTree, treeButtons} from 'tool_ceaorganizador/visibilitytree';
+import {createVisibility, visibilityTargets, loadedCategoryOf} from 'tool_ceaorganizador/visibility';
+import {run as runVisibilityTree} from 'tool_ceaorganizador/visibilitytree';
 
 const SEARCH_DELAY = 250;
 const MIN_COURSE_SEARCH = 3;
@@ -123,24 +122,6 @@ const REQUESTS = [
     {key: 'cronwarning', component: 'tool_ceaorganizador'},
     {key: 'confirm', component: 'tool_ceaorganizador'},
     {key: 'coursecount', component: 'tool_ceaorganizador'},
-    {key: 'dedupe', component: 'tool_ceaorganizador'},
-    {key: 'dedupeapply', component: 'tool_ceaorganizador'},
-    {key: 'dedupecategory', component: 'tool_ceaorganizador'},
-    {key: 'dedupecategorynow', component: 'tool_ceaorganizador'},
-    {key: 'dedupeconfirm', component: 'tool_ceaorganizador'},
-    {key: 'dedupedone', component: 'tool_ceaorganizador'},
-    {key: 'dedupefolder', component: 'tool_ceaorganizador'},
-    {key: 'dedupegroups', component: 'tool_ceaorganizador'},
-    {key: 'dedupeinclude', component: 'tool_ceaorganizador'},
-    {key: 'dedupekeep', component: 'tool_ceaorganizador'},
-    {key: 'dedupemodified', component: 'tool_ceaorganizador'},
-    {key: 'dedupenone', component: 'tool_ceaorganizador'},
-    {key: 'dedupenote', component: 'tool_ceaorganizador'},
-    {key: 'dedupenothing', component: 'tool_ceaorganizador'},
-    {key: 'dedupereason_key', component: 'tool_ceaorganizador'},
-    {key: 'dedupereason_name', component: 'tool_ceaorganizador'},
-    {key: 'dedupereason_shortname', component: 'tool_ceaorganizador'},
-    {key: 'dedupestale', component: 'tool_ceaorganizador'},
     {key: 'deleteapply', component: 'tool_ceaorganizador'},
     {key: 'deletecategory', component: 'tool_ceaorganizador'},
     {key: 'deletedone', component: 'tool_ceaorganizador'},
@@ -160,19 +141,7 @@ const REQUESTS = [
     {key: 'dropbefore', component: 'tool_ceaorganizador'},
     {key: 'dropcancelled', component: 'tool_ceaorganizador'},
     {key: 'dropinside', component: 'tool_ceaorganizador'},
-    {key: 'dupbase', component: 'tool_ceaorganizador'},
-    {key: 'dupbasetitle', component: 'tool_ceaorganizador'},
-    {key: 'dupcount', component: 'tool_ceaorganizador'},
-    {key: 'dupcountone', component: 'tool_ceaorganizador'},
-    {key: 'dupcounttitle', component: 'tool_ceaorganizador'},
-    {key: 'duppossible', component: 'tool_ceaorganizador'},
-    {key: 'duppossibletitle', component: 'tool_ceaorganizador'},
-    {key: 'duprepeated', component: 'tool_ceaorganizador'},
-    {key: 'duprepeatedtitle', component: 'tool_ceaorganizador'},
-    {key: 'dupsummary', component: 'tool_ceaorganizador'},
-    {key: 'dupsummaryone', component: 'tool_ceaorganizador'},
     {key: 'error_generic', component: 'tool_ceaorganizador'},
-    {key: 'error_groupwithoutwinner', component: 'tool_ceaorganizador'},
     {key: 'error_toomanydelete', component: 'tool_ceaorganizador'},
     {key: 'grabbed', component: 'tool_ceaorganizador'},
     {key: 'hidden', component: 'tool_ceaorganizador'},
@@ -180,7 +149,6 @@ const REQUESTS = [
     {key: 'hideselected', component: 'tool_ceaorganizador'},
     {key: 'hidetree', component: 'tool_ceaorganizador'},
     {key: 'hidetreeconfirm', component: 'tool_ceaorganizador'},
-    {key: 'hidetreeselected', component: 'tool_ceaorganizador'},
     {key: 'history', component: 'tool_ceaorganizador'},
     {key: 'history_empty', component: 'tool_ceaorganizador'},
     {key: 'historypage', component: 'tool_ceaorganizador'},
@@ -190,36 +158,6 @@ const REQUESTS = [
     {key: 'keyboardhint', component: 'tool_ceaorganizador'},
     {key: 'loadingcourses', component: 'tool_ceaorganizador'},
     {key: 'loadmore', component: 'tool_ceaorganizador'},
-    {key: 'merge', component: 'tool_ceaorganizador'},
-    {key: 'mergeaction', component: 'tool_ceaorganizador'},
-    {key: 'mergealreadyinseeds', component: 'tool_ceaorganizador'},
-    {key: 'mergeapply', component: 'tool_ceaorganizador'},
-    {key: 'mergeconfirm', component: 'tool_ceaorganizador'},
-    {key: 'mergecourse', component: 'tool_ceaorganizador'},
-    {key: 'mergecreate', component: 'tool_ceaorganizador'},
-    {key: 'mergedone', component: 'tool_ceaorganizador'},
-    {key: 'mergedonerepeated', component: 'tool_ceaorganizador'},
-    {key: 'mergeduplicate', component: 'tool_ceaorganizador'},
-    {key: 'mergeemptied', component: 'tool_ceaorganizador'},
-    {key: 'mergeexisting', component: 'tool_ceaorganizador'},
-    {key: 'mergefrom', component: 'tool_ceaorganizador'},
-    {key: 'mergeinsideleft', component: 'tool_ceaorganizador'},
-    {key: 'mergekeep', component: 'tool_ceaorganizador'},
-    {key: 'mergemove', component: 'tool_ceaorganizador'},
-    {key: 'mergenothing', component: 'tool_ceaorganizador'},
-    {key: 'mergepreview', component: 'tool_ceaorganizador'},
-    {key: 'mergerepeated', component: 'tool_ceaorganizador'},
-    {key: 'mergerepeatedto', component: 'tool_ceaorganizador'},
-    {key: 'mergeseeddefault', component: 'tool_ceaorganizador'},
-    {key: 'mergeseedexists', component: 'tool_ceaorganizador'},
-    {key: 'mergeseedname', component: 'tool_ceaorganizador'},
-    {key: 'mergeskip', component: 'tool_ceaorganizador'},
-    {key: 'mergesources', component: 'tool_ceaorganizador'},
-    {key: 'mergestale', component: 'tool_ceaorganizador'},
-    {key: 'mergetarget', component: 'tool_ceaorganizador'},
-    {key: 'mergetargetnow', component: 'tool_ceaorganizador'},
-    {key: 'mergeto', component: 'tool_ceaorganizador'},
-    {key: 'mergewinner', component: 'tool_ceaorganizador'},
     {key: 'moved', component: 'tool_ceaorganizador'},
     {key: 'movetitle', component: 'tool_ceaorganizador'},
     {key: 'moveto', component: 'tool_ceaorganizador'},
@@ -233,16 +171,6 @@ const REQUESTS = [
     {key: 'opmoveup', component: 'tool_ceaorganizador'},
     {key: 'opremove', component: 'tool_ceaorganizador'},
     {key: 'partialdone', component: 'tool_ceaorganizador'},
-    {key: 'possible', component: 'tool_ceaorganizador'},
-    {key: 'possibleask', component: 'tool_ceaorganizador'},
-    {key: 'possiblecount', component: 'tool_ceaorganizador'},
-    {key: 'possibleno', component: 'tool_ceaorganizador'},
-    {key: 'possiblereason_extra', component: 'tool_ceaorganizador'},
-    {key: 'possiblereason_group', component: 'tool_ceaorganizador'},
-    {key: 'possiblereason_shortname', component: 'tool_ceaorganizador'},
-    {key: 'possiblereason_similar', component: 'tool_ceaorganizador'},
-    {key: 'possiblereview', component: 'tool_ceaorganizador'},
-    {key: 'possibleyes', component: 'tool_ceaorganizador'},
     {key: 'prefix', component: 'tool_ceaorganizador'},
     {key: 'prevpage', component: 'tool_ceaorganizador'},
     {key: 'rename', component: 'tool_ceaorganizador'},
@@ -264,7 +192,6 @@ const REQUESTS = [
     {key: 'reason_tilde', component: 'tool_ceaorganizador'},
     {key: 'reason_variante', component: 'tool_ceaorganizador'},
     {key: 'renameskipped', component: 'tool_ceaorganizador'},
-    {key: 'repeatedfoldervisible', component: 'tool_ceaorganizador'},
     {key: 'replacewith', component: 'tool_ceaorganizador'},
     {key: 'resultscount', component: 'tool_ceaorganizador'},
     {key: 'searchfor', component: 'tool_ceaorganizador'},
@@ -277,7 +204,6 @@ const REQUESTS = [
     {key: 'showselected', component: 'tool_ceaorganizador'},
     {key: 'showtree', component: 'tool_ceaorganizador'},
     {key: 'showtreeconfirm', component: 'tool_ceaorganizador'},
-    {key: 'showtreeselected', component: 'tool_ceaorganizador'},
     {key: 'sortselectedcount', component: 'tool_ceaorganizador'},
     {key: 'stale', component: 'tool_ceaorganizador'},
     {key: 'suffix', component: 'tool_ceaorganizador'},
@@ -314,7 +240,6 @@ export const init = ({root}) => {
     const treeel = rootel.querySelector('[data-region="tree"]');
     const summary = rootel.querySelector('[data-region="summary"]');
     const summarytext = rootel.querySelector('[data-region="summarytext"]');
-    const dupsummary = rootel.querySelector('[data-region="dupsummary"]');
     const input = rootel.querySelector('[data-region="search"]');
     const results = rootel.querySelector('[data-region="courseresults"]');
 
@@ -342,7 +267,6 @@ export const init = ({root}) => {
                 state.cache.clear();
                 current = render(treeel, ctx.model, state);
                 showSummary(fresh.needsortcount);
-                showDupSummary(dupsummary, siteDuplicates(fresh.categories), strings);
                 return null;
             }),
         };
@@ -384,11 +308,6 @@ export const init = ({root}) => {
             decode: decodeEntities,
             trigger,
         });
-        const mergeOptions = (trigger) => ({
-            ...panelOptions(trigger),
-            getModel: () => ctx.model,
-            wwwroot: Config.wwwroot,
-        });
         // Deleting: only categories are sent; only the deleted ones leave the selection.
         const deleteOptions = (trigger, ids) => ({
             ...panelOptions(trigger),
@@ -396,11 +315,11 @@ export const init = ({root}) => {
             onApplied: (deletedids) => selection.removeCategories(deletedids),
         });
         // «Ocultar todo» / «Mostrar todo»: one at a time, and never while another write runs.
-        const visibilityTree = exclusive((trigger, categoryids, show) => {
+        const visibilityTree = exclusive((trigger, categoryids, show, then) => {
             if (mover.busy()) {
                 return null;
             }
-            return runVisibilityTree({...panelOptions(trigger), categoryids, show, doc: document});
+            return runVisibilityTree({...panelOptions(trigger), categoryids, show, then, doc: document});
         });
         // Loading many pages takes a while: one load at a time, with a visible busy state.
         const busyText = document.createElement('span');
@@ -453,12 +372,6 @@ export const init = ({root}) => {
             }
         };
         showSummary(tree.needsortcount);
-        showDupSummary(dupsummary, siteDuplicates(tree.categories), strings);
-        // «Revisar» the repeated courses: opens the top-level categories that have some and focuses the first.
-        const reviewDups = rootel.querySelector('[data-action="reviewdups"]');
-        if (reviewDups) {
-            reviewDups.addEventListener('click', () => current.revealDuplicates());
-        }
 
         // Toolbar: history and the selection bar.
         const toolbar = document.createElement('div');
@@ -488,36 +401,6 @@ export const init = ({root}) => {
             const outer = outerIds(ctx.model, selectedCategoryIds(selection.items()));
             openSuggest({...panelOptions(suggestButton), categoryid: outer.length === 1 ? outer[0] : 0});
         });
-        const mergeButton = document.createElement('button');
-        mergeButton.type = 'button';
-        mergeButton.className = 'btn btn-secondary btn-sm';
-        mergeButton.dataset.action = 'merge';
-        mergeButton.textContent = strings.merge;
-        // With categories selected in the tree, one click: preview, one short question, apply. Without, the panel.
-        const selectedOuter = () => outerIds(ctx.model, selectedCategoryIds(selection.items()));
-        const quickOptions = (trigger) => ({
-            ...mergeOptions(trigger),
-            doc: document,
-            openPanel: (options) => openDedupe({...mergeOptions(trigger), ...options}),
-            openDedupePanel: (options) => openDedupe({...mergeOptions(trigger), ...options}),
-            openMergePanel: (options) => openMerge({...mergeOptions(trigger), ...options}),
-        });
-        mergeButton.addEventListener('click', () => fromSelection({
-            categoryids: selectedOuter(),
-            quick: (categoryids) => quickMerge({...quickOptions(mergeButton), categoryids}),
-            panel: () => openMerge(mergeOptions(mergeButton)),
-        }));
-        // «Quitar repetidos» asks for the category in its own panel.
-        const dedupeButton = document.createElement('button');
-        dedupeButton.type = 'button';
-        dedupeButton.className = 'btn btn-secondary btn-sm';
-        dedupeButton.dataset.action = 'dedupe';
-        dedupeButton.textContent = strings.dedupe;
-        dedupeButton.addEventListener('click', () => fromSelection({
-            categoryids: selectedOuter(),
-            quick: (categoryids) => quickDedupe({...quickOptions(dedupeButton), categoryids}),
-            panel: () => openDedupe(mergeOptions(dedupeButton)),
-        }));
         const bar = document.createElement('div');
         bar.className = 'tool-ceaorganizador-seleccion';
         bar.dataset.region = 'selectionbar';
@@ -550,14 +433,27 @@ export const init = ({root}) => {
             const paths = categoryids.map((id) => ctx.model.pathOf(id).join(' / '));
             openSort({...panelOptions(sortButton), categoryids, paths});
         });
-        // Only courses are shown or hidden: the categories of the selection are left out.
+        // One button for everything selected: the categories with all they hold («Ocultar todo»), after the
+        // confirmation, and then the selected courses that are not inside them. Cancelling writes nothing.
         const visibilityButton = (action, label, visible) => {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn btn-secondary btn-sm';
             button.dataset.action = action;
             button.textContent = label;
-            button.addEventListener('click', () => visibility.apply(selectedCourseIds(selection.items()), visible, button));
+            button.addEventListener('click', () => {
+                const {categoryids, courseids} = visibilityTargets(selection.items(), ctx.model,
+                    loadedCategoryOf(state.cache));
+                const courses = () => (courseids.length ? visibility.apply(courseids, visible, button) : null);
+                if (categoryids.length === 0) {
+                    courses();
+                    return;
+                }
+                const pending = visibilityTree(button, categoryids, visible, courses);
+                if (pending) {
+                    pending.catch(Notification.exception);
+                }
+            });
             return button;
         };
         // Only categories are deleted: the courses of the selection are left out.
@@ -571,8 +467,6 @@ export const init = ({root}) => {
         });
         const hideButton = visibilityButton('hideselection', strings.hideselected, false);
         const showButton = visibilityButton('showselection', strings.showselected, true);
-        // Whole categories of the selection, with everything below them; the courses of the selection are left out.
-        const treeBar = treeButtons({strings, categoryIds: selectedOuter, apply: visibilityTree, doc: document});
         const clearButton = document.createElement('button');
         clearButton.type = 'button';
         clearButton.className = 'btn btn-secondary btn-sm';
@@ -586,12 +480,10 @@ export const init = ({root}) => {
             sortButton,
             hideButton,
             showButton,
-            treeBar.hide,
-            treeBar.show,
             deleteButton,
             clearButton
         );
-        toolbar.append(historyButton, suggestButton, mergeButton, dedupeButton, busyText, bar);
+        toolbar.append(historyButton, suggestButton, busyText, bar);
         const hint = document.createElement('p');
         hint.className = 'tool-ceaorganizador-ruta';
         hint.textContent = strings.keyboardhint;
@@ -608,10 +500,6 @@ export const init = ({root}) => {
             const nocategories = selectedCategoryIds(selection.items()).length === 0;
             sortButton.disabled = nocategories;
             deleteButton.disabled = nocategories;
-            treeBar.sync();
-            const nocourses = selectedCourseIds(selection.items()).length === 0;
-            hideButton.disabled = nocourses;
-            showButton.disabled = nocourses;
         });
 
         const reviewButton = rootel.querySelector('[data-action="reviewsort"]');

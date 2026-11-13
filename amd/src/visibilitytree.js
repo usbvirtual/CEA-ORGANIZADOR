@@ -96,9 +96,11 @@ const confirm = ({strings, title, text, trigger, doc}) => new Promise((resolve) 
  * @param {Boolean} options.show True for «Mostrar todo», false for «Ocultar todo».
  * @param {Element} [options.trigger] Gets the focus back when the question closes.
  * @param {Document} [options.doc]
+ * @param {Function} [options.then] Runs after an apply, or when there was nothing to write; not on cancel or error.
  * @returns {Promise<Object|null>} The result of the apply; null when nothing was applied.
  */
-export const run = async({api, strings, toast, onError, undo, reload, categoryids, show, trigger, doc = document}) => {
+export const run = async({api, strings, toast, onError, undo, reload, categoryids, show, trigger, doc = document,
+        then = () => null}) => {
     if (!categoryids.length) {
         return null;
     }
@@ -114,6 +116,7 @@ export const run = async({api, strings, toast, onError, undo, reload, categoryid
     const total = preview.total === undefined ? preview.categories + preview.courses : preview.total;
     if (total === 0) {
         toast.show(strings.visibilitytreenothing);
+        await then();
         return null;
     }
     const ok = await confirm({
@@ -145,39 +148,6 @@ export const run = async({api, strings, toast, onError, undo, reload, categoryid
     } catch (error) {
         onError(error);
     }
+    await then();
     return result;
-};
-
-/**
- * The two buttons of the selection bar: «Ocultar todo lo seleccionado» and «Mostrar todo lo seleccionado».
- *
- * Only the categories of the selection count (their courses come with them); the courses selected on their own are
- * left to «Ocultar/Mostrar seleccionados».
- *
- * @param {Object} options
- * @param {Object} options.strings hidetreeselected and showtreeselected.
- * @param {Function} options.categoryIds Returns the selected categories, the outer ones only.
- * @param {Function} options.apply Called with (button, categoryids, show).
- * @param {Document} [options.doc]
- * @returns {{hide: Element, show: Element, sync: Function}} sync() disables both when no category is selected.
- */
-export const treeButtons = ({strings, categoryIds, apply, doc = document}) => {
-    const make = (action, label, show) => {
-        const button = doc.createElement('button');
-        button.type = 'button';
-        button.className = 'btn btn-secondary btn-sm';
-        button.dataset.action = action;
-        button.textContent = label;
-        button.addEventListener('click', () => apply(button, categoryIds(), show));
-        return button;
-    };
-    const hide = make('hidetreeselection', strings.hidetreeselected, false);
-    const show = make('showtreeselection', strings.showtreeselected, true);
-    const sync = () => {
-        const none = categoryIds().length === 0;
-        hide.disabled = none;
-        show.disabled = none;
-    };
-    sync();
-    return {hide, show, sync};
 };

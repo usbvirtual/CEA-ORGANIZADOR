@@ -66,7 +66,7 @@ Con el foco en el árbol: flechas para navegar; **Espacio** toma el elemento y l
 
 Cada opción aparece en un solo lugar:
 
-- **Barra superior:** «Historial», «Sugerir correcciones», «Unificar categorías» y «Quitar repetidos». Al marcar algo aparece la barra de selección: «Renombrar», «Clonar a periodo…», «Auto ordenar seleccionadas», «Ocultar seleccionados», «Mostrar seleccionados», «Ocultar todo lo seleccionado», «Mostrar todo lo seleccionado», «Borrar seleccionadas» y «Limpiar». Para actuar sobre una sola categoría o un solo curso, márquelo con su casilla (o **S**) y use la barra.
+- **Barra superior:** «Historial» y «Sugerir correcciones». Al marcar algo aparece la barra de selección: «Renombrar», «Clonar a periodo…», «Auto ordenar seleccionadas», «Ocultar seleccionados», «Mostrar seleccionados», «Borrar seleccionadas» y «Limpiar». Para actuar sobre una sola categoría o un solo curso, márquelo con su casilla (o **S**) y use la barra.
 - **Cada fila:** el botón «Mover a…».
 - **Menú ⋯ de una categoría:** «Seleccionar contenido» (marca todos sus cursos, también los de sus subcategorías) y «Abrir en Moodle». Los cursos no tienen menú.
 
@@ -76,13 +76,13 @@ Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar selec
 
 ### Ocultar y mostrar cursos
 
-- Seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Solo cuentan los cursos de la selección; las categorías seleccionadas se ignoran. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
+- Seleccione los cursos y use «Ocultar seleccionados» o «Mostrar seleccionados». Si en la selección también hay categorías, primero se ocultan o muestran ellas con todo lo que tienen dentro (ver abajo) y después los cursos marcados que no están dentro de ellas; si se cancela esa pregunta no se cambia nada. Se envían en lotes de **100** cursos, uno tras otro, con un solo aviso y un solo «Deshacer» que deshace todos los lotes.
 
 Es lo mismo que el ojo de «Gestionar cursos y categorías»: un curso oculto no lo ven los estudiantes. Hace falta `moodle/course:visibility` en **cada** curso. Cada lote de 100 es todo o nada: si falta el permiso en un curso, no se cambia ninguno de su lote, pero los lotes anteriores ya quedaron aplicados (y el aviso «Deshacer» los deshace). Los cursos que ya estaban así se omiten. La etiqueta «Oculta» del árbol se actualiza sin recargar, y aparece el aviso «Deshacer». Deshacer devuelve a cada curso su visibilidad anterior y se rechaza si alguien cambió la visibilidad de alguno después.
 
 ### Ocultar todo y mostrar todo
 
-- Seleccione una o varias categorías y use «Ocultar todo lo seleccionado» o «Mostrar todo lo seleccionado». Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
+- Seleccione una o varias categorías y use «Ocultar seleccionados» o «Mostrar seleccionados» (el mismo botón que para los cursos). Solo cuentan las categorías de la selección (con todo lo que tienen dentro); una categoría que está dentro de otra seleccionada ya va con ella.
 
 Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y a **todos** sus cursos. Antes de aplicar se cuenta lo que de verdad cambia de visibilidad y se pregunta una vez, por ejemplo «Se ocultarán 12 categorías y 340 cursos».
 
@@ -98,6 +98,8 @@ Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y
 ### Historial y deshacer
 
 Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial, y aparece un aviso «Deshacer» durante 8 segundos. El historial se conserva 90 días; una tarea programada borra lo más viejo. Deshacer devuelve el estado anterior, incluida la visibilidad si el movimiento la cambió. **Se rechaza si algo cambió después de la operación** (por ejemplo, otra persona movió o renombró el elemento) y se indica qué cambió; en ese caso no se modifica nada.
+
+«Unificar categorías» y «Quitar repetidos» ya no están en el organizador. Lo que se hizo con ellas antes sigue en el historial y se puede deshacer como siempre.
 
 ### Sugerir correcciones
 
@@ -125,108 +127,6 @@ Propone nombres corregidos para categorías y cursos y deja aplicarlos de una ve
 
 **Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **100**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar». Cada lote es todo o nada: si un cambio de un lote falla (por ejemplo, falta un permiso o un nombre corto se ocupó), no se aplica nada de ese lote, pero los lotes anteriores ya quedaron aplicados. Lo mismo vale para «Renombrar» con más de 100 elementos.
 
-### Unificar categorías
-
-Reúne en una sola categoría de semillas los cursos que están repartidos en varias categorías de origen (por ejemplo, las semillas de cada sede), conservando la estructura de carpetas.
-
-**Orden recomendado.** Primero «Sugerir correcciones», luego «Unificar categorías» y al final «Clonar a periodo». Así se unifican nombres ya corregidos (los repetidos se detectan por el nombre) y las copias salen con los nombres bien escritos.
-
-**Dónde está.** En la barra del organizador, «Unificar categorías».
-
-**Cómo se usa.**
-
-1. Elegir la categoría de destino. Si no existe, «Crear categoría de semillas» crea una de nivel superior con el nombre escrito (por defecto «Semillas»). Si ya hay una de nivel superior con el mismo nombre, sin importar tildes ni mayúsculas, se reutiliza y el panel lo avisa.
-2. Marcar las categorías de origen. No pueden ser el destino, contenerlo, estar dentro de él, ni estar una dentro de otra.
-3. Pulsar «Vista previa»: por cada curso se ve de dónde viene, a dónde va y qué categorías se crearían.
-4. Revisar los repetidos: en cada fila de un grupo se elige «Conservar», «A Repetidos» o «Dejar en el origen» (este último solo para cursos de origen). Pulsar «Unificar (N)».
-
-**Destino en espejo.** Cada curso va al destino con la misma ruta que tenía **debajo de su categoría de origen**; la categoría de origen no se reproduce. Por ejemplo, con origen `Semillas Sede Norte` y destino `Semillas`, un curso de `Semillas Sede Norte › Ingeniería › Sistemas` queda en `Semillas › Ingeniería › Sistemas`. Las categorías que no existan en el destino se crean; las que existen se reutilizan comparando el nombre sin importar tildes ni mayúsculas (`Ingenieria` e `INGENIERÍA` son la misma).
-
-**Repetidos.** Se comparan los cursos que van a la misma categoría de destino: los que ya están allí y los de los orígenes que llegan a ella (también entre orígenes distintos). Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
-
-1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
-2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
-3. **Mismo nombre corto base**: sin «copia», sin periodo al final, siempre con separador (`-2025-2`, `_2025-02`; en `CAL20261` las cifras son parte del código) y sin el contador «_1» que Moodle agrega cuando el nombre corto ya existe, sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2`, `CALC1_2025-02` y `CALC1 (copia)` son el mismo). Un «-1» suelto **no** se quita: `MAT-1` y `MAT-2`, `ING-I` e `ING-II` o `FIS1` y `FIS2` son cursos distintos. Si quedan menos de tres letras o dígitos, esta regla no se aplica. Además, el nombre corto solo une dos cursos cuyos nombres comparten al menos una palabra significativa (tres letras o más, sin contar «de», «del», «la», «el», «y», «en» y parecidas): `CAL101` «Cálculo Diferencial» y `CAL101_2` «Física» **no** son el mismo.
-
-La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. Pero dos cursos cuyos nombres solo se diferencian en un número de nivel («Cálculo I» y «Cálculo II») o en el **grupo** («… G1» y «… G2», «Física Grupo A» y «Física Grupo B», «Práctica Profesional I - Grupo 1» y «- Grupo 2») nunca quedan en el mismo grupo, por ninguna regla ni a través de un tercero: son secciones distintas, con estudiantes distintos. «Cálculo I» sí puede unirse con «Cálculo I G1», pero entonces no con «Cálculo I G2». En cada grupo se conserva por defecto un curso **visible** antes que uno oculto; entre ellos, el **más completo** (el que tiene más actividades, sin contar las que se están borrando); luego el **modificado más recientemente** y, en empate, el de id más alto. Cada curso muestra cuántas actividades tiene; si el que se conserva está oculto, el panel lo avisa; los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
-
-Los repetidos de la unificación van a una carpeta oculta «Repetidos» directamente bajo la categoría de destino (se crea si no existe; si ya hay una con ese nombre, sin importar tildes ni mayúsculas, se reutiliza). Un curso que ya estaba en el destino y pierde frente a uno más reciente del origen aparece como fila propia («Ya está en el destino») y también va a «Repetidos». Lo que ya está dentro de «Repetidos» nunca se compara.
-
-**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en el destino, en cada origen, en la categoría actual de cada curso movido (también la de un curso del destino que va a «Repetidos») y en la categoría existente de la que cuelgan las categorías nuevas; y `moodle/course:changecategory` en cada curso movido. Si falta uno, no se cambia nada. Para crear la categoría de semillas hace falta además `moodle/category:manage` en el sistema.
-
-**Deshacer.** Queda una entrada en el historial («Unificar en … · cursos: N») y se puede deshacer, con dos advertencias:
-
-- Los cursos vuelven a su categoría original, pero **no a su posición original** dentro de ella: quedan al principio.
-- Las categorías que la unificación creó se borran solo si están vacías, con la misma regla que «Borrar categorías» (sin cursos, subcategorías ni contenido o configuración propia). Si tienen algo, se conservan y hay que borrarlas a mano.
-
-Deshacer se rechaza, con los conflictos listados, si algún curso ya no está donde lo dejó la unificación o si su categoría original desapareció. Si mover a una categoría oculta (como «Repetidos») ocultó un curso, deshacer lo vuelve a mostrar. La carpeta «Repetidos» se borra al deshacer solo si la unificación la creó y quedó vacía.
-
-**Siempre queda uno en el destino.** En un grupo que tiene un curso que ya estaba en el destino, al menos un curso debe terminar en el destino: si se deja el ganador en el origen o se mandan todos a «Repetidos», el panel lo avisa y no deja unificar (el servidor también lo rechaza, nombrando el curso).
-
-**Carpeta visible.** Si ya existe una carpeta «Repetidos» visible, el panel avisa: «La carpeta Repetidos existe y está visible: los cursos movidos quedarán visibles». La carpeta no se cambia.
-
-**Si falla a mitad.** Las categorías se crean en una transacción corta y los cursos se mueven después por destino, de a 100. Si una tanda falla, solo esa se revierte: lo que ya se movió queda registrado en el historial y el panel lo avisa con «Deshacer» para ese registro.
-
-**Categorías de origen vacías.** La unificación **no** las borra. Al terminar, el panel lista con enlaces las que quedaron sin cursos ni subcategorías, de la más profunda a la más superficial; se pueden borrar después con «Borrar categorías» o desde Moodle.
-
-**Límite.** Máximo **1000** cursos por unificación; si hay más, se rechaza. Se divide en varias unificaciones.
-
-### Quitar repetidos
-
-Busca cursos repetidos en una categoría y en **todas sus subcategorías** y mueve los sobrantes a una carpeta oculta «Repetidos». Cada categoría se compara solo consigo misma: «Cálculo I» en dos programas distintos son dos cursos distintos y no se tocan.
-
-**Dónde está.** «Quitar repetidos» en la barra del organizador (pide la categoría, con el mismo buscador que el destino de «Unificar categorías»); con categorías seleccionadas actúa sobre ellas.
-
-**Reglas.** Dos cursos de la misma categoría son el mismo si se cumple cualquiera de estas reglas:
-
-1. **Mismo nombre** completo, sin importar tildes, mayúsculas ni espacios.
-2. **Mismo nombre sin marcas al final**: se quitan «copia», «copia 2», «(copia)», «Copia de …» o «Copy of …» al principio, un periodo («2025-2», «2025-02», «(2025-2)») y un grupo («Grupo 1», «Grupo A», «G1»). «Cálculo I», «Cálculo I (copia)» y «Cálculo I 2025-2» son el mismo; «Cálculo I» y «Cálculo II», «Física 1» y «Física 2» o «Inglés I» e «Inglés IV» **no**: los números de nivel nunca se quitan.
-3. **Mismo nombre corto base**: sin «copia», sin periodo al final, siempre con separador (`-2025-2`, `_2025-02`; en `CAL20261` las cifras son parte del código) y sin el contador «_1» que Moodle agrega cuando el nombre corto ya existe, sin importar mayúsculas (`CALC1`, `CALC1_1`, `CALC1-2025-2`, `CALC1_2025-02` y `CALC1 (copia)` son el mismo). Un «-1» suelto **no** se quita: `MAT-1` y `MAT-2`, `ING-I` e `ING-II` o `FIS1` y `FIS2` son cursos distintos. Si quedan menos de tres letras o dígitos, esta regla no se aplica. Además, el nombre corto solo une dos cursos cuyos nombres comparten al menos una palabra significativa (tres letras o más, sin contar «de», «del», «la», «el», «y», «en» y parecidas): `CAL101` «Cálculo Diferencial» y `CAL101_2` «Física» **no** son el mismo.
-
-La agrupación es transitiva: si A se parece a B por el nombre y B a C por el nombre corto, A, B y C forman un grupo. Pero dos cursos cuyos nombres solo se diferencian en un número de nivel («Cálculo I» y «Cálculo II») o en el **grupo** («… G1» y «… G2», «Física Grupo A» y «Física Grupo B», «Práctica Profesional I - Grupo 1» y «- Grupo 2») nunca quedan en el mismo grupo, por ninguna regla ni a través de un tercero: son secciones distintas, con estudiantes distintos. «Cálculo I» sí puede unirse con «Cálculo I G1», pero entonces no con «Cálculo I G2». En cada grupo se conserva por defecto un curso **visible** antes que uno oculto; entre ellos, el **más completo** (el que tiene más actividades, sin contar las que se están borrando); luego el **modificado más recientemente** y, en empate, el de id más alto. Cada curso muestra cuántas actividades tiene; si el que se conserva está oculto, el panel lo avisa; los demás van a una carpeta **oculta** «Repetidos». Mover a una carpeta oculta oculta el curso (comportamiento de Moodle). Nunca se borra ningún curso.
-
-**Cómo se usa.** La vista previa muestra cada grupo con la ruta de su categoría (de dónde viene cada curso) y, por curso, su nombre corto, la fecha de modificación y la regla que lo agrupó. En cada grupo se elige con un botón de opción cuál se conserva y con la casilla «Incluir este grupo» si se toca; un grupo sin marcar no se mueve. El botón dice cuántos cursos se moverán: «Mover N repetidos a Repetidos».
-
-**Carpeta «Repetidos».** Una sola, directamente bajo la categoría elegida, creada **oculta** si no existe (si ya hay una con ese nombre, sin importar tildes ni mayúsculas, se reutiliza). Los cursos llegan a ella sin subcarpetas; la vista previa muestra su ruta de origen. Ninguna carpeta llamada «Repetidos», ni lo que tenga dentro, se analiza. Si la carpeta ya existe y está visible, el panel avisa que los cursos movidos quedarán visibles; la carpeta no se cambia. Si el lote se interrumpe a mitad, lo movido queda en el historial y el panel ofrece «Deshacer».
-
-**Permisos.** Además de `tool/ceaorganizador:manage`: `moodle/category:manage` en la categoría elegida, en la carpeta «Repetidos» si ya existe y en la categoría de cada curso movido; `moodle/course:changecategory` en cada curso movido. Si falta uno, no se cambia nada.
-
-**Deshacer.** Queda una entrada en el historial («Quitar repetidos en … · cursos: N»). Deshacer devuelve los cursos a su categoría, los vuelve a mostrar si la carpeta oculta los ocultó y borra la carpeta solo si este lote la creó y quedó vacía. Se rechaza, con los conflictos listados, si algún curso se movió después.
-
-**Límites.** La vista previa revisa como máximo **5000** cursos (la categoría y sus subcategorías, sin contar las carpetas «Repetidos»); si hay más, pide elegir una categoría más pequeña, como un programa o un semestre. Se mueven como máximo **1000** cursos por lote; si son más, se rechaza con ese número: excluir grupos o trabajar por subcategorías.
-
-### Posibles repetidos
-
-Además de los repetidos seguros, «Quitar repetidos» y «Unificar categorías» señalan **posibles repetidos**: cursos de la misma categoría (o que van al mismo destino) con nombres iguales o muy parecidos que las reglas seguras no juntan. La herramienta no decide: pregunta «¿Son el mismo curso?» con [Sí, es repetido] y [No]; por defecto es **No** y no se mueve nada. Con «Sí» pasan a ser un grupo como los demás, con el ganador por defecto, que se puede cambiar. Motivos:
-
-- **Grupos distintos** (mismo nombre con «G1» y «G2», «Grupo A» y «Grupo B»), con el aviso «son grupos distintos; normalmente NO son repetidos».
-- **Mismo nombre corto** con nombres que no comparten ninguna palabra.
-- **Una palabra o un paréntesis de más** al final («Física» y «Física Mecánica»).
-- **Nombres casi iguales**: las mismas palabras en otro orden, o, en nombres de 12 caracteres o más, una diferencia de hasta dos letras.
-
-Nunca se sugieren cursos de distinto nivel («Cálculo I» y «Cálculo II», «Programación» y «Programación I»). Solo se consideran cursos que no están ya en un grupo seguro. El servidor acepta un posible grupo confirmado solo si está en la vista previa que se aplica.
-
-### Desde la selección, en un clic
-
-Si hay categorías marcadas en el árbol, los botones de la barra no abren el panel:
-
-- **Quitar repetidos** analiza las categorías marcadas (cada una con sus subcategorías; una marcada dentro de otra marcada se cubre con esta) y pregunta «Se moverán N repetidos a Repetidos en M categorías» con [Aplicar] [Ver detalle] [Cancelar]. [Aplicar] mueve con los ganadores por defecto, en un solo registro del historial (un solo «Deshacer»); cada categoría marcada recibe su propia carpeta «Repetidos». [Ver detalle] abre el panel con esas categorías. Si no hay nada, avisa «No se encontraron cursos repetidos».
-- **Unificar categorías** usa las categorías marcadas como orígenes y como destino la categoría de nivel superior «Semillas» (sin importar tildes ni mayúsculas); si no existe, la crea al pulsar el botón, como «Crear categoría de semillas» (si luego se cancela, queda vacía y se puede borrar). Pregunta «Se moverán X cursos a «Semillas» y Y repetidos a Repetidos». Las marcadas que ya están dentro de Semillas no se tocan (el texto lo dice).
-- **Unificar categorías dentro de Semillas:** si todas las marcadas están dentro de Semillas y son dos o más, la primera en el árbol (la de más arriba) es el destino y las demás se unifican en ella, con la misma pregunta. Los cursos repetidos entre ellas van a la carpeta oculta «Repetidos» del destino (se puede deshacer) y los posibles repetidos se ven con [Revisar]. Una categoría marcada dentro de otra marcada va con ella. Con una sola, no hay nada que unificar y hace «Quitar repetidos» sobre ella.
-- Si hay posibles repetidos, la pregunta añade «Además hay K posibles repetidos que necesitan tu confirmación» con [Revisar], que abre el panel; [Aplicar] solo aplica los seguros.
-
-Sin categorías marcadas, los botones abren el panel como siempre. Se respetan los mismos límites (1000 cursos movidos; 5000 revisados en «Quitar repetidos») y la misma regla de que quede un curso en el destino.
-
-### Ver los repetidos en el árbol
-
-Sin abrir «Quitar repetidos», el árbol señala los cursos repetidos con las mismas reglas (solo se lee, no se mueve nada):
-
-- **En cada curso**, al abrir su categoría: «Base» en el curso que se conservaría (el mismo orden de «Quitar repetidos»: visible, más actividades, más reciente), «Repetido» en los demás de su grupo y «¿Repetido?» en los posibles repetidos. Al pasar el puntero, la insignia dice por qué («mismo nombre», «mismo nombre sin copia, periodo ni grupo», «mismo nombre corto») y de qué curso es repetido; los lectores de pantalla lo leen también. Se compara toda la categoría, no solo la página de 100 cursos que se ve.
-- **En cada categoría**, «N repetidos» cuenta los repetidos seguros de la categoría y de todas sus subcategorías. Así se sigue el rastro desde la facultad hasta el semestre donde están. Un clic en la insignia abre esa categoría y, por debajo, las que tienen repetidos (hasta 25 a la vez), con sus cursos.
-- **En la barra superior**, «M cursos repetidos en el sitio» con [Revisar], que abre las categorías de nivel superior que tienen repetidos.
-
-Los posibles repetidos no se cuentan en «N repetidos» (son una pregunta, no un hecho). Cada categoría se compara solo consigo misma, y las carpetas «Repetidos» y lo que tienen dentro nunca se cuentan ni se marcan. En una búsqueda en todo el sitio los cursos no llevan insignia. Los números se calculan cada vez que se carga o recarga el árbol: con unos 6000 cursos, el cálculo agrega del orden de 150 ms.
-
 ### Borrar categorías
 
 Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni contenido.
@@ -245,7 +145,7 @@ Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni cont
 
 ### Clonar semillas a un periodo
 
-Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno. Se recomienda hacerlo después de «Sugerir correcciones» y «Unificar categorías».
+Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno. Se recomienda hacerlo después de «Sugerir correcciones».
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
@@ -291,7 +191,7 @@ Si falta un permiso en una semilla, esa fila se omite y las demás se clonan. Si
 
 En un sitio grande y con mucho uso (como eCampus, con miles de cursos y muchos docentes y estudiantes conectados a la vez):
 
-- **Operaciones masivas fuera de las horas pico.** «Unificar categorías», «Auto ordenar» del nivel superior (o de todo el sitio) y «Clonar a periodo» reescriben el orden de muchas categorías, mueven muchos cursos o encolan copias; cada una purga cachés de cursos y categorías de todo el sitio. Conviene hacerlas temprano, de noche o en fin de semana.
+- **Operaciones masivas fuera de las horas pico.** «Auto ordenar» del nivel superior (o de todo el sitio) y «Clonar a periodo» reescriben el orden de muchas categorías, mueven muchos cursos o encolan copias; cada una purga cachés de cursos y categorías de todo el sitio. Conviene hacerlas temprano, de noche o en fin de semana.
 - **Renombrar y ocultar o mostrar cursos va en lotes de 100.** Cada curso pasa por la función del núcleo que actualiza el curso y purga cachés; los lotes cortos evitan peticiones largas. El panel parte la lista solo.
 - **Clonar en lotes.** Cada copia es una tarea en segundo plano (copia de seguridad y restauración). Para que el cron no corra varias copias a la vez y no cargue el servidor, se recomienda limitarlas a una a la vez en `config.php`:
 

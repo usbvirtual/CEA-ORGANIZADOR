@@ -32,7 +32,7 @@ use core_external\external_value;
 use tool_ceaorganizador\local\tree;
 
 /**
- * All the categories, with their sort recommendation, their repeated courses and the count for the summary.
+ * All the categories, with their sort recommendation and the count for the summary.
  */
 class get_tree extends external_api {
     /**
@@ -84,8 +84,6 @@ class get_tree extends external_api {
                 'visible' => new external_value(PARAM_BOOL, 'Visible'),
                 'coursecount' => new external_value(PARAM_INT, 'Number of courses'),
                 'needsort' => new external_value(PARAM_BOOL, 'Its subcategories or courses differ from the proposed order'),
-                'dupcount' => new external_value(PARAM_INT, 'Repeated courses directly in it (sure groups only)'),
-                'dupcounttotal' => new external_value(PARAM_INT, 'Repeated courses in it and in all its subcategories'),
             ])),
             'rootneedsort' => new external_value(PARAM_BOOL, 'The top-level categories differ from the proposed order'),
             'needsortcount' => new external_value(PARAM_INT, 'Categories with needsort, plus 1 when rootneedsort'),

@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 import { createSelection } from 'tool_ceaorganizador/selection';
 import { render } from 'tool_ceaorganizador/treeview';
-import { createVisibility, selectedCourseIds } from 'tool_ceaorganizador/visibility';
+import { createVisibility, selectedCourseIds, visibilityTargets, loadedCategoryOf } from 'tool_ceaorganizador/visibility';
 import { open as openHistory } from 'tool_ceaorganizador/historypanel';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -48,6 +48,28 @@ test('los cursos no tienen menú: Ocultar y Mostrar están en la barra de la sel
         assert.equal(li.querySelector('[data-action="menu"]'), null);
         assert.equal(li.getAttribute('aria-keyshortcuts'), 'Space S');
     }
+});
+
+test('un solo Ocultar/Mostrar: categorías exteriores y los cursos que no están dentro de ellas', () => {
+    // A (1) › B (2) › C (3); D (4).
+    const model = createModel([
+        { id: 1, parent: 0, name: 'A', sortorder: 1 },
+        { id: 2, parent: 1, name: 'B', sortorder: 1 },
+        { id: 3, parent: 2, name: 'C', sortorder: 1 },
+        { id: 4, parent: 0, name: 'D', sortorder: 2 },
+    ]);
+    const cache = new Map([[3, { items: [{ id: 30 }] }], [4, { items: [{ id: 40 }] }]]);
+    const items = [
+        { type: 'category', id: 2 },
+        { type: 'category', id: 3 },
+        { type: 'course', id: 30 },
+        { type: 'course', id: 40 },
+        { type: 'course', id: 99 },
+    ];
+    assert.deepEqual(visibilityTargets(items, model, loadedCategoryOf(cache)), { categoryids: [2], courseids: [40, 99] });
+    assert.deepEqual(visibilityTargets([{ type: 'course', id: 40 }], model, loadedCategoryOf(cache)),
+        { categoryids: [], courseids: [40] });
+    assert.equal(loadedCategoryOf(cache)(12345), undefined);
 });
 
 test('la barra envía solo los ids de los cursos seleccionados', async () => {

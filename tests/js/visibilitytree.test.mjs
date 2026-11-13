@@ -4,7 +4,7 @@ import { JSDOM } from 'jsdom';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 import { createSelection } from 'tool_ceaorganizador/selection';
 import { render } from 'tool_ceaorganizador/treeview';
-import { run, treeButtons, fill } from 'tool_ceaorganizador/visibilitytree';
+import { run, fill } from 'tool_ceaorganizador/visibilitytree';
 import { open as openHistory } from 'tool_ceaorganizador/historypanel';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -176,26 +176,23 @@ test('un error del servidor (por ejemplo, demasiados elementos) va a onError y n
     assert.equal(dialogOf(document), null);
 });
 
-test('los botones de la barra de selección envían las categorías y se desactivan sin categorías', () => {
-    const document = page();
-    let ids = [];
-    const sent = [];
-    const bar = treeButtons({
-        strings,
-        categoryIds: () => ids,
-        apply: (button, categoryids, show) => sent.push([button.dataset.action, categoryids, show]),
-        doc: document,
-    });
-    assert.equal(bar.hide.textContent, 'hidetreeselected');
-    assert.equal(bar.show.textContent, 'showtreeselected');
-    assert.equal(bar.hide.disabled, true);
-    assert.equal(bar.show.disabled, true);
-    ids = [2, 7];
-    bar.sync();
-    assert.equal(bar.hide.disabled, false);
-    bar.hide.click();
-    bar.show.click();
-    assert.deepEqual(sent, [['hidetreeselection', [2, 7], false], ['showtreeselection', [2, 7], true]]);
+test('then corre tras aplicar o sin nada que escribir, nunca al cancelar', async () => {
+    const one = setup();
+    let ran = 0;
+    let pending = run({ ...one.options, categoryids: [4], show: false, then: () => { ran += 1; } });
+    await flush();
+    click(one.document, 'cancel');
+    await pending;
+    assert.equal(ran, 0);
+    pending = run({ ...one.options, categoryids: [4], show: false, then: () => { ran += 1; } });
+    await flush();
+    click(one.document, 'apply');
+    await pending;
+    assert.equal(ran, 1);
+
+    const two = setup({ preview: { categories: 0, courses: 0, hash: 'x' } });
+    await run({ ...two.options, categoryids: [4], show: true, then: () => { ran += 1; } });
+    assert.equal(ran, 2);
 });
 
 test('con el api real llega a los servicios con los parámetros exactos', async () => {

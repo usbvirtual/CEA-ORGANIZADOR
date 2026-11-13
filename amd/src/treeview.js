@@ -30,14 +30,6 @@ import {decodeEntities} from 'tool_ceaorganizador/text';
 const STORAGE_KEY = 'tool_ceaorganizador_expanded';
 const SELECTED = 'tool-ceaorganizador-seleccionado';
 const CHECKBOX = ':scope > .tool-ceaorganizador-fila > .tool-ceaorganizador-casilla';
-// Most categories one click on «N repetidos» opens: the one clicked and, breadth first, those below with repeats.
-export const MAX_REVEAL = 25;
-// Bootstrap 4 and 5 classes of the badge of a repeated course, by its mark.
-const DUP_CLASSES = {
-    base: 'badge badge-success bg-success',
-    repeated: 'badge badge-warning bg-warning text-dark',
-    possible: 'badge badge-light bg-light text-dark',
-};
 
 /**
  * Replaces the {$a} placeholder of a Moodle string.
@@ -146,52 +138,6 @@ export const setCourseVisible = (container, id, visible, text) => {
     });
 };
 
-/**
- * Repeated courses of the whole site: the sum over the top-level categories (each counts its subtree).
- *
- * @param {Object[]} rows Categories of get_tree, with parent and dupcounttotal.
- * @returns {Number}
- */
-export const siteDuplicates = (rows) => rows
-    .filter((row) => Number(row.parent) === 0)
-    .reduce((sum, row) => sum + (Number(row.dupcounttotal) || 0), 0);
-
-/**
- * Shows «M cursos repetidos en el sitio» in its region of the top bar, or hides it when there are none.
- *
- * @param {Element|null} region Element with a [data-region="dupsummarytext"] inside.
- * @param {Number} count
- * @param {Object} strings dupsummary and dupsummaryone.
- */
-export const showDupSummary = (region, count, strings) => {
-    if (!region) {
-        return;
-    }
-    region.hidden = count <= 0;
-    const text = region.querySelector('[data-region="dupsummarytext"]');
-    if (text) {
-        text.textContent = count === 1 ? strings.dupsummaryone : format(strings.dupsummary, count);
-    }
-};
-
-/**
- * Description of the badge of a repeated course: why it is marked and which course it repeats.
- *
- * @param {Object} course Course of get_courses, with dup, dupreasons and dupbase (formatted).
- * @param {Object} strings
- * @returns {String} Plain text.
- */
-export const dupDescription = (course, strings) => {
-    const prefix = course.dup === 'possible' ? 'possiblereason_' : 'dedupereason_';
-    const reasons = (course.dupreasons || []).map((reason) => strings[prefix + reason] || reason).join('; ');
-    const base = decodeEntities(course.dupbase || '');
-    if (course.dup === 'base') {
-        return format(strings.dupbasetitle, reasons);
-    }
-    const text = course.dup === 'possible' ? strings.duppossibletitle : strings.duprepeatedtitle;
-    return String(text).replace('{$a->base}', base).replace('{$a->reasons}', reasons);
-};
-
 const defaultStorage = (container) => {
     try {
         return container.ownerDocument.defaultView.localStorage;
@@ -215,7 +161,7 @@ const defaultStorage = (container) => {
  * @param {Function} [state.onAction] Called with (action, item, button) by the category menu:
  *                   selectcontents. Adds the menu button to the categories.
  * @param {String} [state.wwwroot] Site URL, for the "Open in Moodle" link of the menu.
- * @returns {{refresh: Function, toggle: Function, revealDuplicates: Function}}
+ * @returns {{refresh: Function, toggle: Function}}
  */
 export const render = (container, model, state) => {
     const doc = container.ownerDocument;
@@ -403,22 +349,6 @@ export const render = (container, model, state) => {
 
     const hiddenLabel = () => createHiddenLabel(doc, strings.hidden);
 
-    // «Base», «Repetido» or «¿Repetido?» after the name of a course; the reason is its title and hidden text.
-    const dupBadge = (course) => {
-        if (!DUP_CLASSES[course.dup]) {
-            return null;
-        }
-        const label = {base: strings.dupbase, repeated: strings.duprepeated, possible: strings.duppossible}[course.dup];
-        const description = dupDescription(course, strings);
-        const badge = create('span', `tool-ceaorganizador-repetido ${DUP_CLASSES[course.dup]}`, label);
-        badge.dataset.region = 'dup';
-        badge.dataset.dup = course.dup;
-        badge.title = description;
-        badge.id = `tool-ceaorganizador-course-${course.id}-dup`;
-        badge.appendChild(create('span', 'sr-only visually-hidden', ` ${description}`));
-        return badge;
-    };
-
     const isShown = (row) => !state.visible || state.visible.has(row.id);
 
     const shownChildren = (id) => model.children(id).filter(isShown);
@@ -458,11 +388,6 @@ export const render = (container, model, state) => {
                 label.id = `tool-ceaorganizador-course-${course.id}-hidden`;
                 row.appendChild(label);
                 described.push(label.id);
-            }
-            const dup = dupBadge(course);
-            if (dup) {
-                row.appendChild(dup);
-                described.push(dup.id);
             }
             if (described.length) {
                 li.setAttribute('aria-describedby', described.join(' '));
@@ -552,23 +477,6 @@ export const render = (container, model, state) => {
             described.push(badge.id);
             line.appendChild(badge);
         }
-        // «N repetidos» counts the subtree: a click opens the way down to the repeated courses.
-        if (row.dupcounttotal > 0) {
-            const text = row.dupcounttotal === 1 ? strings.dupcountone : format(strings.dupcount, row.dupcounttotal);
-            const dup = create('button', 'tool-ceaorganizador-insignia tool-ceaorganizador-insignia-repetidos', text);
-            dup.type = 'button';
-            dup.tabIndex = -1;
-            dup.dataset.action = 'revealdups';
-            dup.dataset.region = 'dupcount';
-            dup.id = `${prefix}-dup`;
-            dup.title = strings.dupcounttitle;
-            dup.addEventListener('click', (event) => {
-                event.stopPropagation();
-                reveal(li);
-            });
-            described.push(dup.id);
-            line.appendChild(dup);
-        }
         li.setAttribute('aria-describedby', described.join(' '));
         addMoveButton(li, line, decodeEntities(row.name));
         addMenu(li, line, row.id, decodeEntities(row.name));
@@ -615,60 +523,6 @@ export const render = (container, model, state) => {
             saveExpanded(storage, expanded);
         }
     }
-
-    // The category and, breadth first, the categories below it with repeated courses, up to MAX_REVEAL.
-    const trail = (id) => {
-        const ids = new Set([id]);
-        const queue = [id];
-        while (queue.length && ids.size < MAX_REVEAL) {
-            shownChildren(queue.shift()).forEach((child) => {
-                if (child.dupcounttotal > 0 && ids.size < MAX_REVEAL) {
-                    ids.add(child.id);
-                    queue.push(child.id);
-                }
-            });
-        }
-        return ids;
-    };
-
-    // Opens a category and its trail of categories with repeated courses, with their courses (and their badges).
-    function reveal(li) {
-        const ids = trail(Number(li.dataset.id));
-        ids.forEach((id) => expanded.add(id));
-        if (storage) {
-            saveExpanded(storage, expanded);
-        }
-        const openTrail = (item) => {
-            open(item, model.get(Number(item.dataset.id)), Number(item.getAttribute('aria-level')), true);
-            item.querySelectorAll(':scope > [role="group"] > [role="treeitem"][data-type="category"]').forEach((child) => {
-                if (ids.has(Number(child.dataset.id))) {
-                    openTrail(child);
-                }
-            });
-        };
-        openTrail(li);
-    }
-
-    // Top bar «Revisar»: opens the top-level categories with repeated courses and focuses the first one.
-    const revealDuplicates = () => {
-        const items = [...container.querySelectorAll(':scope > [role="treeitem"][data-type="category"]')]
-            .filter((item) => {
-                const row = model.get(Number(item.dataset.id));
-                return row && row.dupcounttotal > 0;
-            });
-        items.forEach((item) => {
-            const id = Number(item.dataset.id);
-            expanded.add(id);
-            open(item, model.get(id), 1, true);
-        });
-        if (storage) {
-            saveExpanded(storage, expanded);
-        }
-        if (items.length) {
-            items[0].focus();
-        }
-        return items.length;
-    };
 
     const visibleItems = () => [...container.querySelectorAll('[role="treeitem"]')]
         .filter((item) => !item.parentElement.closest('[role="group"][hidden]'));
@@ -782,7 +636,6 @@ export const render = (container, model, state) => {
 
     return {
         toggle,
-        revealDuplicates,
         refresh: () => render(container, model, state),
     };
 };

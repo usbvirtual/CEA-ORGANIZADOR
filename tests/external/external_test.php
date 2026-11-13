@@ -34,7 +34,6 @@ use tool_ceaorganizador\local\tree;
 #[\PHPUnit\Framework\Attributes\CoversClass(set_visibility::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\sortplan::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\guard::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\mergerunner::class)]
 /**
  * Tests for the web services, against the test database.
  *
@@ -56,7 +55,6 @@ use tool_ceaorganizador\local\tree;
  * @covers     \tool_ceaorganizador\external\set_visibility
  * @covers     \tool_ceaorganizador\local\sortplan
  * @covers     \tool_ceaorganizador\local\guard
- * @covers     \tool_ceaorganizador\local\mergerunner
  */
 final class external_test extends \advanced_testcase {
     /**
@@ -543,38 +541,6 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * get_tree counts the repeated courses and get_courses marks them, with the exact types they declare.
-     */
-    public function test_tree_services_return_repeated(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('Facultad');
-        $child = $this->category('Programa', $parent);
-        $first = $this->course('Cálculo I', 'CAL1', $child);
-        $copy = $this->course('Cálculo I (copia)', 'CAL1_1', $child);
-        $other = $this->course('Cálculo II', 'CAL2', $child);
-        $DB->set_field('course', 'timemodified', 100, ['id' => $first]);
-        $DB->set_field('course', 'timemodified', 200, ['id' => $copy]);
-
-        $tree = external_api::clean_returnvalue(get_tree::execute_returns(), get_tree::execute());
-        $rows = array_column($tree['categories'], null, 'id');
-        $this->assertSame(1, $rows[$child]['dupcount']);
-        $this->assertSame(1, $rows[$child]['dupcounttotal']);
-        $this->assertSame(0, $rows[$parent]['dupcount']);
-        $this->assertSame(1, $rows[$parent]['dupcounttotal']);
-
-        $courses = external_api::clean_returnvalue(get_courses::execute_returns(), get_courses::execute($child, '', 0));
-        $byid = array_column($courses['courses'], null, 'id');
-        $this->assertSame('base', $byid[$copy]['dup']);
-        $this->assertSame(['key', 'shortname'], $byid[$copy]['dupreasons']);
-        $this->assertSame('', $byid[$copy]['dupbase']);
-        $this->assertSame('repeated', $byid[$first]['dup']);
-        $this->assertSame('Cálculo I (copia)', $byid[$first]['dupbase']);
-        $this->assertSame(['', [], ''], [$byid[$other]['dup'], $byid[$other]['dupreasons'], $byid[$other]['dupbase']]);
-    }
-
-    /**
      * Moving a top-level category needs category:manage in the system context, as core requires.
      */
     public function test_move_category_checks_top_level_source(): void {
@@ -845,17 +811,73 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * Merges a source into a target as the admin, through the runner.
+     * Writes what a merge of the old «Unificar categorías» left: the courses of the source go to the target, those of
+     * each subcategory to a copy of it created under the target, and one 'merge' row of the journal describes it.
+     *
+     * The feature was removed, but the rows already written can still be undone from the history.
      *
      * @param int $target
      * @param int $source
      * @return int Journal id.
      */
     private function merged(int $target, int $source): int {
-        $plan = \tool_ceaorganizador\local\mergeplan::build($target, [$source]);
-        $result = \tool_ceaorganizador\local\mergerunner::run($target, [$source], [], $plan['hash']);
-        $this->assertGreaterThan(0, $result['logid']);
-        return (int) $result['logid'];
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $created = [];
+        $items = [];
+        $move = function (int $from, int $to) use ($DB, &$items): void {
+            $courses = $DB->get_records('course', ['category' => $from], 'id', 'id, visible');
+            if (!$courses) {
+                return;
+            }
+            \move_courses(array_keys($courses), $to);
+            foreach ($courses as $course) {
+                $items[] = [
+                    'id' => (int) $course->id,
+                    'fromcategory' => $from,
+                    'tocategory' => $to,
+                    'fromvisible' => (int) $course->visible,
+                    'tovisible' => (int) $DB->get_field('course', 'visible', ['id' => $course->id]),
+                ];
+            }
+        };
+        $move($source, $target);
+        foreach ($DB->get_records('course_categories', ['parent' => $source], 'sortorder', 'id, name') as $child) {
+            $copy = (int) $this->getDataGenerator()->create_category(['name' => $child->name, 'parent' => $target])->id;
+            $created[] = $copy;
+            $move((int) $child->id, $copy);
+        }
+        return \tool_ceaorganizador\local\journal::record('merge', 'Unificar', [
+            'targetid' => $target,
+            'sourceids' => [$source],
+            'created' => $created,
+            'items' => $items,
+        ]);
+    }
+
+    /**
+     * A merge written before the feature was removed is still undone: the courses go back and the categories it
+     * created are deleted once empty.
+     */
+    public function test_undo_merge_still_works(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $source = $this->category('Facultades');
+        $ing = $this->category('Ingeniería', $source);
+        $top = $this->course('Uno', 'U1', $source);
+        $inside = $this->course('Dos', 'D2', $ing);
+        $target = $this->category('Semillas');
+        $logid = $this->merged($target, $source);
+        $created = (int) $DB->get_field('course_categories', 'id', ['parent' => $target, 'name' => 'Ingeniería']);
+        $this->assertSame($created, (int) $DB->get_field('course', 'category', ['id' => $inside]));
+
+        undo::execute($logid);
+
+        $this->assertSame($source, (int) $DB->get_field('course', 'category', ['id' => $top]));
+        $this->assertSame($ing, (int) $DB->get_field('course', 'category', ['id' => $inside]));
+        $this->assertFalse($DB->record_exists('course_categories', ['id' => $created]));
+        $this->assertGreaterThan(0, (int) $DB->get_field('tool_ceaorganizador_log', 'timeundone', ['id' => $logid]));
     }
 
     /**

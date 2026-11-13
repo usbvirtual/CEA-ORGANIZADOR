@@ -25,10 +25,10 @@
 namespace tool_ceaorganizador\local;
 
 /**
- * Thrown by batchrunner when a chunk fails after at least one chunk was committed.
+ * Thrown by visibilitytree when a chunk fails after at least one chunk was committed.
  *
- * The courses moved before the failure stay moved and are recorded in the journal row $logid, which can be undone.
- * The web services turn it into the status 'partial', so the panels can offer «Deshacer» for that row.
+ * What was written before the failure stays written and is recorded in the journal row $logid, which can be undone.
+ * The web service turns it into the status 'partial', so the panel can offer «Deshacer» for that row.
  */
 class partial_exception extends \moodle_exception {
     /** @var int Journal row with what was moved. */

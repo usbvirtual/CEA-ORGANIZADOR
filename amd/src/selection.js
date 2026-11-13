@@ -32,6 +32,15 @@ const keyOf = (type, id) => `${type}:${id}`;
 export const selectedCategoryIds = (items) => items.filter((item) => item.type === 'category').map((item) => item.id);
 
 /**
+ * The categories of a list that are not inside another one of the list.
+ *
+ * @param {Object} model Tree model, with isDescendant(ancestor, id).
+ * @param {Number[]} ids
+ * @returns {Number[]}
+ */
+export const outerIds = (model, ids) => ids.filter((id) => !ids.some((other) => other !== id && model.isDescendant(other, id)));
+
+/**
  * Loads every page of get_courses for one category (0 for the whole site) and one search.
  *
  * @param {Object} api Object with getCourses(categoryid, search, page); pages are zero-based.

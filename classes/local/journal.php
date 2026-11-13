@@ -36,18 +36,17 @@ namespace tool_ceaorganizador\local;
  *   newshortname, destcategoryid, backupid, restoreid, newcourseid, error}]}; see clonerunner. It cannot be undone.
  * - visibility: {items: [{id, name (raw full name), before: 0|1, after: 0|1}]}, only the courses that changed.
  * - merge: {targetid, sourceids, created: [category ids, in creation order], items: [{id, fromcategory, tocategory,
- *   fromvisible, tovisible}]}, only the courses moved; see mergerunner. Undo moves them back and deletes the
+ *   fromvisible, tovisible}]}, only the courses moved. Undo moves them back and deletes the
  *   created categories that are empty then; one that received other content is kept. A merge also sends repeated
  *   courses, and target courses that lose to a newer one, to the hidden «Repetidos» folder under the target: those
  *   are items too, and the folder is in 'created' when the merge created it.
- * - dedupe: {categoryid, created: [category ids], items: [{id, fromcategory, tocategory, fromvisible, tovisible}]};
- *   see deduperunner. The same format and the same undo as merge: the repeated courses go back, their visibility is
+ * - dedupe: {categoryid, created: [category ids], items: [{id, fromcategory, tocategory, fromvisible, tovisible}]}.
+ *   The same format and the same undo as merge: the repeated courses go back, their visibility is
  *   restored when the move changed it, and the «Repetidos» folder is deleted only when the batch created it and it is
  *   empty then.
  *
- * merge and dedupe are written in steps (see batchrunner): the row is recorded with the created categories and no
- * items, and every chunk of moves appends its items in the same transaction as the moves. The row always describes
- * exactly what was applied, so a batch that fails halfway can still be undone, in one transaction.
+ * «Unificar categorías» (merge) and «Quitar repetidos» (dedupe) were removed from the plugin: no new rows of those
+ * actions are written, but the rows already in the journal are still listed and undone, in one transaction.
  * - delete: {items: [{id, name, idnumber, description, descriptionformat, parent, afterid, visible, visibleold,
  *   theme (only when set)}]}, in deletion order (deepest first); see deleterunner. Undo creates them again in the
  *   reverse order, with new ids: a parent deleted in the same batch is created first and its children go under
@@ -55,7 +54,7 @@ namespace tool_ceaorganizador\local;
  *   it goes last. A category with the same normalized name under the old parent is a conflict.
  * - visibilitytree: {categoryids, show: 0|1, categories: [{id, visible, visibleold, tovisible, tovisibleold}],
  *   courses: [{id, category, visible, visibleold, tovisible, tovisibleold}]}: the state of every item that «Ocultar
- *   todo» / «Mostrar todo» wrote, before and after. Written in steps like merge (see visibilitytree). Undo writes each
+ *   todo» / «Mostrar todo» wrote, before and after. Written in steps (see visibilitytree). Undo writes each
  *   state before back exactly, visibleold included, and is refused when an item no longer has the state after, or a
  *   course is in another category; the caches are purged and the events triggered after the commit.
  *
@@ -115,7 +114,7 @@ class journal {
     }
 
     /**
-     * Rewrites the summary and the payload of a row that is being written in steps (merge and dedupe).
+     * Rewrites the summary and the payload of a row that is being written in steps (visibilitytree).
      *
      * @param int $id Row returned by record().
      * @param string $summary Cut to 255 characters.
