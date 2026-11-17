@@ -8,10 +8,10 @@ import { attach } from 'tool_ceaorganizador/keyboard';
 globalThis.DOMParser = new JSDOM('').window.DOMParser;
 
 const row = (id, parent, name, sortorder) => ({
-    id, parent, name, sortorder, visible: true, coursecount: 0, needsort: false,
+    id, parent, name, sortorder, visible: true, coursecount: 0,
 });
 const strings = {
-    needsort: 'n', hidden: 'Oculta', loadmore: 'm', coursecount: '{$a} cursos',
+    hidden: 'Oculta', loadmore: 'm', coursecount: '{$a} cursos',
     grabbed: 'Tomado: {$a}.', dropbefore: 'Antes de {$a}', dropinside: 'Dentro de {$a}',
     dropafter: 'Después de {$a}', dropcancelled: 'Movimiento cancelado', invaliddrop: 'No se puede soltar aquí',
 };

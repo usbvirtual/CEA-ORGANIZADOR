@@ -338,7 +338,7 @@ final class mover_test extends \advanced_testcase {
         $this->assertSame($courses[$p], tree::category_courses($p));
         $this->assertSame($top, tree::sibling_categories(0));
 
-        // Deferred: course lists, then category lists, then one cleanup, as sort_apply and the undo do.
+        // Deferred: course lists, then category lists, then one cleanup, as the undo of a sort does.
         foreach ($courselists as $categoryid => $ids) {
             mover::apply_course_order($categoryid, $ids, false);
         }

@@ -192,7 +192,7 @@ test('Borrar está solo en la barra de la selección, no en el menú de la categ
     const container = document.getElementById('c');
     const actions = [];
     render(container, createModel([{
-        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 0, needsort: false,
+        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 0,
     }]), {
         api: { getCourses: async () => ({ courses: [], total: 0 }) },
         strings,

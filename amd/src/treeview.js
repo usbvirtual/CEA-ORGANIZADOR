@@ -153,7 +153,7 @@ const defaultStorage = (container) => {
  * @param {Object} model Model from treemodel.createModel().
  * @param {Object} state
  * @param {Object} state.api Object with getCourses(categoryid, search, page).
- * @param {Object} state.strings needsort, hidden, loadmore and coursecount.
+ * @param {Object} state.strings hidden, loadmore and coursecount.
  * @param {Set<Number>} [state.visible] Ids to show (result of model.filter); all when absent.
  * @param {Object} [state.storage] Where the expanded ids are remembered.
  * @param {Function} [state.onError] Receives the errors of the web services.
@@ -469,13 +469,6 @@ export const render = (container, model, state) => {
             label.id = `${prefix}-hidden`;
             described.push(label.id);
             line.appendChild(label);
-        }
-        if (row.needsort) {
-            const badge = create('span', 'tool-ceaorganizador-insignia', strings.needsort);
-            badge.dataset.region = 'needsort';
-            badge.id = `${prefix}-needsort`;
-            described.push(badge.id);
-            line.appendChild(badge);
         }
         li.setAttribute('aria-describedby', described.join(' '));
         addMoveButton(li, line, decodeEntities(row.name));

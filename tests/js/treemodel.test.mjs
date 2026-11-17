@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createModel } from 'tool_ceaorganizador/treemodel';
 
 const row = (id, parent, name, sortorder, extra = {}) => ({
-    id, parent, name, path: name, depth: 1, sortorder, visible: true, coursecount: 0, needsort: false, ...extra,
+    id, parent, name, path: name, depth: 1, sortorder, visible: true, coursecount: 0, ...extra,
 });
 const rows = () => [
     row(1, 0, 'A', 10),

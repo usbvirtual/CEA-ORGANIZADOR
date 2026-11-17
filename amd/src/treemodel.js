@@ -37,7 +37,7 @@ export const normalize = (text) => String(text === null || text === undefined ? 
 /**
  * Builds the model from the categories returned by get_tree.
  *
- * @param {Object[]} rows Categories (id, parent, name, sortorder, visible, coursecount, needsort...).
+ * @param {Object[]} rows Categories (id, parent, name, sortorder, visible, coursecount...).
  * @param {Function} [decode] Turns a formatted name into plain text, used only to compare in filter().
  * @returns {Object} The model.
  */

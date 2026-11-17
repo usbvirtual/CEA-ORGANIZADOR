@@ -7,10 +7,9 @@ import { render } from 'tool_ceaorganizador/treeview';
 globalThis.DOMParser = new JSDOM('').window.DOMParser;
 
 const row = (id, parent, name, sortorder, extra = {}) => ({
-    id, parent, name, path: name, depth: 1, sortorder, visible: true, coursecount: 2, needsort: false, ...extra,
+    id, parent, name, path: name, depth: 1, sortorder, visible: true, coursecount: 2, ...extra,
 });
 const strings = {
-    needsort: 'Te recomiendo auto ordenar',
     hidden: 'Oculta',
     loadmore: 'Cargar más',
     coursecount: '{$a} cursos',
@@ -51,13 +50,10 @@ test('con 3 categorías crea 3 treeitem dentro de un role=tree', () => {
     assert.equal(items[0].dataset.id, '1');
 });
 
-test('un nodo con needsort muestra la insignia y uno oculto la etiqueta', () => {
-    const { model, container, state } = setup([row(1, 0, 'A', 1, { needsort: true }), row(2, 0, 'B', 2, { visible: false })]);
+test('un nodo oculto muestra la etiqueta y uno visible no', () => {
+    const { model, container, state } = setup([row(1, 0, 'A', 1), row(2, 0, 'B', 2, { visible: false })]);
     render(container, model, state);
-    const badges = container.querySelectorAll('[data-region="needsort"]');
-    assert.equal(badges.length, 1);
-    assert.equal(badges[0].textContent, 'Te recomiendo auto ordenar');
-    assert.ok(container.querySelector('[data-id="1"] [data-region="needsort"]'));
+    assert.equal(container.querySelector('[data-id="1"]').textContent.includes('Oculta'), false);
     assert.ok(container.querySelector('[data-id="2"]').textContent.includes('Oculta'));
 });
 
@@ -166,13 +162,13 @@ test('expandir, colapsar y expandir con la petición pendiente envía una sola',
     assert.equal(calls, 1);
 });
 
-test('aria-labelledby apunta al nombre y aria-describedby a cuenta, oculta e insignia', () => {
-    const { model, container, state } = setup([row(1, 0, 'A', 1, { needsort: true, visible: false })]);
+test('aria-labelledby apunta al nombre y aria-describedby a la cuenta y a la etiqueta Oculta', () => {
+    const { model, container, state } = setup([row(1, 0, 'A', 1, { visible: false })]);
     render(container, model, state);
     const li = container.querySelector('[data-id="1"]');
     assert.equal(li.hasAttribute('aria-label'), false);
     const doc = container.ownerDocument;
     assert.equal(doc.getElementById(li.getAttribute('aria-labelledby')).textContent, 'A');
     const described = li.getAttribute('aria-describedby').split(' ').map((id) => doc.getElementById(id).textContent);
-    assert.deepEqual(described, ['2 cursos', 'Oculta', 'Te recomiendo auto ordenar']);
+    assert.deepEqual(described, ['2 cursos', 'Oculta']);
 });

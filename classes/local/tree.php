@@ -25,11 +25,11 @@
 namespace tool_ceaorganizador\local;
 
 /**
- * Reads the category tree, with paths and sort recommendations, and the courses. It writes nothing.
+ * Reads the category tree, with paths, and the courses. It writes nothing.
  */
 class tree {
     /**
-     * Formats a name for display and for the sorter.
+     * Formats a name for display.
      *
      * @param string $name
      * @return string
@@ -59,81 +59,14 @@ class tree {
     }
 
     /**
-     * Loads the courses grouped by category, in sortorder: one query for the whole site.
-     *
-     * @return array[] Lists of ['id' => int, 'name' => string (formatted)] by category id, for the sorter.
-     */
-    private static function load_courses_by_category(): array {
-        global $DB;
-        $records = $DB->get_records_sql(
-            'SELECT id, category, fullname
-               FROM {course}
-              WHERE id <> :site
-           ORDER BY category, sortorder, id',
-            ['site' => SITEID]
-        );
-        $bycategory = [];
-        foreach ($records as $record) {
-            $bycategory[(int) $record->category][] = [
-                'id' => (int) $record->id,
-                'name' => self::format($record->fullname),
-            ];
-        }
-        return $bycategory;
-    }
-
-    /**
-     * Whether the children of a parent differ from the proposed order.
-     *
-     * @param array $children Category records of the parent.
-     * @param bool $toplevel
-     * @param array $patterns
-     * @return bool
-     */
-    private static function children_differ(array $children, bool $toplevel, array $patterns): bool {
-        $items = [];
-        $current = [];
-        foreach ($children as $child) {
-            $items[] = ['id' => (int) $child->id, 'name' => self::format($child->name)];
-            $current[] = (int) $child->id;
-        }
-        return sorter::differs($current, sorter::propose($items, $toplevel, $patterns));
-    }
-
-    /**
-     * Whether the top-level categories differ from the proposed order.
-     *
-     * @return bool
-     */
-    public static function root_needsort(): bool {
-        $byparent = self::load_children();
-        return self::children_differ($byparent[0] ?? [], true, sorter::patterns());
-    }
-
-    /**
      * Lists all categories in tree order: parent first, then its children by sortorder.
      *
-     * @return array[] Rows with id, parent, name, path, depth, sortorder, visible, coursecount and needsort.
+     * @return array[] Rows with id, parent, name, path, depth, sortorder, visible and coursecount.
      */
     public static function categories(): array {
-        return self::overview()['categories'];
-    }
-
-    /**
-     * The categories of categories() and the flag of root_needsort(), reading the categories once.
-     *
-     * @return array ['categories' => array[] as categories(), 'rootneedsort' => bool as root_needsort()]
-     */
-    public static function overview(): array {
-        $byparent = self::load_children();
-        $bycourses = self::load_courses_by_category();
-        $patterns = sorter::patterns();
         $rows = [];
-        self::walk(0, '', $byparent, $bycourses, $patterns, $rows);
-        return [
-            'categories' => $rows,
-            'rootneedsort' => self::children_differ($byparent[0] ?? [], true, $patterns),
-        ];
+        self::walk(0, '', self::load_children(), $rows);
+        return $rows;
     }
 
     /**
@@ -142,27 +75,13 @@ class tree {
      * @param int $parentid
      * @param string $parentpath
      * @param array $byparent
-     * @param array $bycourses Formatted course names by category, for the sorter.
-     * @param array $patterns
      * @param array $rows Output rows.
      */
-    private static function walk(
-        int $parentid,
-        string $parentpath,
-        array $byparent,
-        array $bycourses,
-        array $patterns,
-        array &$rows
-    ): void {
+    private static function walk(int $parentid, string $parentpath, array $byparent, array &$rows): void {
         foreach ($byparent[$parentid] ?? [] as $category) {
             $id = (int) $category->id;
             $name = self::format($category->name);
             $path = $parentpath === '' ? $name : $parentpath . ' / ' . $name;
-            $children = $byparent[$id] ?? [];
-            $courses = $bycourses[$id] ?? [];
-            $currentcourses = array_column($courses, 'id');
-            $needsort = self::children_differ($children, false, $patterns)
-                || sorter::differs($currentcourses, sorter::propose_courses($courses));
             $rows[] = [
                 'id' => $id,
                 'parent' => (int) $category->parent,
@@ -172,9 +91,8 @@ class tree {
                 'sortorder' => (int) $category->sortorder,
                 'visible' => (bool) $category->visible,
                 'coursecount' => (int) $category->coursecount,
-                'needsort' => $needsort,
             ];
-            self::walk($id, $path, $byparent, $bycourses, $patterns, $rows);
+            self::walk($id, $path, $byparent, $rows);
         }
     }
 

@@ -10,7 +10,7 @@ globalThis.DOMParser = new JSDOM('').window.DOMParser;
 
 const strings = new Proxy({}, { get: (_, name) => String(name) });
 const row = (id, name) => ({
-    id, parent: 0, name, path: name, depth: 1, sortorder: id, visible: true, coursecount: 0, needsort: false,
+    id, parent: 0, name, path: name, depth: 1, sortorder: id, visible: true, coursecount: 0,
 });
 const setup = () => {
     const dom = new JSDOM('<!doctype html><div id="c"></div>');

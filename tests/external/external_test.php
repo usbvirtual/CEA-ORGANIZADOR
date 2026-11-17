@@ -25,14 +25,11 @@ use tool_ceaorganizador\local\tree;
 #[\PHPUnit\Framework\Attributes\CoversClass(get_courses::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(move_category::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(move_course::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(sort_preview::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(sort_apply::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(rename_preview::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(rename_apply::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(undo::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(history::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(set_visibility::class)]
-#[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\sortplan::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\tool_ceaorganizador\local\guard::class)]
 /**
  * Tests for the web services, against the test database.
@@ -46,14 +43,11 @@ use tool_ceaorganizador\local\tree;
  * @covers     \tool_ceaorganizador\external\get_courses
  * @covers     \tool_ceaorganizador\external\move_category
  * @covers     \tool_ceaorganizador\external\move_course
- * @covers     \tool_ceaorganizador\external\sort_preview
- * @covers     \tool_ceaorganizador\external\sort_apply
  * @covers     \tool_ceaorganizador\external\rename_preview
  * @covers     \tool_ceaorganizador\external\rename_apply
  * @covers     \tool_ceaorganizador\external\undo
  * @covers     \tool_ceaorganizador\external\history
  * @covers     \tool_ceaorganizador\external\set_visibility
- * @covers     \tool_ceaorganizador\local\sortplan
  * @covers     \tool_ceaorganizador\local\guard
  */
 final class external_test extends \advanced_testcase {
@@ -174,163 +168,6 @@ final class external_test extends \advanced_testcase {
 
         $this->assertSame(['ok' => true, 'conflicts' => []], $undo);
         $this->assertSame([$misc, $a, $b], tree::sibling_categories(0));
-    }
-
-    /**
-     * When a name changed after the preview, the apply reports 'stale' and writes nothing.
-     */
-    public function test_sort_apply_rejects_stale_hash(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('P');
-        $c = $this->category('C', $parent);
-        $a = $this->category('A', $parent);
-        $b = $this->category('B', $parent);
-
-        $preview = sort_preview::execute($parent, 'categories', false);
-        $this->assertCount(1, $preview['changes']);
-        $this->assertSame([$c, $a, $b], array_column($preview['changes'][0]['before'], 'id'));
-        $this->assertSame([$a, $b, $c], array_column($preview['changes'][0]['after'], 'id'));
-
-        // Someone renames C: the proposed order becomes A, AA, B.
-        \core_course_category::get($c, MUST_EXIST, true)->update(['name' => 'AA']);
-
-        $result = sort_apply::execute($parent, 'categories', false, $preview['hash']);
-        $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
-
-        $this->assertSame(['status' => 'stale', 'logid' => 0], $result);
-        $this->assertSame([$c, $a, $b], tree::sibling_categories($parent));
-        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
-    }
-
-    /**
-     * A fresh hash applies subcategories and courses in one journal entry, and the undo restores both.
-     */
-    public function test_sort_apply_applies_and_undo_restores(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('P');
-        $c = $this->category('C', $parent);
-        $a = $this->category('A', $parent);
-        $one = $this->course('Curso 1', 'C1', $parent);
-        $ten = $this->course('Curso 10', 'C10', $parent);
-        $two = $this->course('Curso 2', 'C2', $parent);
-        $this->assertSame([$two, $ten, $one], tree::category_courses($parent));
-
-        $preview = sort_preview::execute($parent, 'both', false);
-        $this->assertSame(['categories', 'courses'], array_column($preview['changes'], 'kind'));
-
-        $result = sort_apply::execute($parent, 'both', false, $preview['hash']);
-
-        $this->assertSame('ok', $result['status']);
-        $this->assertGreaterThan(0, $result['logid']);
-        $this->assertSame([$a, $c], tree::sibling_categories($parent));
-        $this->assertSame([$one, $two, $ten], tree::category_courses($parent));
-        $this->assertSame(1, $DB->count_records('tool_ceaorganizador_log', ['action' => 'sort']));
-
-        // Nothing is left to sort: an empty plan writes no journal row.
-        $again = sort_preview::execute($parent, 'both', false);
-        $this->assertSame([], $again['changes']);
-        $this->assertSame(['status' => 'ok', 'logid' => 0], sort_apply::execute($parent, 'both', false, $again['hash']));
-
-        $undo = undo::execute($result['logid']);
-
-        $this->assertTrue($undo['ok']);
-        $this->assertSame([$c, $a], tree::sibling_categories($parent));
-        $this->assertSame([$two, $ten, $one], tree::category_courses($parent));
-    }
-
-    /**
-     * Several categories are sorted with one preview, one apply, one journal row and one undo.
-     */
-    public function test_sort_apply_many_records_one_entry(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->preventResetByRollback();
-        $this->setAdminUser();
-        $first = $this->category('P1');
-        $c1 = $this->category('C', $first);
-        $a1 = $this->category('A', $first);
-        $second = $this->category('P2');
-        $y2 = $this->category('Y', $second);
-        $x2 = $this->category('X', $second);
-
-        $preview = sort_preview::execute(0, 'categories', false, [$first, $second]);
-        $preview = external_api::clean_returnvalue(sort_preview::execute_returns(), $preview);
-        $this->assertCount(2, $preview['changes']);
-
-        $result = sort_apply::execute(0, 'categories', false, $preview['hash'], [$first, $second]);
-        $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
-
-        $this->assertSame('ok', $result['status']);
-        $this->assertGreaterThan(0, $result['logid']);
-        $this->assertSame([$a1, $c1], tree::sibling_categories($first));
-        $this->assertSame([$x2, $y2], tree::sibling_categories($second));
-        $this->assertSame(1, $DB->count_records('tool_ceaorganizador_log', ['action' => 'sort']));
-
-        $undo = undo::execute($result['logid']);
-
-        $this->assertTrue($undo['ok']);
-        $this->assertSame([$c1, $a1], tree::sibling_categories($first));
-        $this->assertSame([$y2, $x2], tree::sibling_categories($second));
-    }
-
-    /**
-     * A category mixed with a list, a long list or a list holding the top level is refused.
-     */
-    public function test_sort_apply_rejects_both_params(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('P');
-        $other = $this->category('Q');
-        $preview = sort_preview::execute($parent, 'categories', false);
-
-        try {
-            sort_apply::execute($parent, 'categories', false, $preview['hash'], [$other]);
-            $this->fail('categoryid and categoryids must not be combined');
-        } catch (\invalid_parameter_exception $e) {
-            $this->assertStringContainsString('cannot be combined', $e->getMessage());
-        }
-        try {
-            sort_preview::execute($parent, 'categories', false, [$other]);
-            $this->fail('categoryid and categoryids must not be combined');
-        } catch (\invalid_parameter_exception $e) {
-            $this->assertStringContainsString('cannot be combined', $e->getMessage());
-        }
-        try {
-            sort_preview::execute(0, 'categories', false, range(1, 201));
-            $this->fail('Too many categories must be refused');
-        } catch (\invalid_parameter_exception $e) {
-            $this->assertStringContainsString('Too many', $e->getMessage());
-        }
-        try {
-            sort_preview::execute(0, 'categories', false, [$other, 0]);
-            $this->fail('The top level inside a list must be refused');
-        } catch (\invalid_parameter_exception $e) {
-            $this->assertStringContainsString('Invalid category id', $e->getMessage());
-        }
-    }
-
-    /**
-     * Both services return values that pass the declared structure when they receive categoryids.
-     */
-    public function test_sort_many_clean_returnvalue(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('P');
-        $this->category('C', $parent);
-        $this->category('A', $parent);
-
-        $preview = sort_preview::execute(0, 'both', true, [$parent]);
-        $preview = external_api::clean_returnvalue(sort_preview::execute_returns(), $preview);
-        $this->assertCount(1, $preview['changes']);
-
-        $result = sort_apply::execute(0, 'both', true, $preview['hash'], [$parent]);
-        $result = external_api::clean_returnvalue(sort_apply::execute_returns(), $result);
-        $this->assertSame('ok', $result['status']);
-        $this->assertGreaterThan(0, $result['logid']);
     }
 
     /**
@@ -525,22 +362,6 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * The summary count adds the top level to the categories that recommend sorting.
-     */
-    public function test_get_tree_counts_root(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $this->category('B');
-        $this->category('A');
-
-        $result = external_api::clean_returnvalue(get_tree::execute_returns(), get_tree::execute());
-
-        $this->assertTrue($result['rootneedsort']);
-        $count = count(array_filter(array_column($result['categories'], 'needsort')));
-        $this->assertSame($count + 1, $result['needsortcount']);
-    }
-
-    /**
      * Moving a top-level category needs category:manage in the system context, as core requires.
      */
     public function test_move_category_checks_top_level_source(): void {
@@ -597,27 +418,6 @@ final class external_test extends \advanced_testcase {
         });
 
         $this->assertSame('Uno', $DB->get_field('course', 'fullname', ['id' => $course]));
-        $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
-    }
-
-    /**
-     * Sorting needs category:manage on every parent whose children change.
-     */
-    public function test_sort_apply_requires_category_manage(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $parent = $this->category('P');
-        $c = $this->category('C', $parent);
-        $a = $this->category('A', $parent);
-        $this->setUser($this->user_with([]));
-        $preview = sort_preview::execute($parent, 'categories', false);
-
-        $this->assert_refused(function () use ($parent, $preview): void {
-            sort_apply::execute($parent, 'categories', false, $preview['hash']);
-        });
-
-        $this->assertSame([$c, $a], tree::sibling_categories($parent));
         $this->assertSame(0, $DB->count_records('tool_ceaorganizador_log'));
     }
 
@@ -962,14 +762,6 @@ final class external_test extends \advanced_testcase {
 
         $courses = external_api::clean_returnvalue(get_courses::execute_returns(), get_courses::execute($parent, 'Curso', 0));
         $this->assertSame(2, $courses['total']);
-
-        $preview = sort_preview::execute(0, 'both', true);
-        $preview = external_api::clean_returnvalue(sort_preview::execute_returns(), $preview);
-        $this->assertNotEmpty($preview['changes']);
-
-        $applied = sort_apply::execute(0, 'both', true, $preview['hash']);
-        $applied = external_api::clean_returnvalue(sort_apply::execute_returns(), $applied);
-        $this->assertSame('ok', $applied['status']);
 
         $ops = json_encode([['type' => 'affix', 'position' => 'suffix', 'mode' => 'add', 'text' => ' (copia)']]);
         $items = [['type' => 'category', 'id' => $a], ['type' => 'course', 'id' => $course]];

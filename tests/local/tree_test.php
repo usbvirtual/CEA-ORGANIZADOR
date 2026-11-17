@@ -104,64 +104,6 @@ final class tree_test extends \advanced_testcase {
     }
 
     /**
-     * Children created out of order raise the flag until they are sorted.
-     */
-    public function test_needsort_flags_unsorted_children(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $generator = $this->getDataGenerator();
-        $a = (int) $generator->create_category(['name' => 'A'])->id;
-        $generator->create_category(['name' => 'Semestre II', 'parent' => $a]);
-        $generator->create_category(['name' => 'Semestre I', 'parent' => $a]);
-
-        $this->assertTrue($this->row(tree::categories(), $a)['needsort']);
-
-        \core_course_category::get($a, MUST_EXIST, true)->resort_subcategories('name');
-        $this->assertFalse($this->row(tree::categories(), $a)['needsort']);
-    }
-
-    /**
-     * Courses out of order raise the flag too.
-     */
-    public function test_needsort_counts_courses(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $generator = $this->getDataGenerator();
-        $category = (int) $generator->create_category(['name' => 'Cursos'])->id;
-        // Moodle puts each new course first, so creating A and then B leaves B before A.
-        $generator->create_course(['fullname' => 'A', 'shortname' => 'A', 'category' => $category]);
-        $generator->create_course(['fullname' => 'B', 'shortname' => 'B', 'category' => $category]);
-
-        $row = $this->row(tree::categories(), $category);
-        $this->assertTrue($row['needsort']);
-        $this->assertSame(2, $row['coursecount']);
-    }
-
-    /**
-     * The top level has its own recommendation.
-     */
-    public function test_root_needsort(): void {
-        $this->resetAfterTest();
-        $this->setAdminUser();
-        $generator = $this->getDataGenerator();
-        $generator->create_category(['name' => 'Facultad de Ingeniería']);
-        $generator->create_category(['name' => '2026-02']);
-        $this->assertTrue(tree::root_needsort());
-        // The overview reads the categories once and gives the same two answers.
-        $overview = tree::overview();
-        $this->assertTrue($overview['rootneedsort']);
-        $this->assertSame(tree::categories(), $overview['categories']);
-
-        // In the proposed order, the top level no longer needs sorting.
-        mover::apply_category_order(0, sorter::propose(array_map(function (int $id): array {
-            global $DB;
-            return ['id' => $id, 'name' => format_string($DB->get_field('course_categories', 'name', ['id' => $id]))];
-        }, tree::sibling_categories(0)), true, sorter::patterns()));
-        $this->assertFalse(tree::root_needsort());
-        $this->assertFalse(tree::overview()['rootneedsort']);
-    }
-
-    /**
      * The short names taken outside a set, in one query, with the answer of the database.
      */
     public function test_taken_shortnames(): void {

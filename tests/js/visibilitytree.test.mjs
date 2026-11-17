@@ -61,7 +61,7 @@ test('Ocultar todo y Mostrar todo no se repiten en el menú de la categoría', a
     document.body.appendChild(container);
     const actions = [];
     const model = createModel([{
-        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 0, needsort: false,
+        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 0,
     }]);
     render(container, model, {
         api: { getCourses: async () => ({ courses: [], total: 0 }) },

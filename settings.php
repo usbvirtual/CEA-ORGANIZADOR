@@ -42,19 +42,11 @@ if ($hassiteconfig) {
         'tool_ceaorganizador_settings',
         get_string('settings', 'tool_ceaorganizador')
     );
-    foreach (['semilla', 'facultad'] as $name) {
-        $settings->add(new admin_setting_configtextarea(
-            'tool_ceaorganizador/patterns_' . $name,
-            get_string('patterns_' . $name, 'tool_ceaorganizador'),
-            get_string('patterns_' . $name . '_desc', 'tool_ceaorganizador'),
-            \tool_ceaorganizador\local\sorter::DEFAULT_PATTERNS[$name]
-        ));
-    }
     $settings->add(new admin_setting_configtextarea(
-        'tool_ceaorganizador/glossary',
-        get_string('glossary', 'tool_ceaorganizador'),
-        get_string('glossary_desc', 'tool_ceaorganizador'),
-        ''
+        'tool_ceaorganizador/patterns_semilla',
+        get_string('patterns_semilla', 'tool_ceaorganizador'),
+        get_string('patterns_semilla_desc', 'tool_ceaorganizador'),
+        \tool_ceaorganizador\local\sorter::DEFAULT_PATTERNS['semilla']
     ));
     $ADMIN->add('courses', $settings);
 }

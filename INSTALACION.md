@@ -45,18 +45,15 @@ Si falta alguno, la operación se rechaza y no cambia nada.
 
 ### Ajustes de patrones
 
-Sirven para que «Auto ordenar» reconozca qué es una categoría semilla y una facultad. Los periodos no se configuran: se detectan solos por el nombre («2026-02», «2026 -1», «2026-2», «2026 II») y se ordenan del más reciente al más antiguo. Un patrón por línea. Se comparan contra el nombre de la categoría en minúsculas y sin tildes.
+Los **patrones de semilla** sirven para que «Clonar a periodo» reconozca qué categoría de nivel superior es la raíz de semillas. Los periodos no se configuran: se detectan solos por el nombre («2026-02», «2026 -1», «2026-2», «2026 II»). Un patrón por línea. Se comparan contra el nombre de la categoría en minúsculas y sin tildes.
 
 | Sintaxis | Qué hace | Ejemplo |
 | --- | --- | --- |
 | `texto` | El nombre contiene el texto. | `semilla` |
 | `=texto` | El nombre es exactamente el texto. | `=Facultades` |
-| `/expresión/` | Expresión regular sobre el nombre. | `/^facultad/` |
+| `/expresión/` | Expresión regular sobre el nombre. | `/^semillas?$/` |
 
-Valores por defecto:
-
-- **Patrones de semilla:** `semilla`, `plantilla` y `=Facultades`.
-- **Patrones de facultad:** `/^facultad/` y `/^programa/`.
+Valor por defecto: `semilla`, `plantilla` y `=Facultades`.
 
 ### Atajos de teclado
 
@@ -66,13 +63,9 @@ Con el foco en el árbol: flechas para navegar; **Espacio** toma el elemento y l
 
 Cada opción aparece en un solo lugar:
 
-- **Barra superior:** «Historial» y «Sugerir correcciones». Al marcar algo aparece la barra de selección: «Renombrar», «Clonar a periodo…», «Auto ordenar seleccionadas», «Ocultar seleccionados», «Mostrar seleccionados», «Borrar seleccionadas» y «Limpiar». Para actuar sobre una sola categoría o un solo curso, márquelo con su casilla (o **S**) y use la barra.
+- **Barra superior:** «Historial». Al marcar algo aparece la barra de selección: «Renombrar», «Clonar a periodo…», «Ocultar seleccionados», «Mostrar seleccionados», «Borrar categoría» y «Limpiar». Para actuar sobre una sola categoría o un solo curso, márquelo con su casilla (o **S**) y use la barra.
 - **Cada fila:** el botón «Mover a…».
 - **Menú ⋯ de una categoría:** «Seleccionar contenido» (marca todos sus cursos, también los de sus subcategorías) y «Abrir en Moodle». Los cursos no tienen menú.
-
-### Auto ordenar varias categorías
-
-Seleccione varias categorías (casilla o tecla **S**) y use «Auto ordenar seleccionadas» en la barra de selección. Se ve una sola vista previa con todos los cambios; al aplicarla todo queda en una sola entrada del historial, y un solo «Deshacer» devuelve todas las categorías a su orden anterior. Se comprueba `moodle/category:manage` en cada categoría cuyo contenido cambia.
 
 ### Ocultar y mostrar cursos
 
@@ -99,39 +92,13 @@ Afecta a la categoría, a **todas** sus subcategorías a cualquier profundidad y
 
 Cada movimiento, orden, renombrado y cambio de visibilidad queda en el historial, y aparece un aviso «Deshacer» durante 8 segundos. El historial se conserva 90 días; una tarea programada borra lo más viejo. Deshacer devuelve el estado anterior, incluida la visibilidad si el movimiento la cambió. **Se rechaza si algo cambió después de la operación** (por ejemplo, otra persona movió o renombró el elemento) y se indica qué cambió; en ese caso no se modifica nada.
 
-«Unificar categorías» y «Quitar repetidos» ya no están en el organizador. Lo que se hizo con ellas antes sigue en el historial y se puede deshacer como siempre.
-
-### Sugerir correcciones
-
-Propone nombres corregidos para categorías y cursos y deja aplicarlos de una vez. No cambia nada hasta que se confirma.
-
-**Dónde está.** En la barra del organizador, «Sugerir correcciones». Con una sola categoría seleccionada revisa esa categoría y lo que hay debajo; si no, todo el sitio. La casilla «Incluir cursos» decide si también se revisan los cursos. La lista muestra cada cambio con el nombre actual, el sugerido, el motivo y la categoría donde está; cada fila se puede desmarcar.
-
-**Las cuatro reglas.** Se aplican en este orden y el motivo queda marcado en la fila:
-
-1. **Formato:** limpia espacios de más y deja los guiones con espacios cuando ya tenían espacio a algún lado (`Ingeniería   de  Sistemas` pasa a `Ingeniería de Sistemas`). No toca periodos como `2026-2` ni códigos como `Ing-Sist`.
-2. **Glosario:** reemplaza palabras según las reglas del glosario institucional (ver abajo). Es por palabra completa y no distingue mayúsculas.
-3. **Tilde:** agrega la tilde a una palabra escrita sin ella cuando el propio sitio la escribe con tilde (`Ingenieria` pasa a `Ingeniería`).
-4. **Variante:** unifica singular y plural entre categorías o cursos hermanos (`Ciencia Política` y `Ciencias Política`; ver los límites abajo).
-
-**Dos límites con las tildes.**
-
-- La tilde solo se agrega si el sitio escribe la palabra con tilde **al menos dos veces** y **más veces** que sin ella. Si hay empate, no se cambia.
-- Las palabras que cambian de significado con la tilde **nunca** se tildan: si, mas, el, tu, te, se, de, mi, solo, aun, que, como, cuando, donde, quien, cual, cuanto, este, esta, ese, esa, aquel, o. Una tilde equivocada es peor que ninguna; si alguna hace falta, se corrige con el glosario.
-
-**Variantes.** Solo se unifican nombres hermanos (mismo padre en las categorías; misma categoría en los cursos) que sean iguales salvo por **una** palabra que cambia de singular a plural (se agrega `s` o `es`). Gana la forma que más se usa en el sitio; si empatan, el plural. Se copia la palabra tal como está escrita en el sitio.
-
-**Glosario.** Ajuste *Glosario institucional*, en *Administración del sitio › Cursos › Ajustes del organizador de categorías*. Una regla por línea, con la forma `incorrecto => correcto`; las líneas sin `=>` o con un lado vacío se ignoran. Ejemplo: `Cien => Ciencias`.
-
-**Qué no cambia.** Solo cambian los **nombres completos**. Los nombres cortos de los cursos nunca se tocan, y los nombres de curso conservan su docente, grupo y periodo. Los nombres con etiquetas multilenguaje tampoco se tocan.
-
-**Límites y deshacer.** Se muestran hasta **2000** sugerencias; si hay más, el panel lo avisa: aplique estas y vuelva a abrir el panel para ver el resto. Aplicar va en lotes de **100**, queda en el historial como renombrado y se puede deshacer (el aviso «Deshacer» deshace todos los lotes aplicados). Aplicar usa los mismos permisos que «Renombrar». Cada lote es todo o nada: si un cambio de un lote falla (por ejemplo, falta un permiso o un nombre corto se ocupó), no se aplica nada de ese lote, pero los lotes anteriores ya quedaron aplicados. Lo mismo vale para «Renombrar» con más de 100 elementos.
+«Unificar categorías», «Quitar repetidos», «Auto ordenar» y «Sugerir correcciones» ya no están en el organizador. Lo que se hizo con ellas antes sigue en el historial y se puede deshacer como siempre.
 
 ### Borrar categorías
 
 Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni contenido.
 
-**Dónde está.** «Borrar seleccionadas» en la barra de selección (actúa solo sobre las categorías seleccionadas; los cursos seleccionados se ignoran).
+**Dónde está.** «Borrar categoría» en la barra de selección (actúa solo sobre las categorías seleccionadas; los cursos seleccionados se ignoran).
 
 **Qué es vacía.** Sin cursos, sin subcategorías y sin nada propio que Moodle borraría o movería al borrarla: elementos de la papelera de reciclaje, del banco de contenidos, eventos, letras de calificación, categorías de preguntas (cualquiera, incluso una «top» vacía), asignaciones de roles, permisos definidos en la categoría, cohortes, bloques, archivos (también las imágenes de la descripción), comentarios, filtros ni marcos o plantillas de competencias. Tampoco se borra la categoría por defecto de las solicitudes de curso. Así nunca se pierde nada. Si se seleccionan una categoría y todas sus subcategorías vacías, se borran juntas, de la más profunda a la más superficial.
 
@@ -145,7 +112,7 @@ Borra categorías **vacías**, una o varias a la vez. Nunca borra cursos ni cont
 
 ### Clonar semillas a un periodo
 
-Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno. Se recomienda hacerlo después de «Sugerir correcciones».
+Copia cursos semilla (plantillas) a una categoría de periodo, por ejemplo «2027-01», sin hacerlo uno por uno.
 
 **Requisito: el cron de Moodle debe estar activo.** Las copias las hace la tarea ad hoc `\core\task\asynchronous_copy_task` (no es una tarea programada), que el cron ejecuta. Las copias que esperan se ven en *Administración del sitio › Servidor › Tareas › Tareas ad hoc* (página `admin/tool/task/adhoctasks.php`; el texto del menú puede variar según la versión y el paquete de idioma). Sin cron, las copias quedan «Pendiente» y no avanzan. Si pasan unos 10 minutos sin progreso, el panel muestra el aviso «Las copias dependen del cron de Moodle; verifica que esté activo.».
 
@@ -191,7 +158,7 @@ Si falta un permiso en una semilla, esa fila se omite y las demás se clonan. Si
 
 En un sitio grande y con mucho uso (como eCampus, con miles de cursos y muchos docentes y estudiantes conectados a la vez):
 
-- **Operaciones masivas fuera de las horas pico.** «Auto ordenar» del nivel superior (o de todo el sitio) y «Clonar a periodo» reescriben el orden de muchas categorías, mueven muchos cursos o encolan copias; cada una purga cachés de cursos y categorías de todo el sitio. Conviene hacerlas temprano, de noche o en fin de semana.
+- **Operaciones masivas fuera de las horas pico.** «Clonar a periodo», «Ocultar todo» y los renombrados grandes mueven o cambian muchos cursos o encolan copias; cada una purga cachés de cursos y categorías de todo el sitio. Conviene hacerlas temprano, de noche o en fin de semana.
 - **Renombrar y ocultar o mostrar cursos va en lotes de 100.** Cada curso pasa por la función del núcleo que actualiza el curso y purga cachés; los lotes cortos evitan peticiones largas. El panel parte la lista solo.
 - **Clonar en lotes.** Cada copia es una tarea en segundo plano (copia de seguridad y restauración). Para que el cron no corra varias copias a la vez y no cargue el servidor, se recomienda limitarlas a una a la vez en `config.php`:
 
@@ -201,7 +168,7 @@ En un sitio grande y con mucho uso (como eCampus, con miles de cursos y muchos d
 
 ### Pruebas seguras
 
-Probar primero en una categoría de prueba, nunca sobre periodos activos. Usar las vistas previas de «Auto ordenar» y «Renombrar» antes de confirmar, y comprobar que «Deshacer» funciona con una operación pequeña antes de organizar una sede completa.
+Probar primero en una categoría de prueba, nunca sobre periodos activos. Usar la vista previa de «Renombrar» antes de confirmar, y comprobar que «Deshacer» funciona con una operación pequeña antes de organizar una sede completa.
 
 ---
 

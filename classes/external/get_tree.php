@@ -32,7 +32,7 @@ use core_external\external_value;
 use tool_ceaorganizador\local\tree;
 
 /**
- * All the categories, with their sort recommendation and the count for the summary.
+ * All the categories, in tree order.
  */
 class get_tree extends external_api {
     /**
@@ -47,7 +47,7 @@ class get_tree extends external_api {
     /**
      * Lists the categories in tree order.
      *
-     * @return array ['categories' => array, 'rootneedsort' => bool, 'needsortcount' => int]
+     * @return array ['categories' => array]
      */
     public static function execute(): array {
         self::validate_parameters(self::execute_parameters(), []);
@@ -55,16 +55,7 @@ class get_tree extends external_api {
         self::validate_context($context);
         require_capability('tool/ceaorganizador:manage', $context);
 
-        // One read of the categories for both.
-        $overview = tree::overview();
-        $categories = $overview['categories'];
-        $rootneedsort = $overview['rootneedsort'];
-        $count = count(array_filter(array_column($categories, 'needsort')));
-        return [
-            'categories' => $categories,
-            'rootneedsort' => $rootneedsort,
-            'needsortcount' => $count + ($rootneedsort ? 1 : 0),
-        ];
+        return ['categories' => tree::categories()];
     }
 
     /**
@@ -83,10 +74,7 @@ class get_tree extends external_api {
                 'sortorder' => new external_value(PARAM_INT, 'Sort order'),
                 'visible' => new external_value(PARAM_BOOL, 'Visible'),
                 'coursecount' => new external_value(PARAM_INT, 'Number of courses'),
-                'needsort' => new external_value(PARAM_BOOL, 'Its subcategories or courses differ from the proposed order'),
             ])),
-            'rootneedsort' => new external_value(PARAM_BOOL, 'The top-level categories differ from the proposed order'),
-            'needsortcount' => new external_value(PARAM_INT, 'Categories with needsort, plus 1 when rootneedsort'),
         ]);
     }
 }

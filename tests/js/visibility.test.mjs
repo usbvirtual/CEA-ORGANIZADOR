@@ -33,7 +33,7 @@ const setup = async () => {
         onAction: (action, item) => actions.push([action, Number(item.dataset.id)]),
     };
     const model = createModel([{
-        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 2, needsort: false,
+        id: 1, parent: 0, name: 'A', path: 'A', depth: 1, sortorder: 1, visible: true, coursecount: 2,
     }]);
     render(container, model, state);
     await flush();

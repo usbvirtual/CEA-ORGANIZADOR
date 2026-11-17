@@ -69,7 +69,7 @@
     flex: none;
 }
 
-/* Barra superior: buscador y resumen de lo que se puede ordenar. */
+/* Barra superior: buscador. */
 .tool-ceaorganizador-barra {
     display: flex;
     flex-wrap: wrap;
@@ -83,16 +83,6 @@
     max-width: 28rem;
     border-radius: 999px;
     box-shadow: none;
-}
-
-.tool-ceaorganizador-resumen {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.tool-ceaorganizador-resumen[hidden] {
-    display: none;
 }
 
 /* Árbol: sangría por nivel, sin viñetas. */
@@ -366,8 +356,7 @@
 
 .tool-ceaorganizador-operacion-cabecera,
 .tool-ceaorganizador-agregar,
-.tool-ceaorganizador-acciones,
-.tool-ceaorganizador-controles {
+.tool-ceaorganizador-acciones {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -401,29 +390,6 @@
     color: var(--cea-tinta);
     font-size: 0.8125rem;
     padding-left: 0.5rem;
-}
-
-.tool-ceaorganizador-columnas {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-}
-
-.tool-ceaorganizador-cambio {
-    border-bottom: 1px solid var(--cea-linea);
-    padding: 0.5rem 0;
-}
-
-.tool-ceaorganizador-cambio-titulo,
-.tool-ceaorganizador-columna-titulo,
-.tool-ceaorganizador-vista-titulo {
-    font-size: 0.9375rem;
-    margin: 0 0 0.25rem;
-}
-
-.tool-ceaorganizador-vista {
-    max-height: 45vh;
-    overflow-y: auto;
 }
 
 .tool-ceaorganizador-historial {

@@ -56,19 +56,6 @@ export const moveCategory = (id, newparent, afterid) => call('move_category', {i
 export const moveCourse = (id, categoryid, afterid) => call('move_course', {id, categoryid, afterid});
 
 /**
- * @param {Object} params Plan parameters of sort_preview, as the web service defines them; categoryids
- *                        (with categoryid 0) sorts several categories at once.
- * @returns {Promise}
- */
-export const sortPreview = (params) => call('sort_preview', params);
-
-/**
- * @param {Object} params Plan parameters of sort_apply plus the hash of the preview; categoryids as in sortPreview.
- * @returns {Promise}
- */
-export const sortApply = (params) => call('sort_apply', params);
-
-/**
  * @param {Object} params {items, ops, manual, includeshortname}.
  * @returns {Promise}
  */
@@ -79,12 +66,6 @@ export const renamePreview = (params) => call('rename_preview', params);
  * @returns {Promise}
  */
 export const renameApply = (params) => call('rename_apply', params);
-
-/**
- * @param {Object} params {categoryid (0 is the whole site), includecourses}.
- * @returns {Promise} {rows, total, truncated}.
- */
-export const suggestPreview = (params) => call('suggest_preview', params);
 
 export const undo = (logid) => call('undo', {logid});
 

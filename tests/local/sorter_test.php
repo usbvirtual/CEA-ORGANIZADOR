@@ -28,23 +28,13 @@ namespace tool_ceaorganizador\local;
  * @covers     \tool_ceaorganizador\local\sorter
  */
 final class sorter_test extends \advanced_testcase {
-    /**
-     * Numbers and roman numerals (even typed with a lowercase L) sort together.
-     */
-    public function test_compare_numbers_and_romans(): void {
-        $names = ['Semestre 10', 'Semestre IX', 'Semestre 2', 'Semestre l', 'Semestre II', 'Semestre 1'];
-        usort($names, [sorter::class, 'compare']);
-        $this->assertSame(
-            ['Semestre 1', 'Semestre l', 'Semestre 2', 'Semestre II', 'Semestre IX', 'Semestre 10'],
-            $names
-        );
-    }
 
     /**
-     * Accents, case and extra spaces do not matter.
+     * Accents, case, tags and extra spaces do not matter.
      */
-    public function test_compare_ignores_accents_case_and_spaces(): void {
-        $this->assertSame(0, sorter::compare('Facultad de Ingeniería', 'facultad  de ingenieria '));
+    public function test_normalize_ignores_accents_case_and_spaces(): void {
+        $this->assertSame('facultad de ingenieria', sorter::normalize(' <b>Facultad</b>  de Ingeniería '));
+        $this->assertSame(sorter::normalize('Facultad de Ingeniería'), sorter::normalize('facultad  de ingenieria '));
     }
 
     /**
@@ -89,50 +79,12 @@ final class sorter_test extends \advanced_testcase {
     }
 
     /**
-     * Top level groups: periods, apart, seeds and faculties.
-     */
-    public function test_propose_toplevel_groups(): void {
-        $items = self::items([
-            'Facultad de Ingeniería', 'CEA', '2026-01', 'Semillas', 'Facultades', '2026-02',
-            'Centro de Idiomas', '2025-02',
-        ]);
-        $order = sorter::propose($items, true, sorter::default_patterns_parsed());
-        $this->assertSame(
-            ['2026-02', '2026-01', '2025-02', 'CEA', 'Centro de Idiomas', 'Facultades', 'Semillas',
-                'Facultad de Ingeniería'],
-            self::names($items, $order)
-        );
-    }
-
-    /**
      * "Facultades" is a seed only at the top level.
      */
     public function test_facultades_is_seed_only_at_top_level(): void {
         $p = sorter::default_patterns_parsed();
         $this->assertSame('semilla', sorter::classify('Facultades', true, $p));
         $this->assertSame('otro', sorter::classify('Facultades', false, $p));
-    }
-
-    /**
-     * Lower levels: periods first, then natural order.
-     */
-    public function test_propose_lower_level_periods_first_then_natural(): void {
-        $items = self::items(['Semestre II', '2026 -1 Cursos', 'Semestre I', '2026 -2 Cursos']);
-        $this->assertSame(
-            ['2026 -2 Cursos', '2026 -1 Cursos', 'Semestre I', 'Semestre II'],
-            self::names($items, sorter::propose($items, false, sorter::default_patterns_parsed()))
-        );
-    }
-
-    /**
-     * Names in the same period are ordered naturally.
-     */
-    public function test_same_period_ties_are_natural(): void {
-        $items = self::items(['2026-02 Producción', '2026-02 Apoyo a la presencialidad']);
-        $this->assertSame(
-            ['2026-02 Apoyo a la presencialidad', '2026-02 Producción'],
-            self::names($items, sorter::propose($items, true, sorter::default_patterns_parsed()))
-        );
     }
 
     /**
@@ -159,7 +111,7 @@ final class sorter_test extends \advanced_testcase {
             sorter::parse_patterns("<i></i>\nSemilla")
         );
         // A stored empty value, from before this check, is ignored too.
-        $patterns = ['semilla' => [['type' => 'contains', 'value' => '']], 'facultad' => []];
+        $patterns = ['semilla' => [['type' => 'contains', 'value' => '']]];
         $this->assertSame('aparte', sorter::classify('Centro de Idiomas', true, $patterns));
     }
 
@@ -171,12 +123,13 @@ final class sorter_test extends \advanced_testcase {
     }
 
     /**
-     * The default regular expressions match faculties and programs.
+     * Without a seed pattern, a top-level name is «aparte» (faculties are not a group any more).
      */
-    public function test_default_faculty_patterns(): void {
+    public function test_classify_without_seed_pattern(): void {
         $p = sorter::default_patterns_parsed();
-        $this->assertSame('facultad', sorter::classify('Facultad de Ingeniería', true, $p));
-        $this->assertSame('facultad', sorter::classify('Programa Derecho', true, $p));
+        $this->assertSame('aparte', sorter::classify('Facultad de Ingeniería', true, $p));
+        $this->assertSame('semilla', sorter::classify('Semillas', true, $p));
+        $this->assertSame('periodo', sorter::classify('2026-2 Producción', true, $p));
     }
 
     /**
@@ -187,88 +140,5 @@ final class sorter_test extends \advanced_testcase {
         $this->assertSame(sorter::default_patterns_parsed(), sorter::patterns());
         set_config('patterns_semilla', '', 'tool_ceaorganizador');
         $this->assertSame([], sorter::patterns()['semilla']);
-    }
-
-    /**
-     * Courses go in natural order, ties by id.
-     */
-    public function test_propose_courses_and_differs(): void {
-        $items = [
-            ['id' => 3, 'name' => 'Curso 10'],
-            ['id' => 2, 'name' => 'Curso 2'],
-            ['id' => 1, 'name' => 'Curso 2'],
-        ];
-        $this->assertSame([1, 2, 3], sorter::propose_courses($items));
-        $this->assertTrue(sorter::differs([3, 2, 1], [1, 2, 3]));
-        $this->assertFalse(sorter::differs([1, 2, 3], [1, 2, 3]));
-    }
-
-    /**
-     * Fixed orders of realistic names (periods, seeds, faculties, accents, numbers and roman numerals), so that the
-     * keys computed once per item keep the order the sorter gave before.
-     */
-    public function test_fixed_orders_of_realistic_names(): void {
-        $patterns = sorter::default_patterns_parsed();
-
-        $top = self::items([
-            'Facultad de Ingeniería', 'Semillas', '2025-2', 'Centro de Idiomas', '2026-1', 'Plantillas',
-            'Facultad de Derecho', 'Programa de Psicología', 'Bienestar', '2025 - I', 'Facultades',
-        ]);
-        $this->assertSame(
-            [
-                '2026-1', '2025-2', '2025 - I', 'Bienestar', 'Centro de Idiomas', 'Facultades', 'Plantillas', 'Semillas',
-                'Facultad de Derecho', 'Facultad de Ingeniería', 'Programa de Psicología',
-            ],
-            self::names($top, sorter::propose($top, true, $patterns))
-        );
-
-        $sub = self::items([
-            'Semestre X', 'Semestre II', 'Semestre I', 'Semestre IX', 'Semestre 10', 'Semestre III', 'Electivas', 'Énfasis',
-        ]);
-        $this->assertSame(
-            ['Electivas', 'Énfasis', 'Semestre I', 'Semestre II', 'Semestre III', 'Semestre IX', 'Semestre 10', 'Semestre X'],
-            self::names($sub, sorter::propose($sub, false, $patterns))
-        );
-
-        // The names «Álgebra Lineal» and «Algebra lineal» tie on the normalized name: the lower id goes first.
-        $courses = self::items([
-            'Cálculo III', 'Cálculo I', 'cálculo ii', 'Álgebra Lineal', 'Física 2', 'Física 10', 'Física 1',
-            'Ética Profesional', 'Inglés IV', 'Inglés V', 'Programación Orientada a Objetos', 'Algebra lineal',
-        ]);
-        $this->assertSame(
-            [
-                'Álgebra Lineal', 'Algebra lineal', 'Cálculo I', 'cálculo ii', 'Cálculo III', 'Ética Profesional', 'Física 1',
-                'Física 2', 'Física 10', 'Inglés IV', 'Inglés V', 'Programación Orientada a Objetos',
-            ],
-            self::names($courses, sorter::propose_courses($courses))
-        );
-    }
-
-    /**
-     * Builds items with consecutive ids.
-     *
-     * @param string[] $names
-     * @return array
-     */
-    private static function items(array $names): array {
-        $items = [];
-        foreach (array_values($names) as $i => $name) {
-            $items[] = ['id' => $i + 1, 'name' => $name];
-        }
-        return $items;
-    }
-
-    /**
-     * Names of the given ids.
-     *
-     * @param array $items
-     * @param int[] $ids
-     * @return string[]
-     */
-    private static function names(array $items, array $ids): array {
-        $byid = array_column($items, 'name', 'id');
-        return array_map(function (int $id) use ($byid): string {
-            return $byid[$id];
-        }, $ids);
     }
 }

@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Natural ordering, roman numerals and academic periods.
+ * Name normalization, roman numerals, academic periods and category patterns.
  *
  * @package    tool_ceaorganizador
  * @copyright  2026 Universidad de San Buenaventura Cali
@@ -25,17 +25,13 @@
 namespace tool_ceaorganizador\local;
 
 /**
- * Natural ordering, roman numerals, academic periods and category grouping.
+ * Name normalization, roman numerals, academic periods and category grouping (pure: no database writes).
  */
 class sorter {
     /** @var string[] Default pattern texts, one pattern per line. */
     public const DEFAULT_PATTERNS = [
         'semilla' => "semilla\nplantilla\n=Facultades",
-        'facultad' => "/^facultad/\n/^programa/",
     ];
-
-    /** @var int[] Group order at the top level. */
-    private const GROUP_ORDER = ['periodo' => 0, 'aparte' => 1, 'semilla' => 2, 'facultad' => 3];
 
     /**
      * Lowercases, removes accents and tags, and collapses spaces.
@@ -45,54 +41,6 @@ class sorter {
      */
     public static function normalize(string $name): string {
         return \core_text::strtolower(self::clean($name));
-    }
-
-    /**
-     * Natural comparison of two names.
-     *
-     * Digit runs and isolated roman numerals compare as integers, and a
-     * number goes before text. Ties fall back to the normalized names.
-     *
-     * @param string $a
-     * @param string $b
-     * @return int
-     */
-    public static function compare(string $a, string $b): int {
-        return self::compare_keys(self::key($a), self::key($b));
-    }
-
-    /**
-     * Sort key of a name for compare_keys(): its tokens and its normalized form, computed once.
-     *
-     * @param string $name
-     * @return array ['tokens' => array, 'normalized' => string]
-     */
-    private static function key(string $name): array {
-        $clean = self::clean($name);
-        return ['tokens' => self::tokenize($clean), 'normalized' => \core_text::strtolower($clean)];
-    }
-
-    /**
-     * Natural comparison of two sort keys; the same result as compare() on their names.
-     *
-     * @param array $ka Key from key().
-     * @param array $kb
-     * @return int
-     */
-    private static function compare_keys(array $ka, array $kb): int {
-        $ta = $ka['tokens'];
-        $tb = $kb['tokens'];
-        $count = min(count($ta), count($tb));
-        for ($i = 0; $i < $count; $i++) {
-            $result = self::compare_tokens($ta[$i], $tb[$i]);
-            if ($result !== 0) {
-                return $result;
-            }
-        }
-        if (count($ta) !== count($tb)) {
-            return count($ta) <=> count($tb);
-        }
-        return strcmp($ka['normalized'], $kb['normalized']) <=> 0;
     }
 
     /**
@@ -175,13 +123,10 @@ class sorter {
     /**
      * Default patterns, already parsed.
      *
-     * @return array ['semilla' => array, 'facultad' => array]
+     * @return array ['semilla' => array]
      */
     public static function default_patterns_parsed(): array {
-        return [
-            'semilla' => self::parse_patterns(self::DEFAULT_PATTERNS['semilla']),
-            'facultad' => self::parse_patterns(self::DEFAULT_PATTERNS['facultad']),
-        ];
+        return ['semilla' => self::parse_patterns(self::DEFAULT_PATTERNS['semilla'])];
     }
 
     /**
@@ -189,11 +134,11 @@ class sorter {
      *
      * An empty string set by the admin means "no patterns".
      *
-     * @return array ['semilla' => array, 'facultad' => array]
+     * @return array ['semilla' => array]
      */
     public static function patterns(): array {
         $result = [];
-        foreach (['semilla', 'facultad'] as $group) {
+        foreach (['semilla'] as $group) {
             $value = get_config('tool_ceaorganizador', 'patterns_' . $group);
             if ($value === false || $value === null) {
                 $value = self::DEFAULT_PATTERNS[$group];
@@ -206,8 +151,7 @@ class sorter {
     /**
      * Classifies a category name.
      *
-     * At the top level: periodo > semilla > facultad > aparte. At lower levels
-     * only 'periodo' or 'otro'.
+     * At the top level: periodo > semilla > aparte. At lower levels only 'periodo' or 'otro'.
      *
      * @param string $name
      * @param bool $toplevel
@@ -222,78 +166,12 @@ class sorter {
             return 'otro';
         }
         $normalized = self::normalize($name);
-        foreach (['semilla', 'facultad'] as $group) {
-            foreach ($patterns[$group] ?? [] as $pattern) {
-                if (self::matches($normalized, $pattern)) {
-                    return $group;
-                }
+        foreach ($patterns['semilla'] ?? [] as $pattern) {
+            if (self::matches($normalized, $pattern)) {
+                return 'semilla';
             }
         }
         return 'aparte';
-    }
-
-    /**
-     * Proposed order of sibling categories.
-     *
-     * @param array $items List of ['id' => int, 'name' => string].
-     * @param bool $toplevel
-     * @param array $patterns As returned by patterns().
-     * @return int[] Ids in the proposed order.
-     */
-    public static function propose(array $items, bool $toplevel, array $patterns): array {
-        $rows = [];
-        foreach ($items as $item) {
-            $group = self::classify($item['name'], $toplevel, $patterns);
-            $rows[] = [
-                'id' => (int) $item['id'],
-                'key' => self::key($item['name']),
-                'rank' => self::GROUP_ORDER[$group] ?? 4,
-                'period' => $group === 'periodo' ? self::parse_period($item['name']) : null,
-            ];
-        }
-        // The keys are computed once per item, not in every comparison.
-        usort($rows, function (array $a, array $b): int {
-            if ($a['rank'] !== $b['rank']) {
-                return $a['rank'] <=> $b['rank'];
-            }
-            if ($a['period'] !== null && $b['period'] !== null) {
-                $result = ($b['period'][0] <=> $a['period'][0]) ?: ($b['period'][1] <=> $a['period'][1]);
-                if ($result !== 0) {
-                    return $result;
-                }
-            }
-            return self::compare_keys($a['key'], $b['key']) ?: ($a['id'] <=> $b['id']);
-        });
-        return array_column($rows, 'id');
-    }
-
-    /**
-     * Natural order of courses by name, ties by id.
-     *
-     * @param array $items List of ['id' => int, 'name' => string].
-     * @return int[]
-     */
-    public static function propose_courses(array $items): array {
-        $rows = [];
-        foreach ($items as $item) {
-            $rows[] = ['id' => (int) $item['id'], 'key' => self::key($item['name'])];
-        }
-        // The keys are computed once per course, not in every comparison.
-        usort($rows, function (array $a, array $b): int {
-            return self::compare_keys($a['key'], $b['key']) ?: ($a['id'] <=> $b['id']);
-        });
-        return array_column($rows, 'id');
-    }
-
-    /**
-     * Whether the proposed order differs from the current one.
-     *
-     * @param int[] $currentids
-     * @param int[] $proposedids
-     * @return bool
-     */
-    public static function differs(array $currentids, array $proposedids): bool {
-        return array_values($currentids) !== array_values($proposedids);
     }
 
     /**
@@ -324,56 +202,5 @@ class sorter {
     private static function clean(string $name): string {
         $name = \core_text::specialtoascii(strip_tags($name));
         return trim(preg_replace('/\s+/u', ' ', $name));
-    }
-
-    /**
-     * Splits a name into runs of digits, letters and other characters.
-     *
-     * @param string $name
-     * @return array Each item is [type, text, number]; type is "n" or "t".
-     */
-    private static function tokenize(string $name): array {
-        preg_match_all('/\d+|\p{L}+|[^\d\p{L}]+/u', $name, $matches);
-        $parts = $matches[0];
-        $tokens = [];
-        foreach ($parts as $i => $part) {
-            if (ctype_digit($part)) {
-                $tokens[] = ['n', $part, $part];
-                continue;
-            }
-            $isword = preg_match('/^\p{L}+$/u', $part) === 1;
-            $isolated = !(isset($parts[$i - 1]) && ctype_digit($parts[$i - 1]))
-                && !(isset($parts[$i + 1]) && ctype_digit($parts[$i + 1]));
-            $roman = ($isword && $isolated) ? self::roman_value($part) : null;
-            if ($roman !== null) {
-                $tokens[] = ['n', $part, (string) $roman];
-            } else {
-                $tokens[] = ['t', \core_text::strtolower($part), ''];
-            }
-        }
-        return $tokens;
-    }
-
-    /**
-     * Compares two tokens; numbers go before text.
-     *
-     * @param array $a
-     * @param array $b
-     * @return int
-     */
-    private static function compare_tokens(array $a, array $b): int {
-        if ($a[0] === 'n' && $b[0] === 'n') {
-            // Digit runs can exceed PHP_INT_MAX, so compare them as strings.
-            $x = ltrim($a[2], '0');
-            $y = ltrim($b[2], '0');
-            if (strlen($x) !== strlen($y)) {
-                return strlen($x) <=> strlen($y);
-            }
-            return strcmp($x, $y) <=> 0;
-        }
-        if ($a[0] !== $b[0]) {
-            return $a[0] === 'n' ? -1 : 1;
-        }
-        return strcmp($a[1], $b[1]) <=> 0;
     }
 }
