@@ -30,12 +30,12 @@
  */
 function xmldb_tool_ceaorganizador_upgrade($oldversion) {
     if ($oldversion < 2026111800) {
-        // «Auto ordenar» was removed: the faculty patterns only grouped faculties when sorting.
+        // The automatic sort was removed: the faculty patterns only grouped faculties when sorting.
         unset_config('patterns_facultad', 'tool_ceaorganizador');
         upgrade_plugin_savepoint(true, 2026111800, 'tool', 'ceaorganizador');
     }
     if ($oldversion < 2026111801) {
-        // «Sugerir correcciones» was removed: its glossary is not read any more.
+        // The name suggestions were removed: their glossary is not read any more.
         unset_config('glossary', 'tool_ceaorganizador');
         upgrade_plugin_savepoint(true, 2026111801, 'tool', 'ceaorganizador');
     }

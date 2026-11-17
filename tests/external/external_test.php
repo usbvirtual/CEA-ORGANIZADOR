@@ -790,6 +790,7 @@ final class external_test extends \advanced_testcase {
         $this->assertTrue($undo['ok']);
 
         $history = external_api::clean_returnvalue(history::execute_returns(), history::execute(0));
-        $this->assertSame(4, $history['total']);
+        // Rename, course move and category move.
+        $this->assertSame(3, $history['total']);
     }
 }

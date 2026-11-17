@@ -28,7 +28,6 @@ namespace tool_ceaorganizador\local;
  * @covers     \tool_ceaorganizador\local\sorter
  */
 final class sorter_test extends \advanced_testcase {
-
     /**
      * Accents, case, tags and extra spaces do not matter.
      */
